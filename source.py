@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from urllib.parse import urlparse
 from io import BytesIO
+import random
 
 # مكتبات معالجة الميديا
 from PIL import Image, ImageDraw, ImageFont
@@ -69,10 +70,19 @@ from telethon.tl.functions.photos import GetUserPhotosRequest
 from deep_translator import GoogleTranslator
 import pytz
 
+#لتشغيل على خادم
+import http.server
+import socketserver
+import threading
+
+from telethon import events
+import urllib.parse
+
 # ===== الثوابت والإعدادات ===== #
-API_ID = 29984076
-API_HASH = 'be3aaeef107fa2578ee47271b4aa5645'
-STRING_SESSION = "1BJWap1wBu6Vqq3ifb4tkwUVbmj8gj6ea0JXs2-xSbexW8UDfLL8OTtNo7c87w22bffE2wStLruljmwdu-i443EM_ODod82sfPB6vhfLOr16NTlYnjBUUWg79jxWipbg_hxhaSAcipZobccB0iY6cgkDGXTCcG7UnxDN7Tt1idyxf8x5W1cgbHPpObfT6gBQLdGm8A61Qad1dyrPV46ynUj4AZLT6ZHMeRdah9WvQSZKWgQRz2_J1-AmtyERmEhnjjZTmkAwv3JXgSl5hbIxr_Ibnpi8tFrab8Pyt4GYJpL3FVCyG0F6dKjE4aoeg4ojEaKE91WYOxnBX52iStrjkcWT3ikptvBs="
+API_ID = os.getenv("API_ID")
+API_HASH = os.getenv("API_HASH")
+STRING_SESSION = os.getenv("STRING_SESSION")
+
 MAX_WARNINGS = 7
 
 # ===== حالات النظام ===== #
@@ -2609,39 +2619,66 @@ async def save_post(event):
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")
 
+
+
+# مفتاح CoinMarketCap
+CMC_API_KEY = "7815e95f-9007-41aa-86f8-79ac032a0a4d"
+
 @client.on(events.NewMessage(pattern=r'\.p\s+(.+)'))
 async def get_crypto_price(event):
     crypto_input = event.pattern_match.group(1).strip().lower()
     await event.edit(f"**⎉╎جـارِ البحث عن {crypto_input}...**")
 
     try:
-        # استخدام واجهة البحث في CoinGecko للحصول على أفضل نتيجة
-        search_url = f"https://api.coingecko.com/api/v3/search?query={crypto_input}"
-        search_response = requests.get(search_url)
-        search_data = search_response.json()
+        headers = {
+            "Accepts": "application/json",
+            "X-CMC_PRO_API_KEY": CMC_API_KEY
+        }
 
-        if not search_data.get('coins'):
-            await event.edit(f"**⚠️ العملة '{crypto_input}' غير موجودة.**")
+        # الحصول على قائمة العملات من CoinMarketCap
+        search_url = f"https://pro-api.coinmarketcap.com/v1/cryptocurrency/map"
+        search_response = requests.get(search_url, headers=headers)
+        if search_response.status_code != 200:
+            await event.edit("⚠️ فشل في الاتصال بـ CoinMarketCap.")
             return
 
-        # أخذ أفضل نتيجة بحث (الأولى في القائمة)
-        best_match = search_data['coins'][0]
+        search_data = search_response.json()["data"]
+
+        # مطابقة دقيقة
+        best_match = None
+        for coin in search_data:
+            if crypto_input == coin['symbol'].lower() or crypto_input == coin['name'].lower() or crypto_input == coin['slug'].lower():
+                best_match = coin
+                break
+
+        # إذا لم توجد نتيجة، اقترح DexScreener
+        if not best_match:
+            search_term = urllib.parse.quote(crypto_input)
+            dexscreener_url = f"https://dexscreener.com/search?q={search_term}"
+            await event.edit(
+                f"⚠️ العملة '{crypto_input}' غير موجودة على CoinMarketCap.\n\n"
+                f"🔎 **جرب البحث عنها هنا:** [DexScreener]({dexscreener_url})"
+            )
+            return
+
+        # الحصول على بيانات السعر
         coin_id = best_match['id']
-        symbol = best_match['symbol'].upper()
+        symbol = best_match['symbol']
+        name = best_match['name']
 
-        # جلب البيانات التفصيلية للعملة
-        detail_url = f"https://api.coingecko.com/api/v3/coins/{coin_id}"
-        detail_response = requests.get(detail_url)
-        data = detail_response.json()
+        detail_url = f"https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?id={coin_id}"
+        detail_response = requests.get(detail_url, headers=headers)
+        if detail_response.status_code != 200:
+            await event.edit("⚠️ فشل في جلب بيانات العملة.")
+            return
 
-        # استخراج البيانات المهمة
-        name = data['name']
-        current_price = data['market_data']['current_price']['usd']
-        price_change_24h = data['market_data']['price_change_percentage_24h']
-        market_cap = data['market_data']['market_cap']['usd']
-        volume_24h = data['market_data']['total_volume']['usd']
+        data = detail_response.json()['data'][str(coin_id)]['quote']['USD']
+        current_price = data['price']
+        price_change_24h = data['percent_change_24h']
+        market_cap = data['market_cap']
+        volume_24h = data['volume_24h']
 
-        # تنسيق الأرقام الكبيرة
+        # تنسيق الأرقام
         def format_number(num):
             if num is None:
                 return "N/A"
@@ -2653,24 +2690,20 @@ async def get_crypto_price(event):
                 return f"${num/1_000:.1f}K"
             return f"${num:,.2f}"
 
-        # إنشاء رسالة الرد مع التحقق من المطابقة الدقيقة
-        warning = ""
-        if crypto_input != coin_id.lower() and crypto_input != symbol.lower():
-            warning = "\n\n⚠️ **ملاحظة:** تم العثور على أفضل نتيجة مطابقة. للتأكد من العملة الصحيحة، استخدم الاسم الكامل أو ID العملة."
-
         message = (
             f"**{name} ({symbol})**\n"
             f"**USD ${current_price:,.5f}**\n"
             f"**24H Change:** {price_change_24h:+.2f}%\n"
             f"**Market Cap:** {format_number(market_cap)}\n"
-            f"**24H Volume:** {format_number(volume_24h)}"
-            f"{warning}\n\n**⎉╎المصدر:** CoinGecko"
+            f"**24H Volume:** {format_number(volume_24h)}\n\n"
+            f"**⎉╎المصدر:** CoinMarketCap"
         )
 
         await event.edit(message)
 
     except Exception as e:
-        await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")
+        await event.edit(f"⚠️ حدث خطأ: {str(e)}")
+
 
 @client.on(events.NewMessage(pattern=r'\.احصائيات'))
 async def show_stats(event):
@@ -2916,7 +2949,18 @@ async def delete_all_bots(event):
         
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ أثناء حذف البوتات:** {str(e)}")        
-                
+ 
+
+def run_server():
+    handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", 8000), handler) as httpd:
+        print("Serving on port 8000")
+        httpd.serve_forever()
+
+# تشغيل الخادم في خيط جديد
+server_thread = threading.Thread(target=run_server)
+server_thread.start()                
+                                              
 async def main():
     await start_client()
     await client.run_until_disconnected()
