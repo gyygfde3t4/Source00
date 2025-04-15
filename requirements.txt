@@ -1,0 +1,9 @@
+telethon
+pytz
+pillow
+pydub
+mutagen
+python-telegraph
+yt-dlp
+deep-translator
+requests
