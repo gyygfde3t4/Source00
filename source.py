@@ -1,5 +1,4 @@
 # المكتبات الأساسية
-import pyaudioop
 import os
 import asyncio
 import time
