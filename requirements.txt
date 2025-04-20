@@ -3,10 +3,9 @@ pytz
 pillow
 pydub
 mutagen
-python-telegraph
+telegraph
 yt-dlp
 deep-translator
 requests
 ffmpeg-python
 python-dotenv
-telegraph
