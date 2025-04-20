@@ -1,11 +1,11 @@
 telethon
 pytz
 pillow
-pydub==0.25.1
+pydub
 mutagen
 telegraph
 yt-dlp
 deep-translator
 requests
-ffmpeg-python
 python-dotenv
+pyaudioop
