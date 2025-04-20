@@ -9,3 +9,4 @@ deep-translator
 requests
 ffmpeg-python
 python-dotenv
+telegraph
