@@ -78,15 +78,24 @@ import threading
 from telethon import events
 import urllib.parse
 
+from telethon import events, types
+from telethon.tl.functions.channels import LeaveChannelRequest
+from telethon.tl.functions.channels import GetParticipantRequest
+
 # ===== الثوابت والإعدادات ===== #
-API_ID = os.getenv("API_ID")
-API_HASH = os.getenv("API_HASH")
-STRING_SESSION = os.getenv("STRING_SESSION")
+
+API_ID = int(os.getenv('API_ID'))
+API_HASH = os.getenv('API_HASH')
+STRING_SESSION = os.getenv('STRING_SESSION')
+
 
 MAX_WARNINGS = 7
 
 # ===== حالات النظام ===== #
 protection_enabled = False
+
+# مفتاح CoinMarketCap
+CMC_API_KEY = os.getenv('CMC_API_KEY')  
 
 # ===== قوائم التتبع ===== #
 repeat_tasks = {}      # تتبع مهام التكرار
@@ -2621,8 +2630,7 @@ async def save_post(event):
 
 
 
-# مفتاح CoinMarketCap
-CMC_API_KEY = "7815e95f-9007-41aa-86f8-79ac032a0a4d"
+
 
 @client.on(events.NewMessage(pattern=r'\.p\s+(.+)'))
 async def get_crypto_price(event):
@@ -2772,7 +2780,7 @@ async def show_stats(event):
         
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ أثناء حساب الإحصائيات:** {str(e)}")
-        
+
 @client.on(events.NewMessage(pattern=r'\.مغادرة القنوات'))
 async def leave_all_channels(event):
     try:
@@ -2799,16 +2807,24 @@ async def leave_all_channels(event):
                     remaining_channels.append(entity)
                     continue
                     
-                # التحقق من صلاحية الإشراف
-                if dialog.is_admin or dialog.is_creator:
-                    admin_channels += 1
-                    remaining_channels.append(entity)
-                    continue
+                # التحقق من صلاحية الإشراف بشكل دقيق
+                try:
+                    participant = await client(GetParticipantRequest(
+                        entity,
+                        await client.get_me()
+                    ))
+                    if isinstance(participant.participant, (types.ChannelParticipantCreator, 
+                                                          types.ChannelParticipantAdmin)):
+                        admin_channels += 1
+                        remaining_channels.append(entity)
+                        continue
+                except Exception:
+                    pass
                     
                 await client(LeaveChannelRequest(entity))
                 left_count += 1
                 
-                if i % 5 == 0:
+                if i % 5 == 0 or i == len(channels)-1:
                     await msg.edit(
                         f"**⎉╎جاري مغادرة القنوات...\n\n"
                         f"✾╎تم مغادرة: {left_count}\n"
@@ -2816,7 +2832,7 @@ async def leave_all_channels(event):
                         f"✾╎المتبقي: {len(channels)-i-1}**"
                     )
                 
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)  # زيادة وقت الانتظار لتجنب الحظر
                 
             except Exception as e:
                 print(f"Error in channel {entity.id}: {str(e)}")
@@ -2859,16 +2875,24 @@ async def leave_all_groups(event):
         for i, dialog in enumerate(groups):
             entity = dialog.entity
             try:
-                # التحقق من صلاحية الإشراف
-                if dialog.is_admin or dialog.is_creator:
-                    admin_groups += 1
-                    remaining_groups.append(entity)
-                    continue
+                # التحقق من صلاحية الإشراف بشكل دقيق
+                try:
+                    participant = await client(GetParticipantRequest(
+                        entity,
+                        await client.get_me()
+                    ))
+                    if isinstance(participant.participant, (types.ChannelParticipantCreator, 
+                                                          types.ChannelParticipantAdmin)):
+                        admin_groups += 1
+                        remaining_groups.append(entity)
+                        continue
+                except Exception:
+                    pass
                     
                 await client(LeaveChannelRequest(entity))
                 left_count += 1
                 
-                if i % 5 == 0:
+                if i % 5 == 0 or i == len(groups)-1:
                     await msg.edit(
                         f"**⎉╎جاري مغادرة الجروبات...\n\n"
                         f"✾╎تم مغادرة: {left_count}\n"
@@ -2876,7 +2900,7 @@ async def leave_all_groups(event):
                         f"✾╎المتبقي: {len(groups)-i-1}**"
                     )
                 
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)  # زيادة وقت الانتظار لتجنب الحظر
                 
             except Exception as e:
                 print(f"Error in group {entity.id}: {str(e)}")
@@ -2897,58 +2921,6 @@ async def leave_all_groups(event):
         
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ أثناء مغادرة الجروبات:** {str(e)}")
-        
-@client.on(events.NewMessage(pattern=r'\.حذف البوتات'))
-async def delete_all_bots(event):
-    try:
-        start_time = time.time()
-        msg = await event.edit("**⎉╎جاري البحث عن البوتات...**")
-        
-        dialogs = await client.get_dialogs()
-        bots = [dialog for dialog in dialogs 
-               if isinstance(dialog.entity, User) 
-               and dialog.entity.bot]
-        
-        deleted_count = 0
-        failed_count = 0
-        total_bots = len(bots)
-
-        await msg.edit(f"**⎉╎تم العثور على {total_bots} بوت، جاري الحذف...**")
-
-        for i, dialog in enumerate(bots):
-            try:
-                await client.delete_dialog(dialog.entity)
-                deleted_count += 1
-                
-                if i % 5 == 0 or i == total_bots - 1:
-                    progress = f"**⎉╎جاري حذف البوتات...\n\n"
-                    progress += f"✾╎تم حذف: {deleted_count}/{total_bots}\n"
-                    progress += f"✾╎فشل في حذف: {failed_count}\n"
-                    progress += f"⏳ المتبقي: {total_bots - i - 1}**"
-                    await msg.edit(progress)
-                
-                await asyncio.sleep(1)
-                
-            except Exception as e:
-                print(f"Error deleting bot {dialog.entity.id}: {str(e)}")
-                failed_count += 1
-                continue
-        
-        result_message = f"""
-╭━━━┳━━━━╮
-**⎉╎نتيجة حذف البوتات ⎚**
-╰━━━┻━━━━╯
-ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
-**✾╎عدد البوتات التي تم حذفها:** {deleted_count}
-**✾╎عدد البوتات التي فشل حذفها:** {failed_count}
-**✾╎إجمالي البوتات المكتشفة:** {total_bots}
-**✾╎الوقت المستغرق:** {int(time.time() - start_time)} ثانية
-ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
-"""
-        await msg.edit(result_message)
-        
-    except Exception as e:
-        await event.edit(f"**⚠️ حدث خطأ أثناء حذف البوتات:** {str(e)}")        
  
 
 def run_server():
