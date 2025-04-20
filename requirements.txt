@@ -1,7 +1,7 @@
 telethon
 pytz
 pillow
-pydub
+pydub==0.25.1
 mutagen
 telegraph
 yt-dlp
