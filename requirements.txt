@@ -8,4 +8,3 @@ yt-dlp
 deep-translator
 requests
 python-dotenv
-pyaudioop
