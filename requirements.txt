@@ -1,8 +1,6 @@
 telethon
 pytz
 pillow
-pydub
-mutagen
 telegraph
 yt-dlp
 deep-translator
