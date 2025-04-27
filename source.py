@@ -80,8 +80,11 @@ import urllib.parse
 from telethon import events, types
 from telethon.tl.functions.channels import LeaveChannelRequest
 from telethon.tl.functions.channels import GetParticipantRequest
+
 from telethon.tl.functions.stories import GetPinnedStoriesRequest, GetStoriesArchiveRequest
 from telethon.tl.types import InputPeerUser
+from datetime import datetime
+from telethon import types, events
 
 # ===== الثوابت والإعدادات ===== #
 
@@ -2469,6 +2472,10 @@ async def delete_all_bots(event):
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
 """
         await msg.edit(result_message)
+                
+        
+    except Exception as e:
+        await event.edit(f"**⚠️ حدث خطأ أثناء حذف البوتات:** {str(e)}") 
         
 
 @client.on(events.NewMessage(pattern=r'\.ستوريات(?:\s+(.+))?'))
@@ -2502,59 +2509,44 @@ async def download_stories(event):
             
         await event.edit(f"**📥 جاري جلب استوريات @{user.username}...**")
         
-        # محاولة الحصول على الاستوريات
-        try:
-            stories = await client(GetStoriesArchiveRequest(
-                offset_id=0,
-                limit=100,
-                peer=user
-            ))
-        except Exception as e:
-            await event.edit(f"**⚠️ لا يمكن الوصول إلى الاستوريات. الخطأ: {str(e)}**")
-            return
-        
-        if not stories.stories:
-            await event.edit("**❌ لا توجد استوريات متاحة لهذا المستخدم**")
-            return
-            
         # إنشاء مجلد لحفظ الاستوريات
         folder_name = f"stories_{user.id}_{datetime.now().strftime('%Y%m%d')}"
         os.makedirs(folder_name, exist_ok=True)
         
-        await event.edit(f"**⏳ جاري تحميل {len(stories.stories)} استوري...**")
-        
         downloaded_count = 0
-        for i, story in enumerate(stories.stories, 1):
+        failed_count = 0
+        total_stories = 0
+        
+        # استخدام iter_stories للحصول على الاستوريات بشكل غير متزامن
+        async for story in client.iter_stories(user):
+            total_stories += 1
             try:
                 if hasattr(story, 'media'):
                     file_ext = '.jpg' if isinstance(story.media, types.MessageMediaPhoto) else '.mp4'
-                    file_name = f"{folder_name}/story_{story.id}_{i}{file_ext}"
+                    file_name = f"{folder_name}/story_{story.id}_{total_stories}{file_ext}"
                     await client.download_media(story.media, file=file_name)
                     downloaded_count += 1
                     
-                if i % 5 == 0:
-                    await event.edit(f"**📥 جاري التحميل... {i}/{len(stories.stories)}**")
+                if total_stories % 5 == 0:
+                    await event.edit(f"**📥 جاري التحميل... {total_stories} استوري**")
                     
             except Exception as e:
                 print(f"خطأ في تحميل الاستوري {story.id}: {str(e)}")
+                failed_count += 1
                 continue
         
         # النتيجة النهائية
         result_msg = f"""
 ✅ **تم الانتهاء من التحميل!**
 📂 **المجلد:** `{folder_name}`
-📊 **العدد الكلي:** {len(stories.stories)}
+📊 **العدد الكلي:** {total_stories}
 📥 **المحملة:** {downloaded_count}
-❌ **الفاشلة:** {len(stories.stories) - downloaded_count}
+❌ **الفاشلة:** {failed_count}
         """
         await event.edit(result_msg)
         
     except Exception as e:
-        await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")
-                
-        
-    except Exception as e:
-        await event.edit(f"**⚠️ حدث خطأ أثناء حذف البوتات:** {str(e)}") 
+        await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")        
         
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
