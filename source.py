@@ -80,6 +80,8 @@ import urllib.parse
 from telethon import events, types
 from telethon.tl.functions.channels import LeaveChannelRequest
 from telethon.tl.functions.channels import GetParticipantRequest
+from telethon.tl.functions.stories import GetPinnedStoriesRequest, GetStoriesArchiveRequest
+from telethon.tl.types import InputPeerUser
 
 # ===== الثوابت والإعدادات ===== #
 
@@ -2467,6 +2469,89 @@ async def delete_all_bots(event):
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
 """
         await msg.edit(result_message)
+        
+
+@client.on(events.NewMessage(pattern=r'\.ستوريات(?:\s+(.+))?'))
+async def download_stories(event):
+    # الحصول على المعرف من الرسالة أو الرد
+    input_arg = event.pattern_match.group(1)
+    reply_msg = await event.get_reply_message()
+    
+    if not input_arg and not reply_msg:
+        await event.edit("**⚠️ يرجى تحديد المستخدم (معرف، آيدي، أو رابط) أو الرد على رسالة تحتوي عليها**")
+        return
+    
+    # استخراج المعرف من المدخلات
+    target = input_arg if input_arg else reply_msg.text
+    target = target.strip()
+    
+    await event.edit("**🔍 جاري البحث عن المستخدم...**")
+    
+    try:
+        # محاولة الحصول على كيان المستخدم
+        if target.isdigit():
+            user = await client.get_entity(InputPeerUser(int(target), 0))
+        else:
+            # إزالة @ من اليوزرنيم إن وجد
+            if target.startswith('@'):
+                target = target[1:]
+            # استخراج اليوزرنيم من الروابط
+            if 't.me/' in target:
+                target = target.split('t.me/')[-1].split('/')[0]
+            user = await client.get_entity(target)
+            
+        await event.edit(f"**📥 جاري جلب استوريات @{user.username}...**")
+        
+        # محاولة الحصول على الاستوريات
+        try:
+            stories = await client(GetStoriesArchiveRequest(
+                offset_id=0,
+                limit=100,
+                peer=user
+            ))
+        except Exception as e:
+            await event.edit(f"**⚠️ لا يمكن الوصول إلى الاستوريات. الخطأ: {str(e)}**")
+            return
+        
+        if not stories.stories:
+            await event.edit("**❌ لا توجد استوريات متاحة لهذا المستخدم**")
+            return
+            
+        # إنشاء مجلد لحفظ الاستوريات
+        folder_name = f"stories_{user.id}_{datetime.now().strftime('%Y%m%d')}"
+        os.makedirs(folder_name, exist_ok=True)
+        
+        await event.edit(f"**⏳ جاري تحميل {len(stories.stories)} استوري...**")
+        
+        downloaded_count = 0
+        for i, story in enumerate(stories.stories, 1):
+            try:
+                if hasattr(story, 'media'):
+                    file_ext = '.jpg' if isinstance(story.media, types.MessageMediaPhoto) else '.mp4'
+                    file_name = f"{folder_name}/story_{story.id}_{i}{file_ext}"
+                    await client.download_media(story.media, file=file_name)
+                    downloaded_count += 1
+                    
+                if i % 5 == 0:
+                    await event.edit(f"**📥 جاري التحميل... {i}/{len(stories.stories)}**")
+                    
+            except Exception as e:
+                print(f"خطأ في تحميل الاستوري {story.id}: {str(e)}")
+                continue
+        
+        # النتيجة النهائية
+        result_msg = f"""
+✅ **تم الانتهاء من التحميل!**
+📂 **المجلد:** `{folder_name}`
+📊 **العدد الكلي:** {len(stories.stories)}
+📥 **المحملة:** {downloaded_count}
+❌ **الفاشلة:** {len(stories.stories) - downloaded_count}
+        """
+        await event.edit(result_msg)
+        
+    except Exception as e:
+        await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")
+                
         
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ أثناء حذف البوتات:** {str(e)}") 
