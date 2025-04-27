@@ -81,10 +81,11 @@ from telethon import events, types
 from telethon.tl.functions.channels import LeaveChannelRequest
 from telethon.tl.functions.channels import GetParticipantRequest
 
-from telethon.tl.functions.stories import GetPinnedStoriesRequest, GetStoriesArchiveRequest
-from telethon.tl.types import InputPeerUser
 from datetime import datetime
 from telethon import types, events
+
+from telethon.tl.functions.stories import GetStoriesArchiveRequest
+from telethon.tl.types import InputPeerUser, InputPeerChannel
 
 # ===== الثوابت والإعدادات ===== #
 
@@ -2485,37 +2486,51 @@ async def download_stories(event):
         await event.edit("**⚠️ يرجى تحديد المستخدم (معرف، آيدي، أو رابط) أو الرد على رسالة تحتوي عليها**")
         return
     
-    # استخراج المعرف من المدخلات
     target = input_arg if input_arg else reply_msg.text
     target = target.strip()
     
     await event.edit("**🔍 جاري البحث عن المستخدم...**")
     
     try:
-        # محاولة الحصول على كيان المستخدم
-        if target.isdigit():
-            user = await client.get_entity(InputPeerUser(int(target), 0))
+        # الحصول على الكيان مع معالجة أنواع Peer المختلفة
+        try:
+            if target.isdigit():
+                user = await client.get_entity(int(target))
+            else:
+                if target.startswith('@'):
+                    target = target[1:]
+                if 't.me/' in target:
+                    target = target.split('t.me/')[-1].split('/')[0]
+                user = await client.get_entity(target)
+        except Exception as e:
+            await event.edit(f"**⚠️ لا يمكن العثور على المستخدم: {str(e)}**")
+            return
+        
+        # إنشاء Peer صالح للطلب
+        if hasattr(user, 'user_id'):
+            peer = InputPeerUser(user.user_id, user.access_hash)
+        elif hasattr(user, 'channel_id'):
+            peer = InputPeerChannel(user.channel_id, user.access_hash)
         else:
-            # إزالة @ من اليوزرنيم إن وجد
-            if target.startswith('@'):
-                target = target[1:]
-            # استخراج اليوزرنيم من الروابط
-            if 't.me/' in target:
-                target = target.split('t.me/')[-1].split('/')[0]
-            user = await client.get_entity(target)
-            
-        await event.edit(f"**📥 جاري جلب استوريات @{user.username}...**")
+            await event.edit("**⚠️ نوع الحساب غير مدعوم**")
+            return
+        
+        await event.edit(f"**📥 جاري جلب استوريات @{getattr(user, 'username', '')}...**")
         
         # إنشاء مجلد لحفظ الاستوريات
         folder_name = f"stories_{user.id}_{datetime.now().strftime('%Y%m%d')}"
         os.makedirs(folder_name, exist_ok=True)
         
-        # استرداد الاستوريات باستخدام GetStoriesArchiveRequest
-        stories = await client(GetStoriesArchiveRequest(
-            offset_id=0,
-            limit=100,
-            peer=user
-        ))
+        # استرداد الاستوريات
+        try:
+            stories = await client(GetStoriesArchiveRequest(
+                offset_id=0,
+                limit=100,
+                peer=peer
+            ))
+        except Exception as e:
+            await event.edit(f"**⚠️ لا يمكن جلب الستوريات: {str(e)}**")
+            return
         
         if not stories.stories:
             await event.edit("**❌ لا توجد استوريات متاحة لهذا المستخدم**")
@@ -2554,8 +2569,8 @@ async def download_stories(event):
         await event.edit(result_msg)
         
     except Exception as e:
-        await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")
-        
+        await event.edit(f"**⚠️ حدث خطأ غير متوقع: {str(e)}**")
+
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
     with socketserver.TCPServer(("", 8000), handler) as httpd:
