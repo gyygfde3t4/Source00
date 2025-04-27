@@ -2473,6 +2473,8 @@ async def delete_all_bots(event):
         await event.edit(f"**⚠️ حدث خطأ أثناء حذف البوتات:** {str(e)}") 
         
 
+
+
 @client.on(events.NewMessage(pattern=r'\.ستوريات(?:\s+(.+))?$'))
 async def download_stories(event):
     # الحصول على المعرف من الرسالة أو الرد
@@ -2508,22 +2510,33 @@ async def download_stories(event):
         folder_name = f"stories_{user.id}_{datetime.now().strftime('%Y%m%d')}"
         os.makedirs(folder_name, exist_ok=True)
         
+        # استرداد الاستوريات باستخدام GetStoriesArchiveRequest
+        stories = await client(GetStoriesArchiveRequest(
+            offset_id=0,
+            limit=100,
+            peer=user
+        ))
+        
+        if not stories.stories:
+            await event.edit("**❌ لا توجد استوريات متاحة لهذا المستخدم**")
+            return
+            
+        total_stories = len(stories.stories)
         downloaded_count = 0
         failed_count = 0
-        total_stories = 0
         
-        # استخدام iter_stories للحصول على الاستوريات بشكل غير متزامن
-        async for story in client.iter_stories(user):
-            total_stories += 1
+        await event.edit(f"**⏳ جاري تحميل {total_stories} استوري...**")
+        
+        for i, story in enumerate(stories.stories, 1):
             try:
                 if hasattr(story, 'media'):
                     file_ext = '.jpg' if isinstance(story.media, types.MessageMediaPhoto) else '.mp4'
-                    file_name = f"{folder_name}/story_{story.id}_{total_stories}{file_ext}"
+                    file_name = f"{folder_name}/story_{story.id}_{i}{file_ext}"
                     await client.download_media(story.media, file=file_name)
                     downloaded_count += 1
                     
-                if total_stories % 5 == 0:
-                    await event.edit(f"**📥 جاري التحميل... {total_stories} استوري**")
+                if i % 5 == 0:
+                    await event.edit(f"**📥 جاري التحميل... {i}/{total_stories}**")
                     
             except Exception as e:
                 print(f"خطأ في تحميل الاستوري {story.id}: {str(e)}")
@@ -2541,7 +2554,7 @@ async def download_stories(event):
         await event.edit(result_msg)
         
     except Exception as e:
-        await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")        
+        await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")
         
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
