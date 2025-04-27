@@ -879,11 +879,11 @@ async def list_muted_users(event):
 # اسم المستخدم للبوت الذكي
 gpt_bot_username = '@Amigoo_Chat_Bot'
 
-@client.on(events.NewMessage(pattern=r'\.س(?!بونج بوب)'))
+@client.on(events.NewMessage(pattern=r'\.س$'))
 async def handle_ai_command(event):
     parts = event.message.text.split(maxsplit=1)
     if len(parts) < 2:
-        await event.reply("⚠️ يرجى إدخال السؤال بعد الأمر .س.")
+        await event.reply("⚠️ يرجى إدخال السؤال بعد الأمر .س")
         return
 
     question = parts[1]
@@ -923,11 +923,6 @@ async def handle_ai_command(event):
     except Exception as e:
         await processing_message.delete()
         await event.reply(f"⚠️ حدث خطأ: {str(e)}")
-
-async def main():
-    await start_client()
-    print("العميل يعمل الآن...")
-
 
 
 def upload_to_telegraph(image_path):
@@ -2478,7 +2473,7 @@ async def delete_all_bots(event):
         await event.edit(f"**⚠️ حدث خطأ أثناء حذف البوتات:** {str(e)}") 
         
 
-@client.on(events.NewMessage(pattern=r'\.ستوريات(?:\s+(.+))?'))
+@client.on(events.NewMessage(pattern=r'\.ستوريات(?:\s+(.+))?$'))
 async def download_stories(event):
     # الحصول على المعرف من الرسالة أو الرد
     input_arg = event.pattern_match.group(1)
