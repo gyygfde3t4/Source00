@@ -96,7 +96,7 @@ from telethon.tl.types import (
 )
 
 # ========== ثوابت التليجرام ==========
-API_ID = os.getenv('API_ID')  # أدخل الـ API_ID الخاص بك
+API_ID = int(os.getenv('API_ID')) # أدخل الـ API_ID الخاص بك
 API_HASH = os.getenv('API_HASH') # أدخل الـ API_HASH الخاص بك
 
 # ========== المستخدمون المصرح لهم ==========
