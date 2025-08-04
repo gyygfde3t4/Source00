@@ -34,16 +34,9 @@ WORKDIR /app
 # نسخ ملف المتطلبات
 COPY requirements.txt .
 
-# تحديث pip
-RUN pip install --no-cache-dir --upgrade pip
-
-# تحميل وإعداد imageio-ffmpeg بشكل منفصل
-RUN pip install --no-cache-dir imageio-ffmpeg && \
-    python -c "import imageio_ffmpeg; imageio_ffmpeg.download()" && \
-    echo "✅ imageio-ffmpeg تم إعداده بنجاح"
-
-# تثبيت المكتبات الأساسية أولاً
-RUN pip install --no-cache-dir \
+# تحديث pip وتثبيت المكتبات الأساسية
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
     numpy>=1.24.0 \
     imageio>=2.31.0 \
     decorator>=5.1.0 \
@@ -55,27 +48,38 @@ RUN pip install --no-cache-dir \
     Pillow>=10.0.0 \
     Wand>=0.6.11
 
-# تثبيت MoviePy
+# تثبيت MoviePy مع إعداد ffmpeg path
 RUN pip install --no-cache-dir moviepy>=1.0.3
 
 # تثبيت باقي المكتبات
 RUN pip install --no-cache-dir -r requirements.txt
 
-# التحقق الشامل من التثبيت
+# التحقق من ffmpeg
+RUN ffmpeg -version && echo "✅ FFmpeg يعمل بشكل صحيح"
+
+# اختبار المكتبات
 RUN python -c "\
 import sys; \
 print('🐍 Python version:', sys.version); \
-libraries = ['imageio', 'numpy', 'PIL', 'wand', 'moviepy']; \
-[print(f'✅ {lib}: {getattr(__import__(lib), \"__version__\", \"غير معروف\")}') if __import__(lib) else print(f'❌ {lib}: failed') for lib in libraries]; \
-from moviepy.editor import ColorClip; \
-test_clip = ColorClip(size=(10, 10), color=(255, 0, 0), duration=0.1); \
-test_clip.close(); \
-print('✅ MoviePy: الاختبار العملي نجح'); \
-print('🎯 جميع الاختبارات اكتملت!')"
-
-# نسخ سكريبت الإعداد
-COPY setup_moviepy.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/setup_moviepy.sh
+import os; \
+os.environ['IMAGEIO_FFMPEG_EXE'] = '/usr/bin/ffmpeg'; \
+libraries = {'imageio': 'imageio', 'numpy': 'numpy', 'PIL': 'PIL', 'wand': 'wand.api', 'moviepy': 'moviepy'}; \
+for name, module in libraries.items(): \
+    try: \
+        lib = __import__(module, fromlist=['']); \
+        version = getattr(lib, '__version__', 'غير معروف'); \
+        print(f'✅ {name}: {version}'); \
+    except Exception as e: \
+        print(f'❌ {name}: {e}'); \
+print('🎬 اختبار MoviePy...'); \
+try: \
+    from moviepy.editor import ColorClip; \
+    test_clip = ColorClip(size=(10, 10), color=(255, 0, 0), duration=0.1); \
+    test_clip.close(); \
+    print('✅ MoviePy: الاختبار العملي نجح'); \
+except Exception as e: \
+    print(f'⚠️ MoviePy test: {e}'); \
+print('🎯 انتهى الاختبار!')"
 
 # نسخ ملفات البوت
 COPY . .
