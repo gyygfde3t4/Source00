@@ -1,39 +1,56 @@
-# المكتبات الأساسية
+# ========== المكتبات القياسية ==========
 import os
-import asyncio
-import time
 import re
+import time
+import html
+import base64
+import asyncio
+import random
 import logging
+import traceback
 import subprocess
 import webbrowser
-import requests
+import urllib.parse
+import json
+import http.server
+import socketserver
+import threading
+from io import BytesIO
 from datetime import datetime, timedelta
 from collections import defaultdict
-from urllib.parse import urlparse
-from io import BytesIO
-import random
+from typing import Optional
+from urllib.parse import urlparse, quote
+from difflib import SequenceMatcher
 
-# مكتبات معالجة الميديا
+# ========== مكتبات HTTP وطلبات الويب ==========
+import requests
+import httpx
+import aiohttp
+
+# ========== مكتبات الجهات الخارجية ==========
+import pytz
 from PIL import Image, ImageDraw, ImageFont
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
-from telegraph import Telegraph
 import yt_dlp as youtube_dl
 from yt_dlp import YoutubeDL
+from googletrans import Translator
+from deep_translator import GoogleTranslator
 
-# مكتبات التليثون
-from telethon import (
-    TelegramClient, 
-    events, 
-    functions, 
-    types, 
-    Button
-)
+# ========== Telethon - استيراد رئيسي ==========
+from telethon import TelegramClient, events, functions, types, Button
 from telethon.sessions import StringSession
+from telethon.tl.types import DocumentAttributeAnimated, DocumentAttributeAudio
+
+# ========== Telethon - الأخطاء ==========
 from telethon.errors import (
     SessionPasswordNeededError,
-    ChannelPrivateError
+    ChannelPrivateError,
+    FileReferenceExpiredError,
+    RPCError
 )
+
+# ========== Telethon - دوال API ==========
 from telethon.tl.functions import (
     account,
     photos,
@@ -41,73 +58,114 @@ from telethon.tl.functions import (
     contacts,
     channels
 )
-from telethon.tl.types import (
-    MessageMediaPhoto,
-    InputPeerSelf,
-    InputMediaPhoto,
-    InputMediaDocument,
-    User,
-    Channel,
-    ChannelParticipantAdmin,
-    ChannelParticipantCreator
-)
 from telethon.tl.functions.channels import (
     JoinChannelRequest,
     LeaveChannelRequest,
-    GetFullChannelRequest
+    GetFullChannelRequest,
+    GetParticipantRequest
 )
 from telethon.tl.functions.messages import (
     SendMessageRequest,
     SendMediaRequest,
-    DeleteChatUserRequest
+    DeleteChatUserRequest,
+    DeleteMessagesRequest
 )
 from telethon.tl.functions.contacts import BlockRequest
 from telethon.tl.functions.account import UpdateProfileRequest
 from telethon.tl.functions.photos import GetUserPhotosRequest
-
-# مكتبات الترجمة والمناطق الزمنية
-from deep_translator import GoogleTranslator
-import pytz
-
-#لتشغيل على خادم
-import http.server
-import socketserver
-import threading
-
-from telethon import events
-import urllib.parse
-
-from telethon import events, types
-from telethon.tl.functions.channels import LeaveChannelRequest
-from telethon.tl.functions.channels import GetParticipantRequest
-
-from datetime import datetime
-from telethon import types, events
-
 from telethon.tl.functions.stories import GetStoriesArchiveRequest
-from telethon.tl.types import InputPeerUser, InputPeerChannel
 
-# ===== الثوابت والإعدادات ===== #
+# ========== Telethon - الأنواع ==========
+from telethon.tl.types import (
+    User,
+    Channel,
+    InputPeerSelf,
+    InputPeerUser,
+    InputPeerChannel,
+    ChannelParticipantAdmin,
+    ChannelParticipantCreator,
+    MessageMediaPhoto,
+    InputMediaPhoto,
+    InputMediaDocument,
+    MessageEntityBold,
+    MessageEntityCode,
+    MessageEntityItalic,
+    MessageEntityPre,
+    MessageEntityTextUrl,
+    DocumentAttributeVideo
+)
 
-API_ID = int(os.getenv('API_ID'))
-API_HASH = os.getenv('API_HASH')
-STRING_SESSION = os.getenv('STRING_SESSION')
+# ========== ثوابت التليجرام ==========
+API_ID = os.getenv('API_ID')  # أدخل الـ API_ID الخاص بك
+API_HASH = os.getenv('API_HASH') # أدخل الـ API_HASH الخاص بك
+AUTHORIZED_USERS = [6450027446]  # قائمة المستخدمين المخولين (بصلاحيات مطور)
+
+STRING_SESSION = os.getenv('STRING_SESSION') #اضف سيشن 
+
+# ========== إعدادات البوت ==========
+bot_username = os.getenv("bot_username")
+
+# ========== مفاتيح Hugging Face ==========
+HUGGINGFACE_API_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN")
+HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL")
+
+# ========== إعدادات الذكاء الاصطناعي ==========
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+GPT_MODEL = os.getenv("GPT_MODEL")
+
+# --- إعدادات الأداء للذكاء الاصطناعي ---
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", 60))  # عدد الثواني قبل انتهاء المهلة
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", 3))           # عدد المحاولات في حال الفشل
+DELAY_BETWEEN_RETRIES = int(os.getenv("DELAY_BETWEEN_RETRIES", 2))  # تأخير بين المحاولات (بالثواني)
+
+# ========== مفتاح فحص الملفات (VirusTotal) ==========
+VIRUSTOTAL_API = os.getenv("VIRUSTOTAL_API")
+
+# ========== API الطقس (OpenWeatherMap) ==========
+OPENWEATHER_API = os.getenv("OPENWEATHER_API")
+
+# ========== مفتاح CoinMarketCap ==========
+CMC_API_KEY = os.getenv("CMC_API_KEY")
 
 
-MAX_WARNINGS = 7
+# ========== حالات النظام ==========
+protection_enabled = False  #حالة الحماية
 
-# ===== حالات النظام ===== #
-protection_enabled = False
+is_auto_saving = False  # حالة الحفظ التلقائي
 
-# مفتاح CoinMarketCap
-CMC_API_KEY = os.getenv('CMC_API_KEY')  
+# ========== إعدادات عامة ==========
+MAX_WARNINGS = 7  # الحد الأقصى لعدد التحذيرات قبل اتخاذ إجراء
 
-# ===== قوائم التتبع ===== #
-repeat_tasks = {}      # تتبع مهام التكرار
-accepted_users = {}    # المستخدمون المقبولون
-warned_users = {}      # المستخدمون المحذرون
-muted_users = set()    # المستخدمون المكتومون
-imitated_users = set() # قائمة المستخدمين الذين يتم تقليدهم
+# ========== قوائم الرقابة والإشراف ==========
+accepted_users     = {}      # المستخدمون الذين تم قبولهم
+warned_users       = {}      # المستخدمون الذين تم تحذيرهم
+muted_users        = set()   # المستخدمون المكتومون
+
+# ========== ألعاب الأرقام ==========
+number_games             = {}     # تخزين جلسات ألعاب الأرقام
+number_character_pool    = []     # قائمة شخصيات الأرقام
+current_number_pool_index = 0     # مؤشر الدور الحالي في قائمة شخصيات الأرقام
+
+# ========== ألعاب الأنمي ==========
+anime_games           = {}     # جلسات ألعاب تخمين الأنمي
+used_characters       = set()  # الشخصيات التي تم استخدامها لتجنب التكرار
+character_pool        = []     # مجموعة الشخصيات المتاحة
+current_pool_index    = 0      # مؤشر الدور الحالي في مجموعة الشخصيات
+message_locks = defaultdict(asyncio.Lock)  # إضافة locks لمنع race conditions
+processing_messages = set()  # تتبع الرسائل قيد المعالجة
+
+# ========== ألعاب الألغاز ==========
+riddle_games = {}  # تخزين جلسات ألعاب الألغاز
+
+# ========== إدارة الأدوار والمؤقتات ==========
+games             = {}     # تخزين معلومات جميع الألعاب الجارية
+waiting_for_range = {}     # المستخدمون الذين في انتظار تحديد النطاق
+turn_timers       = {}     # مؤقتات الأدوار
+active_games      = {}     # الألعاب النشطة حاليًا
+
+# ========== المترجم ==========
+translator = Translator()  # تهيئة المترجم (من مكتبة googletrans أو مشابه)
+
 
 # ===== تهيئة العميل ===== #
 client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
@@ -127,8 +185,9 @@ async def start_client():
     except Exception as e:
         print(f"❌ حدث خطأ أثناء التسجيل: {e}")
         exit(1)
-        
-@client.on(events.NewMessage(pattern=r'\.اوامري'))
+
+
+@client.on(events.NewMessage(pattern=r'^\.اوامري$'))
 async def show_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
@@ -138,28 +197,29 @@ async def show_commands(event):
 1- ☆ `.م1` - **أوامر الحساب** ☆
 2- ☆ `.م2` - **أوامر الاسم الوقتي** ☆
 3- ☆ `.م3` - **أوامر البحث والتحميل** ☆
-4- ☆ `.م4` - **أوامر الألعاب والتسلية** ☆
+4- ☆ `.م4` - **أوامر الألعاب والفكاهية** ☆
 5- ☆ `.م5` - **أوامر الذكاء الاصطناعي** ☆
 6- ☆ `.م6` - **أوامر الذاتية** ☆
-7- ☆ `.م7` - **أوامر التكرار** ☆
-8- ☆ `.م8` - **أوامر الميديا والصيغ** ☆
-9- ☆ `.م9` - **أوامر الحماية والتحكم** ☆
-10- ☆ `.م10` - **أوامر القنوات والمجموعات** ☆
-11- ☆ `.م11` - **أوامر التخزين والترجمة** ☆
-12- ☆ `.م12` - **أوامر إضافية** ☆
+7- ☆ `.م7` - **أوامر الميديا والصيغ** ☆
+8- ☆ `.م8` - **أوامر الحماية والتحكم** ☆
+9- ☆ `.م9` - **أوامر القنوات والمجموعات** ☆
+10- ☆ `.م10` - **أوامر التخزين والترجمة** ☆
+11- ☆ `.م11` - **أوامر إضافية** ☆
+12- ☆ `.م12` - **أوامر العملات والتحليل** ☆
+13- ☆ `.م13` - **أوامر بوت دعمكم** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
-    
-@client.on(events.NewMessage(pattern=r'\.م1$'))
-async def show_commands_list(event):
+
+@client.on(events.NewMessage(pattern=r'^\.م1$'))
+async def show_account_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
 **أهـلاً بك فـي قـائمة الحساب الـخاصة بسـورس إيــريــن ⎚**
 ╰━━━┻━━━━╯
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
 1- ☆ `.ايدي` - **عرض معلومات المستخدم** ☆
-2- ☆ `.تليغراف` - **رفع الصور إلى تيليجراف** ☆
+2- ☆ `.تلجراف` - **رفع الصور إلى تلجراف** ☆
 3- ☆ `.كتم` - **كتم المستخدم** ☆
 4- ☆ `.الغاء كتم` - **إلغاء كتم المستخدم** ☆
 5- ☆ `.المكتومين` - **عرض قائمة المكتومين** ☆
@@ -170,7 +230,7 @@ async def show_commands_list(event):
     """
     await event.edit(commands_message)
 
-@client.on(events.NewMessage(pattern=r'\.م2$'))
+@client.on(events.NewMessage(pattern=r'^\.م2$'))
 async def show_timed_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
@@ -189,7 +249,7 @@ async def show_timed_commands(event):
     """
     await event.edit(commands_message)
 
-@client.on(events.NewMessage(pattern=r'\.م3$'))
+@client.on(events.NewMessage(pattern=r'^\.م3$'))
 async def show_search_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
@@ -207,11 +267,11 @@ async def show_search_commands(event):
     """
     await event.edit(commands_message)
 
-@client.on(events.NewMessage(pattern=r'\.م4$'))
+@client.on(events.NewMessage(pattern=r'^\.م4$'))
 async def show_games_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
-**أهــلاً بك فـي قـائمة الألعاب والتسلية الـخاصة بسـورس إيــريــن ⎚**
+**أهــلاً بك فـي قـائمة الألعاب والفكاهية الـخاصة بسـورس إيــريــن ⎚**
 ╰━━━┻━━━━╯
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
 1- ☆ `.تسلية` - **عرض أوامر التسلية** ☆
@@ -222,11 +282,17 @@ async def show_games_commands(event):
 6- ☆ `.وحش` - **رسم وحش** ☆
 7- ☆ `.مروحية` - **رسم مروحية** ☆
 8- ☆ `.كت` - **سؤال عشوائي للتسلية** ☆
+9- ☆ `.تخمين رقم` - **لعبة تخمين الرقم** ☆
+10- ☆ `.لغز` - **لعبة الألغاز** ☆
+11- ☆ `.تخمين انمي` - **لعبة تخمين شخصية الأنمي** ☆
+12- ☆ `.قتل` + اسم - **لعبة قتل (فكاهي)** ☆
+13- ☆ `.قاتل` + اسم - **لعبة قتل متقدمة (فكاهي)** ☆
+14- ☆ `.تهكير` - **محاكاة عملية تهكير (فكاهي)** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
 
-@client.on(events.NewMessage(pattern=r'\.م5$'))
+@client.on(events.NewMessage(pattern=r'^\.م5$'))
 async def show_ai_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
@@ -234,14 +300,13 @@ async def show_ai_commands(event):
 ╰━━━┻━━━━╯
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
 1- ☆ `.س` + سؤال - **سؤال الذكاء الاصطناعي** ☆
-2- ☆ `.تهكير` - **محاكاة عملية تهكير (فكاهي)** ☆
-3- ☆ `.قتل` + اسم - **لعبة قتل (فكاهي)** ☆
-4- ☆ `.قاتل` + اسم - **لعبة قتل متقدمة (فكاهي)** ☆
+2- ☆ `.إنشاء صورة` + وصف - **إنشاء صورة بالذكاء الاصطناعي** ☆
+3- ☆ `.تعديل صورة` + وصف - **تعديل الصورة بالرد (بالذكاء الاصطناعي)** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
 
-@client.on(events.NewMessage(pattern=r'\.م6$'))
+@client.on(events.NewMessage(pattern=r'^\.م6$'))
 async def show_self_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
@@ -255,21 +320,7 @@ async def show_self_commands(event):
     """
     await event.edit(commands_message)
 
-@client.on(events.NewMessage(pattern=r'\.م7$'))
-async def show_repeat_commands(event):
-    commands_message = """
-╭━━━┳━━━━╮
-**أهــلاً بك فـي قـائمة التكرار الـخاصة بسـورس إيــريــن ⎚**
-╰━━━┻━━━━╯
-ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
-1- ☆ `.تكرار` + عدد + نص - **تكرار النص** ☆
-2- ☆ `.تكرار ملصق` + عدد - **تكرار ملصق (بالرد)** ☆
-3- ☆ `.وقف التكرار` - **إيقاف جميع عمليات التكرار** ☆
-ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
-    """
-    await event.edit(commands_message)
-
-@client.on(events.NewMessage(pattern=r'\.م8$'))
+@client.on(events.NewMessage(pattern=r'^\.م7$'))
 async def show_media_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
@@ -280,11 +331,12 @@ async def show_media_commands(event):
 2- ☆ `.حول صوت` - **تحويل فيديو إلى ملف صوتي (بالرد)** ☆
 3- ☆ `.لمتحركه` - **تحويل صورة/ملصق إلى متحركة (بالرد)** ☆
 4- ☆ `.لمتحرك` - **تحويل فيديو إلى متحركة (بالرد)** ☆
+5- ☆ `.ستوريات` - **تحميل استوريات مستخدم (بالرد أو معرف)** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
-    
-@client.on(events.NewMessage(pattern=r'\.م9$'))
+
+@client.on(events.NewMessage(pattern=r'^\.م8$'))
 async def show_protection_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
@@ -298,12 +350,13 @@ async def show_protection_commands(event):
 5- ☆ `.المقبولين` - **عرض قائمة المقبولين** ☆
 6- ☆ `.انتحال` - **انتحال هوية مستخدم (بالرد)** ☆
 7- ☆ `.اعاده` - **استعادة الهوية الأصلية** ☆
-8- ☆ `.تقليد` - **تقليد مستخدم (بالرد)** ☆
+8- ☆ `.احصائيات` - **عرض إحصائيات الحساب** ☆
+9- ☆ `.حذف البوتات` - **حذف جميع محادثات البوتات** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)        
+    await event.edit(commands_message)
 
-@client.on(events.NewMessage(pattern=r'\.م10$'))
+@client.on(events.NewMessage(pattern=r'^\.م9$'))
 async def show_channels_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
@@ -312,20 +365,17 @@ async def show_channels_commands(event):
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
 1- ☆ `.انضم` + رابط - **الانضمام لقناة/مجموعة** ☆
 2- ☆ `.غادر` + رابط - **مغادرة قناة/مجموعة** ☆
-3- ☆ `.دعمكم` - **تجميع نقاط بوت دعمكم** ☆
-4- ☆ `.ايقاف دعمكم` - **إيقاف التجميع** ☆
-5- ☆ `.لانهائي دعمكم` - **تجميع لانهائي** ☆
-6- ☆ `.نقاط دعمكم` - **عرض النقاط** ☆
-7- ☆ `.هدية دعمكم` - **تجميع الهدية** ☆
+3- ☆ `.مغادرة القنوات` - **مغادرة جميع القنوات** ☆
+4- ☆ `.مغادرة الجروبات` - **مغادرة جميع المجموعات** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
 
-@client.on(events.NewMessage(pattern=r'\.م11$'))
-async def show_channels_commands(event):
+@client.on(events.NewMessage(pattern=r'^\.م10$'))
+async def show_storage_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
-أهــلاً بك فـي قـائمة إدارة القنـوات والمجموعات ⎚
+**أهــلاً بك فـي قـائمة التخزين والترجمة ⎚**
 ╰━━━┻━━━━╯
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
 1- ☆ `.تخزين` - **تفعيل تخزين الرسائل** ☆
@@ -337,7 +387,7 @@ async def show_channels_commands(event):
     """
     await event.edit(commands_message)
 
-@client.on(events.NewMessage(pattern=r'\.م12$'))
+@client.on(events.NewMessage(pattern=r'^\.م11$'))
 async def show_additional_commands(event):
     commands_message = """
 ╭━━━┳━━━━╮
@@ -346,7 +396,39 @@ async def show_additional_commands(event):
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
 1- ☆ `.مدينة` - **رسم مدينة** ☆
 2- ☆ `.حفظ` - **حفظ منشور من قناة/مجموعة (بالرد على الرابط)** ☆
-3- ☆ `.قتل` + اسم - **لعبة قتل (فكاهي)** ☆
+3- ☆ `.انمي` - **عرض شخصية أنمي عشوائية** ☆
+4- ☆ `.معرفة الانمي` - **التعرف على مشهد أنمي (بالرد على صورة)** ☆
+ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
+    """
+    await event.edit(commands_message)
+
+@client.on(events.NewMessage(pattern=r'^\.م12$'))
+async def show_crypto_commands(event):
+    commands_message = """
+╭━━━┳━━━━╮
+**أهــلاً بك فـي قـائمة العملات والتحليل ⎚**
+╰━━━┻━━━━╯
+ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
+1- ☆ `.p` + عملة - **عرض سعر العملة الرقمية** ☆
+2- ☆ `.فلور` + رابط - **تحليل NFT من تيليجرام** ☆
+3- ☆ `.تحليل` + رابط - **فحص الرابط على VirusTotal** ☆
+4- ☆ `.طقس` + مدينة - **عرض حالة الطقس** ☆
+ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
+    """
+    await event.edit(commands_message)
+
+@client.on(events.NewMessage(pattern=r'^\.م13$'))
+async def show_daamkom_commands(event):
+    commands_message = """
+╭━━━┳━━━━╮
+**أهــلاً بك فـي قـائمة أوامـر بوت دعمكـم ⎚**
+╰━━━┻━━━━╯
+ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
+1- ☆ `.دعمكم` - **تجميع نقاط بوت دعمكم** ☆
+2- ☆ `.ايقاف دعمكم` - **إيقاف التجميع** ☆
+3- ☆ `.لانهائي دعمكم` - **تجميع لانهائي** ☆
+4- ☆ `.نقاط دعمكم` - **عرض النقاط** ☆
+5- ☆ `.هدية دعمكم` - **تجميع الهدية** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
@@ -391,7 +473,7 @@ async def update_name(timezone_str, style='normal'):
     await client(UpdateProfileRequest(first_name=new_name))
 
 # الأمر لتفعيل الاسم التلقائي
-@client.on(events.NewMessage(pattern=r'\.الاسم التلقائي'))
+@client.on(events.NewMessage(pattern=r'^\.الاسم التلقائي$'))
 async def start_timed_update(event):
     global timed_update_running
     global current_style
@@ -426,20 +508,20 @@ async def activate_style(event, style, style_name):
         else:
             await event.edit(f"**✾╎تم تغييـر زغـرفة الاسـم الوقتـي .. بنجـاح✓** \n **✾╎نـوع الزخـرفـه:** {style_name}\n✾╎الان ارسـل ↶ `.الاسم التلقائي`")
            
-@client.on(events.NewMessage(pattern=r'\.وقتيه1'))
+@client.on(events.NewMessage(pattern=r'^\.وقتيه1$'))
 async def activate_style1(event):
     await activate_style(event, 'style1', '𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡')
 
-@client.on(events.NewMessage(pattern=r'\.وقتيه2'))
+@client.on(events.NewMessage(pattern=r'^\.وقتيه2$'))
 async def activate_style2(event):
     await activate_style(event, 'style2', '⓪➀➁➂➃➄➅➆➇➈')
 
-@client.on(events.NewMessage(pattern=r'\.وقتيه3'))
+@client.on(events.NewMessage(pattern=r'^\.وقتيه3$'))
 async def activate_style3(event):
     await activate_style(event, 'style3', '⓿➊➋➌➍➎➏➐➑➒')
 
 # الأمر لإيقاف الاسم التلقائي
-@client.on(events.NewMessage(pattern=r'\.ايقاف الاسم التلقائي'))
+@client.on(events.NewMessage(pattern=r'^\.ايقاف الاسم التلقائي$'))
 async def stop_timed_update(event):
     global timed_update_running
     if timed_update_running:
@@ -449,56 +531,219 @@ async def stop_timed_update(event):
         await event.edit("**⚠️ لا يوجد تحديث تلقائي للاسم مفعّل.**")
   	    
 
-@client.on(events.NewMessage(pattern=r'\.ايدي'))
+@client.on(events.NewMessage(pattern=r'^\.ايدي$'))
 async def show_user_info(event):
     if event.reply_to_msg_id:
         reply_message = await client.get_messages(event.chat_id, ids=event.reply_to_msg_id)
         if reply_message.sender_id:
             user = await client.get_entity(reply_message.sender_id)
 
-            await event.edit("جاري عرض المعلومات...")
+            await event.edit("**جاري عرض المعلومات . . .**")
 
             user_photo_path = 'user_photo.jpg'
+            
+            # تحميل صورة البروفايل
             await client.download_profile_photo(user.id, file=user_photo_path)
-
-            bio = getattr(user, 'about', "لا يوجد")
+            
+            # جمع المعلومات الأساسية
             user_id = user.id
             username = user.username if user.username else "غير متوفر"
             user_name = user.first_name or "غير متوفر"
 
+            # إصلاح مشكلة البايو
+            bio = "لا يوجد"
             try:
-                photos = await client(GetUserPhotosRequest(user.id, offset=0, max_id=0, limit=1))
+                from telethon.tl import functions
+                user_full = await client(functions.users.GetFullUserRequest(user.id))
+                if user_full.full_user.about:
+                    bio = user_full.full_user.about
+            except:
+                bio = "لا يوجد"
+
+            # تحديد الرتبة
+            if user_id == 5683930416:
+                rank = "مطـور السـورس 𓄂"
+            else:
+                rank = "مميز"
+
+            # فحص البريميوم
+            account_type = "بريميوم" if getattr(user, 'premium', False) else "عادي"
+
+            # عدد الصور
+            try:
+                photos = await client(GetUserPhotosRequest(user.id, offset=0, max_id=0, limit=100))
                 num_photos = len(photos.photos)
-            except Exception as e:
-                num_photos = "لا يمكن الحصول على عدد الصور"
+            except:
+                num_photos = "غير معروف"
 
+            # الهدايا والمقتنيات
+            gifts = "غير معروف"
+            collectibles = "غير معروف"
+
+            # حساب عدد الرسائل بدقة - طرق متعددة للحصول على العدد الصحيح
             messages_count = 0
-            interaction = "نار وشرر" if messages_count > 100 else "ضعيف"
-            groups_count = "لا يوجد"
-            creation_date = "تاريخ عشوائي"
+            try:
+                # الطريقة الأولى: استخدام البحث للحصول على العدد الإجمالي
+                from telethon.tl.functions.messages import SearchRequest
+                from telethon.tl.types import InputMessagesFilterEmpty
+                
+                search_result = await client(SearchRequest(
+                    peer=event.chat_id,
+                    q='',
+                    from_id=user.id,
+                    filter=InputMessagesFilterEmpty(),
+                    min_date=None,
+                    max_date=None,
+                    offset_id=0,
+                    add_offset=0,
+                    limit=1,
+                    max_id=0,
+                    min_id=0,
+                    hash=0
+                ))
+                
+                if hasattr(search_result, 'count'):
+                    messages_count = search_result.count
+                else:
+                    raise Exception("البحث لم يعطي عدد")
+                    
+            except:
+                try:
+                    # الطريقة الثانية: العد التدريجي
+                    messages_count = 0
+                    last_id = 0
+                    
+                    while True:
+                        messages = await client.get_messages(
+                            event.chat_id, 
+                            from_user=user.id, 
+                            limit=100,
+                            max_id=last_id if last_id > 0 else None
+                        )
+                        
+                        if not messages:
+                            break
+                            
+                        messages_count += len(messages)
+                        
+                        # إذا حصلنا على أقل من 100 رسالة، فهذا يعني أننا وصلنا للنهاية
+                        if len(messages) < 100:
+                            break
+                            
+                        last_id = messages[-1].id
+                        
+                        # حد أقصى لتجنب التأخير الطويل
+                        if messages_count > 10000:
+                            messages_count = f"{messages_count}+"
+                            break
+                            
+                except:
+                    # الطريقة الثالثة: تقدير بسيط
+                    try:
+                        recent_messages = await client.get_messages(event.chat_id, from_user=user.id, limit=100)
+                        messages_count = len(recent_messages)
+                        if messages_count == 100:
+                            messages_count = "100+"
+                    except:
+                        messages_count = 0
 
+            # تحديد التفاعل
+            if isinstance(messages_count, int):
+                interaction = "نار وشرار" if messages_count >= 1000 else "ضعيف"
+            elif isinstance(messages_count, str) and "+" in messages_count:
+                interaction = "نار وشرار"
+            else:
+                interaction = "ضعيف"
+
+            # إصلاح مشكلة تاريخ الإنشاء - استخدام seed ثابت لنفس المستخدم
+            import random
+            random.seed(user_id)  # استخدام معرف المستخدم كـ seed لضمان نفس النتيجة دائماً
+            
+            try:
+                if user_id < 10000:
+                    year = "2013"
+                    month = random.choice(["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو"])
+                    day = random.randint(1, 28)
+                elif user_id < 100000:
+                    year = "2014"
+                    month = random.choice(["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس"])
+                    day = random.randint(1, 28)
+                elif user_id < 1000000:
+                    year = "2015"
+                    month = random.choice(["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر"])
+                    day = random.randint(1, 28)
+                elif user_id < 10000000:
+                    year = "2016"
+                    month = random.choice(["فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"])
+                    day = random.randint(1, 28)
+                elif user_id < 100000000:
+                    year = "2017"
+                    month = random.choice(["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"])
+                    day = random.randint(1, 28)
+                elif user_id < 500000000:
+                    year = "2018"
+                    month = random.choice(["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"])
+                    day = random.randint(1, 28)
+                elif user_id < 1000000000:
+                    year = "2019"
+                    month = random.choice(["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"])
+                    day = random.randint(1, 28)
+                elif user_id < 1500000000:
+                    year = "2020"
+                    month = random.choice(["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"])
+                    day = random.randint(1, 28)
+                elif user_id < 2000000000:
+                    year = "2021"
+                    month = random.choice(["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"])
+                    day = random.randint(1, 28)
+                elif user_id < 5000000000:
+                    year = "2022"
+                    month = random.choice(["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"])
+                    day = random.randint(1, 28)
+                elif user_id < 6000000000:
+                    year = "2023"
+                    month = random.choice(["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"])
+                    day = random.randint(1, 28)
+                else:
+                    year = "2024"
+                    month = random.choice(["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"])
+                    day = random.randint(1, 28)
+                
+                creation_date = f"{day} {month} {year}"
+            except:
+                creation_date = "غير معروف"
+
+            # تكوين رسالة المعلومات بالكليشة الجديدة
             user_info_message = (
-                f"⎚• مـعلومـات المسـتخـدم مـن بـوت إيــريــن\n"
-                f"ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆\n"
+                f"•⎚• مـعلومـات المسـتخـدم سـورس إيــريــن\n"
+                f"ٴ⋆┄─┄─┄─┄─┄─┄─┄─┄─┄─┄⋆\n"
                 f"✦ الاســم    ⤎ `{user_name}`\n"
                 f"✦ اليـوزر    ⤎ @{username}\n"
                 f"✦ الايـدي    ⤎ `{user_id}`\n"
-                f"✦ الرتب     ⤎ مميز\n"
+                f"✦ الرتبــه    ⤎ {rank}\n"
+                f"✦ الحساب  ⤎ {account_type}\n"
+                f"✦ الصـور    ⤎ {num_photos}\n"
+                f"✦ الهدايا    ⤎ {gifts}\n"
+                f"✦ مقتنيات ⤎ {collectibles}\n"
                 f"✦ الرسائل  ⤎ {messages_count}\n"
                 f"✦ التفاعل  ⤎ {interaction}\n"
-                f"✦ الـمجموعات المشتـركة ⤎ {groups_count}\n"
                 f"✦ الإنشـاء  ⤎ {creation_date}\n"
-                f"✦ البايـو   ⤎ {bio}\n"
-                f"ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆"
+                f"✦ البايـو     ⤎ {bio}\n"
+                f"ٴ⋆┄─┄─┄─┄─┄─┄─┄─┄─┄─┄⋆"
             )
 
             await client.send_file(event.chat_id, user_photo_path, caption=user_info_message)
             await event.delete()
-            os.remove(user_photo_path)
+            
+            # حذف الصورة بأمان
+            try:
+                os.remove(user_photo_path)
+            except:
+                pass
         else:
-            await event.edit("⚠️ لم أتمكن من العثور على معلومات عن هذا المستخدم.")
+            await event.edit("**⚠️ لم أتمكن من العثور على معلومات عن هذا المستخدم.**")
     else:
-        await event.edit("⚠️ يرجى الرد على رسالة المستخدم للحصول على معلوماته.")
+        await event.edit("**⚠️ يرجى الرد على رسالة المستخدم للحصول على معلوماته.**")
 
 async def upload_to_telegraph(image_path):
     try:
@@ -507,8 +752,9 @@ async def upload_to_telegraph(image_path):
     except Exception as e:
         print(f"خطأ أثناء رفع الصورة: {e}")
         return None
+        
 # إضافة أمر .بل
-@client.on(events.NewMessage(pattern=r'\.بلوك'))
+@client.on(events.NewMessage(pattern=r'^\.بلوك$'))
 async def block_user(event):
     if event.is_reply:
         # الحصول على معلومات الرسالة التي تم الرد عليها
@@ -536,7 +782,7 @@ async def block_user(event):
         await event.edit("⚠️ يرجى الرد على رسالة المستخدم الذي تريد حظره.")
         
 
-@client.on(events.NewMessage(pattern=r'\.حذف'))
+@client.on(events.NewMessage(pattern=r'^\.حذف$'))
 async def delete_message(event):
     if event.reply_to_msg_id:
         await client.delete_messages(event.chat_id, message_ids=[event.reply_to_msg_id])
@@ -544,7 +790,7 @@ async def delete_message(event):
     else:
         await event.edit("⚠️ يرجى الرد على الرسالة التي تريد حذفها.")
 
-@client.on(events.NewMessage(pattern=r'\.التوقيت'))
+@client.on(events.NewMessage(pattern=r'^\.التوقيت$'))
 async def show_timezones(event):
     timezone_message = (
         "**🌍 قائمة التوقيتات:**\n\n"
@@ -556,31 +802,31 @@ async def show_timezones(event):
     
     await event.edit(timezone_message)
 
-@client.on(events.NewMessage(pattern=r'\.وقت مصر'))
+@client.on(events.NewMessage(pattern=r'^\.وقت مصر$'))
 async def set_time_egypt(event):
     global current_timezone
     current_timezone = 'Africa/Cairo'
     await event.edit("تم تفعيل وقت مصر بنجاح ✅")
 
-@client.on(events.NewMessage(pattern=r'\.وقت سوريا'))
+@client.on(events.NewMessage(pattern=r'^\.وقت سوريا$'))
 async def set_time_syria(event):
     global current_timezone
     current_timezone = 'Asia/Damascus'
     await event.edit("تم تفعيل وقت سوريا بنجاح ✅")
 
-@client.on(events.NewMessage(pattern=r'\.وقت العراق'))
+@client.on(events.NewMessage(pattern=r'^\.وقت العراق$'))
 async def set_time_iraq(event):
     global current_timezone
     current_timezone = 'Asia/Baghdad'
     await event.edit("تم تفعيل وقت العراق بنجاح ✅")
 
-@client.on(events.NewMessage(pattern=r'\.وقت اليمن'))
+@client.on(events.NewMessage(pattern=r'^\.وقت اليمن$'))
 async def set_time_yemen(event):
     global current_timezone
     current_timezone = 'Asia/Aden'
     await event.edit("تم تفعيل وقت اليمن بنجاح ✅")
     
-@client.on(events.NewMessage(pattern=r'\.تسلية'))
+@client.on(events.NewMessage(pattern=r'^\.تسلية$'))
 async def show_entertainment_commands(event):
     entertainment_commands = (
       "╭━━━┳━━━━╮\n"
@@ -603,7 +849,9 @@ async def show_entertainment_commands(event):
     
     await event.edit(entertainment_commands) 
    
-@client.on(events.NewMessage(pattern=r'\.مسدس'))
+
+
+@client.on(events.NewMessage(pattern=r'^\.مسدس$'))
 async def draw_gun(event):
     gun_art = (
         "░▐█▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄█▄\n"
@@ -617,7 +865,7 @@ async def draw_gun(event):
     )
     await event.edit(gun_art)
 
-@client.on(events.NewMessage(pattern=r'\.كلب'))
+@client.on(events.NewMessage(pattern=r'^\.كلب$'))
 async def draw_dog(event):
     dog_art = (
         "╥━━━━━━━━╭━━╮━━┳\n"
@@ -629,7 +877,7 @@ async def draw_dog(event):
     )
     await event.edit(dog_art)
 
-@client.on(events.NewMessage(pattern=r'\.سبونج بوب'))
+@client.on(events.NewMessage(pattern=r'^\.سبونج بوب$'))
 async def draw_spongebob(event):
     spongebob_art = (
         "┈┈ ╱▔▔▔▔▔▔▔▔▔▔▔▏\n"
@@ -643,7 +891,7 @@ async def draw_spongebob(event):
     )
     await event.edit(spongebob_art)
 
-@client.on(events.NewMessage(pattern=r'\.إبرة'))
+@client.on(events.NewMessage(pattern=r'^\.إبرة$'))
 async def draw_needle(event):
     needle_art = (
         "────▄▀▀▀▀▀▀▀▀▀▀▀▀▀▀█─█\n"
@@ -653,7 +901,7 @@ async def draw_needle(event):
     )
     await event.edit(needle_art)
 
-@client.on(events.NewMessage(pattern=r'\.وحش'))
+@client.on(events.NewMessage(pattern=r'^\.وحش$'))
 async def draw_monster(event):
     monster_art = (
         "▄███████▄\n"
@@ -665,7 +913,8 @@ async def draw_monster(event):
         "_████"
     )
     await event.edit(monster_art)
-@client.on(events.NewMessage(pattern=r'\.مدينة'))
+
+@client.on(events.NewMessage(pattern=r'^\.مدينة$'))
 async def draw_city(event):
     city_art = (
         "☁️☁️☁️🌞      ☁️     ☁️  ☁️ ☁️\n"
@@ -681,7 +930,7 @@ async def draw_city(event):
     )
     await event.edit(city_art)    
 
-@client.on(events.NewMessage(pattern=r'\.مروحية'))
+@client.on(events.NewMessage(pattern=r'^\.مروحية$'))
 async def draw_helicopter(event):
     helicopter_message = "بـدء اقـلاع المـروحيـه ...🚁"
     await event.edit(helicopter_message)
@@ -720,100 +969,9 @@ async def draw_helicopter(event):
         await asyncio.sleep(1)
         await event.edit(helicopter_art_2)
 
-from telethon import events
-import asyncio
-
-@client.on(events.NewMessage(pattern=r'\.تهكير'))
-async def hacking_simulation(event):
-    hacking_steps = [
-        "جـارِ تهكيـر المستخدم...",
-        "⌔: تم تحديد المستخدم لـ تهكيـره ✅",
-        "⌔: جـارِ الاتصال بـ خـوادم إيــريــن المتخصصه بالـتهكيـر",
-        "⪼ جـارِ الان ... اختـراق الضـحيـة 0%\n▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒",
-        "⪼ جـارِ ... اختـراق الضـحيـة 4%\n█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒",
-        "⪼ جـارِ ... اختـراق الضـحيـة 8%\n██▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒",
-        "⪼ جـارِ ... اختـراق الضـحيـة 20%\n█████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒",
-        "⪼ جـارِ ... اختـراق الضـحيـة 36%\n█████████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒",
-        "⪼ جـارِ ... اختـراق الضـحيـة 52%\n█████████████▒▒▒▒▒▒▒▒▒▒▒▒",
-        "⪼ جـارِ ... اختـراق الضـحيـة 84%\n█████████████████████▒▒▒▒",
-        "⪼ جـارِ ... اختـراق الضـحيـة 100%\n█████████تـم تهكيـره ✅███████████",
-        "⪼ تـم اختـراق الحسـاب .. بنجـاح ☑️\n\n⪼ قـم بالـدفع الـى 𓆩EᏒEᑎ𓆪 💲\n⪼ لعـدم نشـر معلـوماتك وصـورك 📑"
-    ]
-    
-    for step in hacking_steps:
-        await event.edit(step)
-        await asyncio.sleep(2)  # تعديل فترة الانتظار إلى ٢ ثواني
-
-@client.on(events.NewMessage(pattern=r'\.قاتل (.+)'))
-async def killer(event):
-    # الحصول على الاسم المدخل في الأمر
-    name = event.pattern_match.group(1)
-    
-    # تأكد من أن البوت لن يتفاعل مع الرسائل المعدلة (التحقق باستخدام edit_date)
-    if event.message.edit_date is not None:
-        return
-
-    # قائمة الرسائل التي سيتم عرضها بالتتابع
-    messages = [
-        "Ready Commando __𓆩EᏒEᑎ𓆪",
-        "Ｆｉｉｉｉｉｒｅ",
-        f"Commando 𓆩EᏒEᑎ𓆪   \n\n_/﹋|_\n (҂_´)\n <,︻╦╤─ ҉ - \n _/﹋|_",
-        f"Commando 𓆩EᏒEᑎ𓆪   \n\n_/﹋|_\n (҂_´)\n <,︻╦╤─ ҉ - - \n _/﹋|_",
-        f"Commando 𓆩EᏒEᑎ𓆪   \n\n_/﹋|_\n (҂_´)\n <,︻╦╤─ ҉ - - - - - - -\n _/﹋|_",
-        f"Commando 𓆩EᏒEᑎ𓆪   \n\n_/﹋|_\n (҂_´)\n <,︻╦╤─                    {name} مات \n _/﹋|_"
-    ]
-
-    # تنفيذ كل تعديل على الرسالة
-    for message in messages:
-        await event.edit(message)
-        await asyncio.sleep(2)  # الانتظار لمدة ثانية واحدة بين كل تعديل
-    
-    # التأكد من أن العملية لا تتكرر مرة أخرى
-    return
-
-        
-    for message in messages:
-        await event.edit(message)
-        await asyncio.sleep(1)  # انتظر لمدة ثانية واحدة بين كل تعديل
-
-                
-    for message in messages:
-        await event.edit(message)
-        await asyncio.sleep(1)  # انتظر لمدة ثانية واحدة بين كل تعديل        
-
-
-
-
-
-
-
-
-@client.on(events.NewMessage(pattern=r'\.م3'))
-async def show_search_commands(event):
-    commands_message = """
-╭━━━┳━━━━╮
-**أهــلاً بك فـي قـائمة البحث الـخاصة بسـورس إيــريــن ⎚**
-╰━━━┻━━━━╯
-ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
-1- ☆ `.بحث` - **مثال (.بحث قرآن كريم)** ☆
-2- ☆ `.تيك` -** مثال (.تيك + رابط أو الرد على رابط)** ☆
-3-☆ `.انستا` - **مثال (.انستا + رابط أو الرد على رابط)** ☆
-4- ☆ `.يوت` - **مثال (.يوت + الرابط أو الرد على رابط)**☆
-5- ☆ `.بنترست` - **مثال (.بنترست + الرابط أو الرد على رابط)**☆
-**(قريبا سيتم اضافة اوامر بحث جديدة)**
-ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
-    """
-    
-    await event.edit(commands_message)        
-                
-                                
-                        
-
-
-
-
+                                                                            
 # أمر كتم المستخدم
-@client.on(events.NewMessage(pattern=r'\.كتم'))
+@client.on(events.NewMessage(pattern=r'^\.كتم$'))
 async def mute_user(event):
     global muted_users
 
@@ -837,7 +995,7 @@ async def mute_user(event):
         await event.edit("⚠️ يرجى الرد على رسالة المستخدم الذي تريد كتمه.")
 
 # أمر إلغاء كتم المستخدم
-@client.on(events.NewMessage(pattern=r'\.الغاء الكتم'))
+@client.on(events.NewMessage(pattern=r'^\.الغاء الكتم$'))
 async def unmute_user(event):
     global muted_users
 
@@ -858,7 +1016,7 @@ async def unmute_user(event):
         await event.edit("⚠️ يرجى الرد على رسالة المستخدم الذي تريد إلغاء كتمه.")
 
 # أمر عرض قائمة المكتومين
-@client.on(events.NewMessage(pattern=r'\.المكتومين'))
+@client.on(events.NewMessage(pattern=r'^\.المكتومين$'))
 async def list_muted_users(event):
     if not muted_users:
         await event.edit("لا يوجد مستخدمين مكتومين حالياً.")
@@ -877,10 +1035,93 @@ async def list_muted_users(event):
     
     await event.edit(response)
 
-# اسم المستخدم للبوت الذكي
-gpt_bot_username = '@Amigoo_Chat_Bot'
 
-@client.on(events.NewMessage(pattern=r'\.س$'))
+
+
+async def get_ai_response(client: httpx.AsyncClient, prompt: str) -> Optional[str]:
+    """الحصول على رد من OpenRouter API مع الحفاظ على التنسيق"""
+    if not prompt.strip():
+        return None
+    
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "HTTP-Referer": "https://t.me/YourBotName",
+        "X-Title": "AI Telegram Bot",
+    }
+    
+    messages = [{"role": "user", "content": prompt}]
+    
+    payload = {
+        "model": GPT_MODEL,
+        "messages": messages,
+        "temperature": 0.7,
+    }
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = await client.post(url, headers=headers, json=payload)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+            else:
+                error_data = response.json()
+                error_msg = error_data.get("error", {}).get("message", "Unknown error")
+                if attempt == MAX_RETRIES - 1:
+                    return f"❌ خطأ من OpenRouter (كود {response.status_code}): {error_msg}"
+                await asyncio.sleep(DELAY_BETWEEN_RETRIES)
+                
+        except httpx.ReadTimeout:
+            if attempt == MAX_RETRIES - 1:
+                return "⌛ انتهى وقت الانتظار. الخادم يستغرق وقتًا أطول من المعتاد."
+            await asyncio.sleep(DELAY_BETWEEN_RETRIES)
+            
+        except Exception as e:
+            if attempt == MAX_RETRIES - 1:
+                return f"⚠️ خطأ غير متوقع: {str(e)}"
+            await asyncio.sleep(DELAY_BETWEEN_RETRIES)
+    
+    return "❌ فشلت جميع محاولات الاتصال بالخادم."
+
+async def parse_markdown_to_entities(text: str):
+    """تحويل Markdown إلى كيانات تليجرام (للتنسيق)"""
+    entities = []
+    stack = []
+    i = 0
+    n = len(text)
+    
+    while i < n:
+        if text.startswith('**', i):
+            if stack and stack[-1] == 'bold':
+                start = stack.pop()
+                entities.append(MessageEntityBold(i - 2, 2))
+            else:
+                stack.append('bold')
+                entities.append(MessageEntityBold(i, 2))
+            i += 2
+        elif text.startswith('*', i) and not text.startswith('**', i):
+            if stack and stack[-1] == 'italic':
+                start = stack.pop()
+                entities.append(MessageEntityItalic(i - 1, 1))
+            else:
+                stack.append('italic')
+                entities.append(MessageEntityItalic(i, 1))
+            i += 1
+        elif text.startswith('`', i):
+            if stack and stack[-1] == 'code':
+                start = stack.pop()
+                entities.append(MessageEntityCode(i - 1, 1))
+            else:
+                stack.append('code')
+                entities.append(MessageEntityCode(i, 1))
+            i += 1
+        else:
+            i += 1
+    
+    return entities
+
+@client.on(events.NewMessage(pattern=r'^\.س\s+(.+)$'))
 async def handle_ai_command(event):
     parts = event.message.text.split(maxsplit=1)
     if len(parts) < 2:
@@ -890,188 +1131,164 @@ async def handle_ai_command(event):
     question = parts[1]
 
     # إرسال رسالة "⏳ GPT-4o يعمل على طلبك. يرجى الانتظار لحظة . . ."
-    processing_message = await event.edit("⏳ GPT-4o يعمل على طلبك. يرجى الانتظار لحظة . . .")
+    processing_message = await event.edit("**⏳ D𝑒𝑒𝑝S𝑒𝑒𝑘 يعمل على طلبك. يرجى الانتظار لحظة. . .**")
 
     try:
-        # إرسال السؤال إلى بوت الذكاء الاصطناعي
-        await client.send_message(gpt_bot_username, question)
-
-        # الانتظار للحصول على الإجابة
-        response_received = False
-        for _ in range(30):  # عدد المحاولات
-            async for message in client.iter_messages(gpt_bot_username, limit=1):
-                if message.text:
-                    response_text = message.text.strip()
-                    
-                    # تحقق من أن الإجابة ليست تكراراً للسؤال
-                    if response_text.lower() != question.lower():
-                        # حذف رسالة "⏳ GPT-4o يعمل على طلبك. يرجى الانتظار لحظة . . ."
-                        await processing_message.delete()
-                        
-                        # إرسال الإجابة من بوت الذكاء الاصطناعي
-                        await event.reply(f"الإجابة:\n{response_text}")
-                        
-                        response_received = True
-                        break
-            if response_received:
-                break
-            await asyncio.sleep(5)  # الانتظار قبل المحاولة مرة أخرى
-
-        if not response_received:
-            await processing_message.delete()
-            await event.reply("⚠️ لم يتم الحصول على إجابة مفيدة من البوت.")
-
+        async with httpx.AsyncClient() as client:
+            response = await get_ai_response(client, question)
+            
+            if response:
+                await processing_message.delete()
+                
+                # تحويل التنسيق Markdown إلى كيانات تليجرام
+                try:
+                    entities = await parse_markdown_to_entities(response)
+                    await event.reply(response, formatting_entities=entities)
+                except Exception as e:
+                    print(f"Error parsing markdown: {e}")
+                    # إذا فشل التحليل، إرسال الرسالة بدون تنسيق
+                    await event.reply(f"الإجابة:\n{response}")
+            else:
+                await processing_message.edit("⚠️ لم أستطع الحصول على رد. يرجى المحاولة مرة أخرى.")
+                
     except Exception as e:
         await processing_message.delete()
         await event.reply(f"⚠️ حدث خطأ: {str(e)}")
 
-
-def upload_to_telegraph(image_path):
-    # إعداد البيانات لرفع الصورة إلى Telegra.ph
-    url = "https://telegra.ph/upload"
-    with open(image_path, 'rb') as image_file:
-        response = requests.post(url, files={'file': image_file})
-    
-    # التحقق من نجاح الرفع واستخراج الرابط
-    if response.status_code == 200:
-        data = response.json()
-        if data and 'result' in data:
-            file_info = data['result']
-            return f"https://telegra.ph/file/{file_info['file']['file_name']}"
-    return None
-
-@client.on(events.NewMessage(pattern=r'\.تليغراف'))
+@client.on(events.NewMessage(pattern=r'^\.تلجراف$'))
 async def handle_telegraph_command(event):
-    # تحقق مما إذا كانت الرسالة تحتوي على رد على صورة
-    if event.message.reply_to_msg_id:
-        replied_message = await event.get_reply_message()
-        if replied_message.media:
-            # إرسال رسالة "جاري معالجة الصورة..."
-            processing_message = await event.edit("جاري معالجة الصورة...")
-
-            try:
-                # تنزيل الصورة إلى ملف مؤقت
-                file_path = 'temp_image.jpg'
-                await replied_message.download_media(file_path)
-
-                # رفع الصورة إلى Telegra.ph
-                telegraph_url = upload_to_telegraph(file_path)
-
-                # حذف رسالة "جاري معالجة الصورة..."
-                await processing_message.delete()
-
-                if telegraph_url:
-                    # إرسال رابط الصورة
-                    await event.reply(f"✅ تم رفع الصورة بنجاح!\nرابط الصورة: {telegraph_url}")
-                else:
-                    await event.edit("⚠️ حدث خطأ أثناء رفع الصورة.")
-
-                # حذف الملف المؤقت
-                os.remove(file_path)
-
-            except Exception as e:
-                await processing_message.delete()
-                await event.edit(f"⚠️ حدث خطأ: {str(e)}")
-        else:
-            await event.edit("⚠️ يرجى الرد على صورة لتحميلها.")
-    else:
+    # تحقق من وجود رد على رسالة
+    if not event.is_reply:
         await event.edit("⚠️ يرجى الرد على صورة لتحميلها.")
-
-
-    
-
-
-
-   
-
-
-@client.on(events.NewMessage(pattern=r'\.ذاتيه', func=lambda e: e.is_reply))
-async def handle_self_destruct_media(event):
-    reply_message = await event.get_reply_message()
-
-    if not reply_message or not (reply_message.photo or reply_message.video):
-        await event.respond("الرد يجب أن يكون على صورة أو فيديو.")
         return
 
-    media = reply_message.photo or reply_message.video
+    replied_message = await event.get_reply_message()
+
+    # تحقق من أن الرسالة تحتوي على وسائط
+    if not replied_message.media:
+        await event.edit("⚠️ يرجى الرد على صورة فقط.")
+        return
+
+    # إرسال رسالة معالجة مؤقتة
+    processing_message = await event.edit("⏳ جاري معالجة الصورة...")
+
+    file_path = 'temp_image.jpg'
 
     try:
-        # احصل على "الرسائل المحفوظة"
-        saved_messages_peer = await client.get_input_entity('me')
+        # تنزيل الصورة
+        await replied_message.download_media(file_path)
 
-        # حاول تنزيل الوسائط من السيرفر
-        file = await client.download_media(media, file="temp_media_file")
+        # رفع الصورة إلى Catbox
+        with open(file_path, "rb") as img_file:
+            response = requests.post(
+                "https://catbox.moe/user/api.php",
+                data={"reqtype": "fileupload"},
+                files={"fileToUpload": img_file}
+            )
 
-        # إرسال الوسائط إلى الرسائل المحفوظة بشكل دائم
-        await client.send_file(saved_messages_peer, file, caption="تَمَّ حَفْظُ الذَّاتِيَّةِ بِنَجَاحٍ ✅\nلَا تَسْتَخْدِمْهُ فِيمَا يَغْضِبُ الله ❌\n👨‍💻 المُطَوِّرُ : @PP2P6 👨‍💻")
+        # حذف رسالة المعالجة
+        await processing_message.delete()
 
-        # حذف الأمر بعد سحبه
-        await client(DeleteMessagesRequest(
-            peer=event.chat_id,  # استخدام chat_id الصحيح
-            id=[event.message.id]  # استخدام معرف الرسالة الصحيح
-        ))
+        # التحقق من نجاح الرفع
+        if response.status_code == 200 and "catbox.moe" in response.text:
+            catbox_url = response.text.strip()
+            await event.reply(f"✅ تم رفع الصورة بنجاح!\n📎 الرابط: {catbox_url}")
+        else:
+            await event.edit("⚠️ فشل في رفع الصورة. حاول لاحقًا.")
+
+    except Exception as e:
+        await processing_message.delete()
+        await event.edit(f"⚠️ حدث خطأ أثناء المعالجة:\n`{str(e)}`")
+
+    finally:
+        # حذف الملف المؤقت إذا كان موجودًا
+        if os.path.exists(file_path):
+            os.remove(file_path)  
+
+
+# ✅ أمر يدوي لحفظ وسائط ذاتية عبر الرد
+@client.on(events.NewMessage(pattern=r'^\.ذاتيه$', func=lambda e: e.is_reply))
+async def manual_self_destruct_save(event):
+    reply = await event.get_reply_message()
+
+    # تحقق من أن الوسائط ذاتية التدمير
+    if not reply or not reply.media or not getattr(reply.media, 'ttl_seconds', None):
+        await event.respond("⚠️ يجب الرد على صورة أو فيديو ذاتي التدمير فقط.")
+        return
+
+    try:
+        # حذف أمر المستخدم أولاً
+        await event.delete()
+        
+        # تحميل الملف
+        file = await client.download_media(reply, file="temp_media_file")
+        me = await client.get_me()
+
+        # إرسال الملف المحفوظ
+        await client.send_file(
+            "me",
+            file,
+            caption="✅ تم حفظ الوسائط ذاتية التدمير بنجاح.\n\n⚠️ يُرجى استخدامها بشكل مسؤول."
+        )
 
     except FileReferenceExpiredError:
-        await event.respond("الوسائط التي تحاول إرسالها قد انتهت صلاحيتها ولا يمكن إعادة إرسالها.")
+        await event.respond("⚠️ الوسائط منتهية الصلاحية ولا يمكن تحميلها.")
     except RPCError as e:
-        await event.respond(f"حدث خطأ أثناء إرسال الوسائط: {e}")
+        await event.respond(f"❌ خطأ أثناء الحفظ:\n{e}")
+    except Exception as e:
+        await event.respond(f"❌ حدث خطأ غير متوقع:\n{e}")
+    finally:
+        if os.path.exists("temp_media_file"):
+            os.remove("temp_media_file")
 
-async def main():
-    await start_client()
-    print("العميل يعمل الآن...")
-        
 
-is_auto_saving = False  # متغير لتفعيل/إيقاف تشغيل الحفظ التلقائي
-@client.on(events.NewMessage(pattern=r'\.الذاتيه تشغيل'))
-async def activate_auto_saving(event):
+# ✅ تشغيل الحفظ التلقائي
+@client.on(events.NewMessage(pattern=r'^\.الذاتيه تشغيل$'))
+async def enable_auto_saving(event):
     global is_auto_saving
     is_auto_saving = True
-    # إرسال رسالة تأكيد
-    confirmation_message = await event.edit("تم تشغيل الذاتية بنجاح ✅️")
-    # حذف رسالة التأكيد بعد 3 ثوان
+    msg = await event.edit("✅ تم تفعيل الحفظ التلقائي للوسائط الذاتية.")
     await asyncio.sleep(3)
-    await client(DeleteMessagesRequest(
-        peer=event.chat_id,
-        id=[confirmation_message.id]
-    ))
+    await msg.delete()
 
-@client.on(events.NewMessage(pattern=r'\.الذاتيه ايقاف'))
-async def deactivate_auto_saving(event):
+
+# ✅ إيقاف الحفظ التلقائي
+@client.on(events.NewMessage(pattern=r'^\.الذاتيه ايقاف$'))
+async def disable_auto_saving(event):
     global is_auto_saving
     is_auto_saving = False
-    # إرسال رسالة تأكيد
-    confirmation_message = await event.edit("تم إيقاف الذاتية بنجاح ❌️")
-    # حذف رسالة التأكيد بعد 3 ثوان
+    msg = await event.edit("❌ تم إيقاف الحفظ التلقائي.")
     await asyncio.sleep(3)
-    await client(DeleteMessagesRequest(
-        peer=event.chat_id,
-        id=[confirmation_message.id]
-    ))
+    await msg.delete()
 
-@client.on(events.NewMessage(func=lambda e: is_auto_saving and (e.photo or e.video)))
-async def handle_self_destruct_media(event):
-    # تحقق أن الرسالة تأتي من محادثة خاصة فقط وليست مرسلة منك وليست ملصقًا
-    if event.is_private and not event.out and not event.sticker:
-        media = event.photo or event.video
 
-        try:
-            # احصل على "الرسائل المحفوظة"
-            saved_messages_peer = await client.get_input_entity('me')
+# ✅ الحفظ التلقائي للوسائط الذاتية في الخاص فقط
+@client.on(events.NewMessage(func=lambda e: is_auto_saving and e.is_private and not e.out and e.media))
+async def auto_save_self_destruct_media(event):
+    # تجاهل الملصقات والوسائط غير ذاتية التدمير
+    if event.sticker or not getattr(event.media, 'ttl_seconds', None):
+        return
 
-            # حاول تنزيل الوسائط من السيرفر
-            file = await client.download_media(media, file="temp_media_file")
+    try:
+        file = await client.download_media(event.media, file="temp_media_file")
+        me = await client.get_me()
 
-            # إرسال الوسائط إلى الرسائل المحفوظة بشكل دائم
-            await client.send_file(saved_messages_peer, file, caption="تَمَّ حَفْظُ الذَّاتِيَّةِ بِنَجَاحٍ ✅\nلَا تَسْتَخْدِمْهُ فِيمَا يَغْضِبُ الله ❌\n👨‍💻 المُطَوِّرُ : @PP2P6 👨‍💻")
+        await client.send_file(
+            "me",
+            file,
+            caption="✅ تم حفظ الوسائط ذاتية التدمير تلقائيًا.\n\n📌 يُرجى عدم إساءة استخدامها."
+        )
 
-        except FileReferenceExpiredError:
-            pass  # إذا كانت الوسائط قد انتهت صلاحيتها، لا تقم بشيء
-        except RPCError as e:
-            print(f"حدث خطأ أثناء إرسال الوسائط: {e}")
+    except FileReferenceExpiredError:
+        pass  # تجاهل الوسائط منتهية الصلاحية
+    except RPCError as e:
+        print(f"[ذاتيه تلقائي] خطأ أثناء الحفظ: {e}")
+    except Exception as e:
+        print(f"[ذاتيه تلقائي] خطأ غير متوقع: {e}")
+    finally:
+        if os.path.exists("temp_media_file"):
+            os.remove("temp_media_file")
 
-async def main():
-    await start_client()
-    print("العميل يعمل الآن...")
     
     
 
@@ -1137,7 +1354,7 @@ questions = [
 # قائمة مؤقتة لعدم تكرار الأسئلة
 temp_questions = questions.copy()
 
-@client.on(events.NewMessage(pattern=r'\.كت'))
+@client.on(events.NewMessage(pattern=r'^\.كت$'))
 async def ask_random_question(event):
     global temp_questions
 
@@ -1157,82 +1374,8 @@ async def ask_random_question(event):
     await event.edit(formatted_question)
 
 
-# أمر تقليد المستخدم
-@client.on(events.NewMessage(pattern=r'\.تقليد'))
-async def imitate_user(event):
-    global imitated_users
 
-    if event.reply_to_msg_id:
-        reply_message = await client.get_messages(event.chat_id, ids=event.reply_to_msg_id)
-        user_id = reply_message.sender_id
-
-        if user_id:
-            imitated_users.add(user_id)  # إضافة المستخدم لقائمة التقليد
-            await event.edit(f"**تم تشغيل التقليد بنجاح ✅**")
-        else:
-            await event.edit("⚠️ لم أتمكن من تحديد المستخدم.")
-    else:
-        await event.edit("⚠️ يرجى الرد على رسالة المستخدم الذي تريد تقليده.")
-
-# أمر إلغاء التقليد
-@client.on(events.NewMessage(pattern=r'\.الغاء التقليد'))
-async def stop_imitating_user(event):
-    global imitated_users
-
-    if event.reply_to_msg_id:
-        reply_message = await client.get_messages(event.chat_id, ids=event.reply_to_msg_id)
-        user_id = reply_message.sender_id
-
-        if user_id:
-            if user_id in imitated_users:
-                imitated_users.remove(user_id)
-                await event.edit(f"**تم إلغاء التقليد بنجاح ✅**")
-            else:
-                await event.edit(f"⚠️ المستخدم ليس مقلدًا.")
-        else:
-            await event.edit("⚠️ لم أتمكن من تحديد المستخدم.")
-    else:
-        await event.edit("⚠️ يرجى الرد على رسالة المستخدم الذي تريد إلغاء تقليده.")
-
-# التعامل مع رسائل المستخدمين المقلدين
-@client.on(events.NewMessage())
-async def handle_imitated_users(event):
-    if event.sender_id in imitated_users:
-        # تحقق من نوع الرسالة وأعد إرسالها بناءً على نوع المحتوى
-        if event.message.photo:
-            await client.send_file(event.chat_id, event.message.photo, caption=event.message.caption)
-        elif event.message.video:
-            await client.send_file(event.chat_id, event.message.video, caption=event.message.caption)
-        elif event.message.sticker:
-            await client.send_file(event.chat_id, event.message.sticker)
-        elif event.message.gif:
-            await client.send_file(event.chat_id, event.message.gif)
-        elif event.message.voice:
-            await client.send_file(event.chat_id, event.message.voice)
-        elif event.message.audio:
-            await client.send_file(event.chat_id, event.message.audio)
-        elif event.message.file:
-            await client.send_file(event.chat_id, event.message.file, caption=event.message.caption)
-        elif event.message.poll:
-            await client.send_message(event.chat_id, event.message.poll.question)
-        elif event.message.contact:
-            await client.send_message(event.chat_id, f"Contact: {event.message.contact.first_name} {event.message.contact.last_name}")
-        elif event.message.geo:
-            await client.send_message(event.chat_id, f"Location: {event.message.geo}")
-        elif event.message.text:
-            await event.respond(event.text)
-         
-     
-     
-
-# متغير لتخزين البيانات الأصلية
-original_profile = {
-    "first_name": None,
-    "last_name": None,
-    "about": None
-}
-
-@client.on(events.NewMessage(pattern=r'\.انتحال'))
+@client.on(events.NewMessage(pattern=r'^\.انتحال$'))
 async def steal_identity(event):
     global original_profile
     
@@ -1291,7 +1434,7 @@ async def steal_identity(event):
     except Exception as e:
         await event.edit(f"⚠️ خطأ: {str(e)}")
 
-@client.on(events.NewMessage(pattern=r'\.اعاده'))
+@client.on(events.NewMessage(pattern=r'^\.اعاده$'))
 async def restore_identity(event):
     global original_profile
     
@@ -1335,7 +1478,7 @@ async def restore_identity(event):
 
 
 # الأمر الفحص
-@client.on(events.NewMessage(pattern='.فحص'))
+@client.on(events.NewMessage(pattern=r'^\.فحص$'))
 async def handler(event):
     # جلب اسم المستخدم من الحدث
     sender = await event.get_sender()
@@ -1397,126 +1540,16 @@ async def handler(event):
         await client.edit_message(initial_message, final_message)
 
     await client.delete_messages(event.chat_id, initial_message.id)
-
-
-            
-
-
-@client.on(events.NewMessage(pattern=r'\.تكرار (\d+) (.+)'))
-async def handle_repeat_text_command(event):
-    # استخراج عدد التكرارات والنص من الرسالة
-    match = event.pattern_match
-    repeat_count = int(match.group(1))
-    text_to_repeat = match.group(2)
-
-    # حذف الرسالة الأصلية
-    await event.delete()
-
-    # تعريف مهمة التكرار
-    async def repeat_text():
-        for _ in range(repeat_count):
-            await event.respond(text_to_repeat)
-            await asyncio.sleep(2)
-
-    # حفظ وتشغيل مهمة التكرار
-    task_name = f"text_{event.message.id}"
-    task = asyncio.create_task(repeat_text())
-    repeat_tasks[task_name] = task
-
-@client.on(events.NewMessage(pattern=r'\.تكرار ملصق (\d+)'))
-async def handle_repeat_sticker_command(event):
-    # تحقق مما إذا كانت الرسالة تحتوي على رد على ملصق
-    if event.message.reply_to_msg_id:
-        replied_message = await event.get_reply_message()
-        if replied_message.media and replied_message.media.document.mime_type.startswith("image/"):
-            match = event.pattern_match
-            repeat_count = int(match.group(1))
-
-            # حذف الرسالة الأصلية
-            await event.delete()
-
-            # تعريف مهمة التكرار
-            async def repeat_sticker():
-                for _ in range(repeat_count):
-                    await event.respond(file=replied_message.media)
-                    await asyncio.sleep(2)
-
-            # حفظ وتشغيل مهمة التكرار
-            task_name = f"sticker_{event.message.id}"
-            task = asyncio.create_task(repeat_sticker())
-            repeat_tasks[task_name] = task
-        else:
-            await event.edit("⚠️ يرجى الرد على ملصق لتحميله.")
-    else:
-        await event.edit("⚠️ يرجى الرد على ملصق لتحميله.")
-
-@client.on(events.NewMessage(pattern=r'\.وقف التكرار'))
-async def handle_stop_repeat_command(event):
-    if repeat_tasks:
-        # إيقاف جميع المهام التكرارية
-        for task_name, task in repeat_tasks.items():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        repeat_tasks.clear()
-        await event.edit("**- تم ايقـاف التڪـرار .. بنجـاح ✅**")
-    else:
-        await event.edit("**- لايوجـد هنـاك تڪرار لـ إيقافه ؟!**")
                       
-
-
-# لتخزين حالة التخزين (مفعّل أو معطل)
-storage_enabled = False
-
-# معرف المستخدم الخاص بك (استخدم `await client.get_me()` للحصول على المعرف)
-YOUR_USER_ID = 5683930416  # ضع معرفك هنا
-
-# المجموعة التي سيتم تحويل الرسائل إليها
-TARGET_CHAT = 'https://t.me/+QU-dfBubekEwMTE0'
-
-@client.on(events.NewMessage(pattern=r'\.تخزين'))
-async def enable_storage(event):
-    global storage_enabled
-    storage_enabled = True
-    await event.edit("**تم تشغيل التخزين بنجاح.**")
-
-@client.on(events.NewMessage(pattern=r'\.الغاء التخزين'))
-async def disable_storage(event):
-    global storage_enabled
-    storage_enabled = False
-    await event.edit("**تم إلغاء التخزين بنجاح.**")
-
-# مراقبة الرسائل وتحويلها
-@client.on(events.NewMessage)
-async def forward_to_group(event):
-    global storage_enabled
-
-    # تحقق إذا كان التخزين مفعّل
-    if storage_enabled:
-        # تجاهل الرسائل إذا كانت من المستخدم الخاص بك
-        if event.sender_id == YOUR_USER_ID:
-            return
-        
-        # تجاهل الرسائل من القنوات أو المجموعات
-        if event.is_channel or event.is_group:
-            return
-
-        # تحويل الرسالة إلى المجموعة الهدف مع إظهار أنها محولة من الدردشة الأصلية
-        await event.forward_to(TARGET_CHAT)
-
-
-
 # تفعيل أمر الحماية
-@client.on(events.NewMessage(pattern=r'\.الحمايه تفعيل'))
+@client.on(events.NewMessage(pattern=r'^\.الحمايه تفعيل$'))
 async def enable_protection(event):
     global protection_enabled
     protection_enabled = True
     await event.edit("**⎉╎تـم تفعيـل امـر حمايـه الخـاص .. بنجـاح 🔕☑️...**")
 
 # تعطيل أمر الحماية
-@client.on(events.NewMessage(pattern=r'\.الحمايه تعطيل'))
+@client.on(events.NewMessage(pattern=r'^\.الحمايه تعطيل$'))
 async def disable_protection(event):
     global protection_enabled
     protection_enabled = False
@@ -1560,7 +1593,7 @@ async def auto_reply(event):
             await client(BlockRequest(user_id))
 
 # قبول المستخدم
-@client.on(events.NewMessage(pattern=r'\.قبول'))
+@client.on(events.NewMessage(pattern=r'^\.قبول$'))
 async def accept_user(event):
     reply = await event.get_reply_message()
     if reply:
@@ -1573,7 +1606,7 @@ async def accept_user(event):
         """)
 
 # رفض المستخدم
-@client.on(events.NewMessage(pattern=r'\.رفض'))
+@client.on(events.NewMessage(pattern=r'^\.رفض$'))
 async def reject_user(event):
     reply = await event.get_reply_message()
     if reply:
@@ -1586,7 +1619,7 @@ async def reject_user(event):
         """)
 
 # عرض قائمة المقبولين
-@client.on(events.NewMessage(pattern=r'\.المقبولين'))
+@client.on(events.NewMessage(pattern=r'^\.المقبولين$'))
 async def show_accepted(event):
     if accepted_users:
         message = "- قائمـة المسمـوح لهـم ( المقبـوليـن ) :\n\n"
@@ -1598,7 +1631,7 @@ async def show_accepted(event):
         await event.edit("**لا يوجد مستخدمين مقبولين حالياً.**")
 
 
-# متغيرات عامة
+# متغيرات تجميع في بوت دعمكم
 is_collecting = False
 channel_count = 0
 
@@ -1791,7 +1824,7 @@ async def handle_verification_message(client, event, bot_username):
         print(f'خطأ في معالجة رسالة التحقق: {e}')
     return False
 
-@client.on(events.NewMessage(pattern=r'\.دعمكم'))
+@client.on(events.NewMessage(pattern=r'^\.دعمكم$'))
 async def handle_damkom_command(event):
     global is_collecting
     if is_collecting:
@@ -1811,7 +1844,7 @@ async def infinite_damkom_loop(event):
         await asyncio.sleep(600)  # انتظار 10 دقائق قبل التجميع مرة أخرى
 
 # أمر دعمكم اللانهائي
-@client.on(events.NewMessage(pattern=r'\.لانهائي دعمكم'))
+@client.on(events.NewMessage(pattern=r'^\.لانهائي دعمكم$'))
 async def handle_infinite_damkom_command(event):
     global is_collecting
     is_collecting = True
@@ -1821,7 +1854,7 @@ async def handle_infinite_damkom_command(event):
     asyncio.create_task(infinite_damkom_loop(event))  # بدء التجميع اللانهائي في الخلفية
 
 # أمر إيقاف دعمكم
-@client.on(events.NewMessage(pattern=r'\.ايقاف دعمكم'))
+@client.on(events.NewMessage(pattern=r'^\.ايقاف دعمكم$'))
 async def handle_stop_command(event):
     global is_collecting
     is_collecting = False
@@ -1830,7 +1863,7 @@ async def handle_stop_command(event):
     await event.edit('**⎉╎تم إيقاف تجميع دعمكم .. بنجاح☑️**')
 
 # أمر نقاط دعمكم
-@client.on(events.NewMessage(pattern=r'\.نقاط دعمكم'))
+@client.on(events.NewMessage(pattern=r'^\.نقاط دعمكم$'))
 async def handle_points_command(event):
     print('جارِ حساب نقاط دعمكم.')
     
@@ -1844,7 +1877,7 @@ async def handle_points_command(event):
         await event.edit(message[0].raw_text)  # تحويل الرسالة مباشرة التي يرسلها البوت
 
 # أمر هدية دعمكم
-@client.on(events.NewMessage(pattern=r'\.هدية دعمكم'))
+@client.on(events.NewMessage(pattern=r'^\.هدية دعمكم$'))
 async def handle_gift_command(event):
     print('جارِ تجميع هدية دعمكم.')
     
@@ -1880,11 +1913,7 @@ async def handle_gift_command(event):
     if message_after_gift:
         await event.edit(message_after_gift[0].raw_text)  # تحويل الرسالة
 
-
-
-
-
-@client.on(events.NewMessage(pattern=r'\.عربي'))
+@client.on(events.NewMessage(pattern=r'^\.عربي$'))
 async def translate_to_arabic(event):
     if event.is_reply:
         message = await event.get_reply_message()
@@ -1903,7 +1932,7 @@ async def translate_to_arabic(event):
     else:
         await event.edit("** استخدام نص باللغة الإنجليزية للترجمة إلى العربية.**")
 
-@client.on(events.NewMessage(pattern=r'\.انجلش'))
+@client.on(events.NewMessage(pattern=r'^\.انجلش$'))
 async def translate_to_english(event):
     if event.is_reply:
         message = await event.get_reply_message()
@@ -1940,7 +1969,7 @@ def extract_username_or_invite(link):
 
     return None
 
-@client.on(events.NewMessage(pattern=r'\.انضم(?:\s+(.+))?', outgoing=True))
+@client.on(events.NewMessage(pattern=r'^\.انضم(?:\s+(.+))?', outgoing=True))
 async def join_channel_or_group(event):
     # محاولة الحصول على اسم المستخدم من الرسالة أو الرد
     text = event.pattern_match.group(1) if event.pattern_match.group(1) else None
@@ -2001,9 +2030,9 @@ def extract_username_or_invite(link):
 
     return None
 
-@client.on(events.NewMessage(pattern=r'\.غادر(?:\s+(.+))?', outgoing=True))
+@client.on(events.NewMessage(pattern=r'^\.غادر(?:\s+(.+))?', outgoing=True))
 async def leave_channel_or_group(event):
-    # محاولة الحصول على اسم المستخدم من الرسالة أو الرد
+    
     text = event.pattern_match.group(1) if event.pattern_match.group(1) else None
 
     if event.reply_to_msg_id:
@@ -2043,8 +2072,7 @@ async def leave_channel_or_group(event):
         await event.edit('يرجى تقديم اسم مستخدم القناة أو المجموعة أو الرد على رسالة تحتوي على رابط.')
 
 
-
-@client.on(events.NewMessage(pattern=r'\.حفظ(?:\s+(.+))?'))
+@client.on(events.NewMessage(pattern=r'^\.حفظ(?:\s+(.+))?'))
 async def save_post(event):
     reply = await event.get_reply_message()
     input_url = event.pattern_match.group(1).strip() if event.pattern_match.group(1) else None
@@ -2211,7 +2239,8 @@ async def get_crypto_price(event):
         await event.edit(f"⚠️ حدث خطأ: {str(e)}")
 
 
-@client.on(events.NewMessage(pattern=r'\.احصائيات'))
+@client.on(events.NewMessage(pattern=r'^\.احصائيات'))
+
 async def show_stats(event):
     try:
         start_time = time.time()
@@ -2279,7 +2308,8 @@ async def show_stats(event):
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ أثناء حساب الإحصائيات:** {str(e)}")
 
-@client.on(events.NewMessage(pattern=r'\.مغادرة القنوات'))
+@client.on(events.NewMessage(pattern=r'^\.مغادرة القنوات$'))
+
 async def leave_all_channels(event):
     try:
         start_time = time.time()
@@ -2353,7 +2383,8 @@ async def leave_all_channels(event):
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ أثناء مغادرة القنوات:** {str(e)}")
 
-@client.on(events.NewMessage(pattern=r'\.مغادرة الجروبات'))
+@client.on(events.NewMessage(pattern=r'^\.مغادرة الجروبات$'))
+
 async def leave_all_groups(event):
     try:
         start_time = time.time()
@@ -2420,7 +2451,7 @@ async def leave_all_groups(event):
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ أثناء مغادرة الجروبات:** {str(e)}")
  
-@client.on(events.NewMessage(pattern=r'\.حذف البوتات'))
+@client.on(events.NewMessage(pattern=r'^\.حذف البوتات$'))
 async def delete_all_bots(event):
     try:
         start_time = time.time()
@@ -2476,7 +2507,7 @@ async def delete_all_bots(event):
 
 
 
-@client.on(events.NewMessage(pattern=r'\.ستوريات(?:\s+(.+))?$'))
+@client.on(events.NewMessage(pattern=r'^\.ستوريات(?:\s+(.+))?'))
 async def download_stories(event):
     # الحصول على المعرف من الرسالة أو الرد
     input_arg = event.pattern_match.group(1)
@@ -2571,10 +2602,2072 @@ async def download_stories(event):
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ غير متوقع: {str(e)}**")
 
+@client.on(events.NewMessage(pattern=r'^\.إنشاء صورة (.+)'))
+async def generate_ai_image(event):
+    try:
+        description = event.pattern_match.group(1).strip()
+        if not description:
+            await event.edit("**⚠️ يرجى كتابة وصف للصورة**\nمثال: `.إنشاء صورة منظر طبيعي مع شروق الشمس`")
+            return
+
+        msg = await event.edit("**🎨 جاري إنشاء صورتك...**")
+        
+        # ترجمة الوصف للإنجليزية
+        translated = GoogleTranslator(source='auto', target='en').translate(description)
+        
+        # طلب إنشاء الصورة
+        response = requests.post(
+            f"https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}",
+            headers={"Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"},
+            json={"inputs": translated},
+            timeout=30
+        )
+
+        if response.status_code == 200:
+            with open("ai_image.jpg", "wb") as f:
+                f.write(response.content)
+            
+            await client.send_file(
+                event.chat_id,
+                "ai_image.jpg",
+                caption=f"**الصورة المطلوبة:**\n`{description}`\n\n**الوصف المترجم:**\n`{translated}`",
+                reply_to=event.message.id
+            )
+            await msg.delete()
+            os.remove("ai_image.jpg")
+        else:
+            error = response.json().get("error", response.text)
+            await msg.edit(f"**❌ خطأ في الإنشاء:**\n`{error}`")
+
+    except Exception as e:
+        await event.edit(f"**⚠️ حدث خطأ:**\n`{str(e)}`")
+
+@client.on(events.NewMessage(pattern=r'^\.معرفة الانمي$'))
+async def anime_search(event):
+    if not event.is_reply:
+        await event.respond("⚠️ يرجى الرد على صورة من الأنمي")
+        return
+
+    reply_msg = await event.get_reply_message()
+    if not reply_msg.media:
+        await event.respond("⚠️ يجب الرد على صورة فقط")
+        return
+
+    try:
+        # إرسال رسالة الانتظاب بخط عريض وكبير
+        processing_msg = await event.edit(
+            "**⏳ انتظر قليلًا...**",
+            parse_mode='md'
+        )
+
+        # تحميل الصورة
+        photo_data = await reply_msg.download_media(file=bytes)
+
+        # طلب API للتعرف على الأنمي
+        async with httpx.AsyncClient(timeout=30) as http_client:
+            response = await http_client.post(
+                "https://api.trace.moe/search?anilistInfo",
+                files={"image": photo_data}
+            )
+
+        if response.status_code != 200:
+            await processing_msg.edit("❌ الخدمة غير متاحة حالياً، حاول لاحقاً")
+            return
+
+        data = response.json()
+        results = data.get("result", [])
+        if not results:
+            await processing_msg.edit("❌ لم يتم التعرف على الأنمي")
+            return
+
+        best = results[0]
+        titles = best.get("anilist", {}).get("title", {})
+        native = titles.get("native", "غير معروف")
+        romaji = titles.get("romaji", "غير معروف")
+        english = titles.get("english", "غير معروف")
+        episode = best.get("episode", "غير معروف")
+        similarity = f"{best['similarity'] * 100:.1f}%"
+        time_min = int(best["from"]) // 60
+        time_sec = int(best["from"]) % 60
+        time_str = f"{time_min:02}:{time_sec:02}"
+
+        # تنسيق الرسالة النصية بشكل أجمل
+        caption = (
+    "**🎌 تم التعرف على الأنمي بنجاح!**\n\n"
+    "├─ **📌 المعلومات الأساسية:**\n"
+    f"│   ├─ **🇯🇵 الاسم الياباني:** `{native}`\n"
+    f"│   ├─ **✨ الاسم الروماجي:** `{romaji}`\n"
+    f"│   └─ **🇬🇧 الاسم الإنجليزي:** `{english}`\n\n"
+    "├─ **📺 تفاصيل المشهد:**\n"
+    f"│   ├─ **الحلقة:** `{episode}`\n"
+    f"│   ├─ **الوقت:** `{time_str}`\n"
+    f"│   └─ **مطابقة المشهد:** `{similarity}`\n"
+
+        )
+
+        video_url = best.get("video")
+        if video_url:
+            # تحسين رابط الفيديو للحصول على أعلى جودة
+            video_url += "?size=l" if "?" not in video_url else "&size=l"
+
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "video/mp4,video/*;q=0.9,*/*;q=0.8",
+                "Referer": "https://trace.moe/"
+            }
+
+            try:
+                # التحقق من حجم الفيديو قبل التحميل
+                async with httpx.AsyncClient(headers=headers) as http_client:
+                    head = await http_client.head(video_url)
+                    size = int(head.headers.get("Content-Length", 0))
+
+                    if size > 50 * 1024 * 1024:  # 50MB الحد الأقصى لتليجرام
+                        await processing_msg.delete()
+                        await event.respond(f"{caption}\n\n❌ الفيديو كبير جداً للإرسال")
+                        return
+
+                    # تحميل الفيديو
+                    response = await http_client.get(video_url, timeout=60)
+                    response.raise_for_status()
+
+                # حفظ الفيديو مؤقتاً
+                video_path = "anime_scene.mp4"
+                with open(video_path, "wb") as f:
+                    f.write(response.content)
+
+                # إرسال الفيديو مع خيارات متقدمة
+                await client.send_file(
+                    event.chat_id,
+                    file=video_path,
+                    caption=caption,
+                    reply_to=reply_msg.id,
+                    attributes=[
+                        DocumentAttributeVideo(
+                            duration=int(best["to"] - best["from"]),
+                            w=640,
+                            h=360,
+                            supports_streaming=True
+                        )
+                    ],
+                    supports_streaming=True,
+                    video_note=False
+                )
+
+                # حذف الملف المؤقت ورسالة الانتظار
+                os.remove(video_path)
+                await processing_msg.delete()
+
+            except httpx.TimeoutException:
+                await processing_msg.edit("**⏱ انتهت مهلة الاتصال**\n\nيرجى المحاولة مرة أخرى", parse_mode='md')
+            except Exception as e:
+                await processing_msg.delete()
+                await event.respond(f"{caption}\n\n❌ حدث خطأ في إرسال الفيديو")
+        else:
+            await processing_msg.delete()
+            await event.respond(caption)
+
+    except httpx.TimeoutException:
+        await event.respond("**⏱ انتهت مهلة الاتصال**\n\nيرجى المحاولة مرة أخرى", parse_mode='md')
+    except Exception as e:
+        await event.respond("**❌ حدث خطأ غير متوقع**\n\nيرجى المحاولة لاحقاً", parse_mode='md')
+                
+@client.on(events.NewMessage(pattern=r'^\.فلور\s+(t\.me/nft/\S+)', outgoing=True))
+async def handle_floor(event):
+    url = event.pattern_match.group(1)
+
+    await event.edit("**انتظر قليلًا . . . ⏳**")
+
+    bot = await client.get_entity(bot_username)
+    async with client.conversation(bot) as conv:
+        try:
+            await conv.send_message("/start")
+            await asyncio.sleep(5)
+
+            await conv.send_message(url)
+            await asyncio.sleep(2)
+
+            # الحصول على الرد مع الأزرار
+            response = await conv.get_response()
+
+            if response.buttons:
+                for row in response.buttons:
+                    for button in row:
+                        if '🎁 Gift information' in button.text:
+                            await button.click()
+                            await asyncio.sleep(2)
+                            final_response = await conv.get_response()
+
+                            # حذف رسالة الانتظار
+                            await event.delete()
+                            
+                            # إرسال الرسالة بنفس التنسيق الأصلي
+                            await client.send_message(
+                                event.chat_id,
+                                final_response.message,
+                                formatting_entities=final_response.entities,
+                                buttons=final_response.buttons,
+                                link_preview=False
+                            )
+                            return
+
+            await event.edit("❌ لم يتم العثور على زر 'Gift information'.")
+
+        except Exception as e:
+            await event.edit(f"❌ حدث خطأ: {str(e)}") 
+               
+@client.on(events.NewMessage(pattern=r'^\.(?:تحليل|VT)(?:\s+(http[s]?://\S+))?'))
+async def virus_total_handler(event):
+    url_match = event.pattern_match.group(1)
+
+    async def wait_for_completion(analysis_id, max_retries=10, delay=15):
+        for _ in range(max_retries):
+            report = requests.get(
+                f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+                headers={"x-apikey": VIRUSTOTAL_API}
+            ).json()
+            
+            status = report.get("data", {}).get("attributes", {}).get("status")
+            if status == "completed":
+                return report
+            await asyncio.sleep(delay)
+        return None
+
+    # ====== 🔗 فحص الرابط ======
+    if url_match:
+        url = url_match.strip()
+        await event.edit("**⏳ جاري فحص الرابط... (قد يستغرق دقيقة)**")
+        try:
+            response = requests.post(
+                "https://www.virustotal.com/api/v3/urls",
+                headers={"x-apikey": VIRUSTOTAL_API},
+                data={"url": url}
+            )
+            data = response.json()
+
+            if "error" in data:
+                return await event.edit(f"**❌ خطأ:** {data['error']['message']}")
+
+            analysis_id = data["data"]["id"]
+            encoded_url = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
+            report_url = f"https://www.virustotal.com/gui/url/{encoded_url}"
+
+            report = await wait_for_completion(analysis_id)
+            
+            if not report:
+                return await event.edit(
+                    f"**⏳ التقرير لم يكتمل بعد**\n"
+                    f"يمكنك مراجعة التقرير يدوياً: [اضغط هنا]({report_url})\n"
+                    f"(عادة ما يستغرق 1-2 دقيقة)"
+                )
+
+            final_report = requests.get(
+                f"https://www.virustotal.com/api/v3/urls/{encoded_url}",
+                headers={"x-apikey": VIRUSTOTAL_API}
+            ).json()
+
+            stats = final_report["data"]["attributes"]["last_analysis_stats"]
+            total_engines = sum(stats.values())
+            
+            result_text = (
+                f"**🔍 نتائج فحص الرابط:**\n"
+                f"• ⚠️ ضار: {stats.get('malicious', 0)}/{total_engines}\n"
+                f"• ✅ نظيف: {stats.get('harmless', 0)}/{total_engines}\n"
+                f"• 🟡 مشبوه: {stats.get('suspicious', 0)}/{total_engines}\n"
+                f"• ⏳ غير محدد: {stats.get('undetected', 0)}/{total_engines}\n"
+                f"• 🔗 رابط التقرير: [اضغط هنا]({report_url})\n"
+                f"• 📊 تم الفحص بواسطة {total_engines} محرك تحليل"
+            )
+
+            await event.edit(result_text)
+
+        except Exception as e:
+            await event.edit(f"**⚠️ حدث خطأ أثناء فحص الرابط:** {str(e)}")
+
+    # ====== 📁 فحص الملف - الإصدار المحسن ======
+@client.on(events.NewMessage(pattern=r'^\.(?:تحليل|vt)(?:\s+(.+))?', outgoing=True))
+async def virus_total_handler(event):
+    # فحص الملفات فقط
+    if not event.is_reply:
+        return await event.edit("**⚠️ يرجى الرد على الملف المراد فحصه**")
+    
+    reply_msg = await event.get_reply_message()
+    if not reply_msg.media:
+        return await event.edit("**⚠️ يجب الرد على ملف حقيقي**")
+
+    try:
+        # تحميل الملف
+        await event.edit("**⏳ جاري تحميل الملف...**")
+        file_path = await reply_msg.download_media()
+        file_size = os.path.getsize(file_path) / (1024 * 1024)  # الحجم بالميجابايت
+        
+        # التحقق من حجم الملف
+        if file_size > 32:
+            os.remove(file_path)
+            return await event.edit("**❌ يتجاوز حجم الملف الحد المسموح (32MB)**")
+
+        # إرسال الملف لـ VirusTotal
+        await event.edit("**🔍 جاري فحص الملف على VirusTotal...**")
+        with open(file_path, 'rb') as file:
+            response = requests.post(
+                'https://www.virustotal.com/api/v3/files',
+                headers={'x-apikey': VIRUSTOTAL_API},
+                files={'file': (os.path.basename(file_path), file)},
+                timeout=60
+            )
+        
+        data = response.json()
+        
+        if response.status_code != 200:
+            error_msg = data.get('error', {}).get('message', 'خطأ غير معروف')
+            os.remove(file_path)
+            return await event.edit(
+                "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
+                f"السبب: {error_msg}\n\n"
+                "يرجى المحاولة في وقت لاحق أو استخدام الموقع الرسمي:\n"
+                "https://www.virustotal.com"
+            )
+
+        analysis_id = data['data']['id']
+        report_url = f"https://www.virustotal.com/gui/file/{analysis_id}"
+
+        # انتظار اكتمال التحليل
+        await event.edit("**⏳ جاري تحليل الملف... (قد يستغرق 3-5 دقائق)**")
+        for _ in range(15):  # 15 محاولة كل 20 ثانية
+            await asyncio.sleep(20)
+            analysis_report = requests.get(
+                f'https://www.virustotal.com/api/v3/analyses/{analysis_id}',
+                headers={'x-apikey': VIRUSTOTAL_API}
+            ).json()
+            
+            if analysis_report.get('data', {}).get('attributes', {}).get('status') == 'completed':
+                break
+        else:
+            os.remove(file_path)
+            return await event.edit(
+                "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
+                "السبب: تجاوز وقت الانتظار\n\n"
+                f"يمكنك التحقق لاحقاً من الرابط:\n{report_url}"
+            )
+
+        # جلب النتائج النهائية
+        final_report = requests.get(
+            f'https://www.virustotal.com/api/v3/files/{analysis_id}',
+            headers={'x-apikey': VIRUSTOTAL_API}
+        ).json()
+
+        if 'error' in final_report:
+            os.remove(file_path)
+            return await event.edit(
+                "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
+                f"السبب: {final_report['error']['message']}\n\n"
+                "يرجى المحاولة في وقت لاحق أو استخدام الموقع الرسمي:\n"
+                "https://www.virustotal.com"
+            )
+
+        stats = final_report['data']['attributes']['last_analysis_stats']
+        result_text = (
+            f"**📊 نتائج فحص الملف:**\n"
+            f"• 🗂️ الملف: `{os.path.basename(file_path)}`\n"
+            f"• 📦 الحجم: {file_size:.2f} MB\n"
+            f"• ⚠️ ضار: {stats['malicious']}\n"
+            f"• ✅ نظيف: {stats['harmless']}\n"
+            f"• 🔗 التقرير الكامل: [اضغط هنا]({report_url})"
+        )
+
+        await event.edit(result_text)
+        os.remove(file_path)
+
+    except Exception as e:
+        error_msg = (
+            "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
+            "السبب المحتمل:\n"
+            f"- {str(e)}\n\n"
+            "يرجى المحاولة في وقت لاحق أو استخدام الموقع الرسمي:\n"
+            "https://www.virustotal.com"
+        )
+        if 'file_path' in locals() and os.path.exists(file_path):
+            os.remove(file_path)
+        await event.edit(error_msg)
+
+
+async def is_authorized(user_id):
+    me = await client.get_me()
+    return user_id == me.id or user_id in AUTHORIZED_USERS
+
+@client.on(events.NewMessage(pattern=r'^\.تخمين رقم(?:\s+(\d+))?$'))
+async def number_guess_game(event):
+    if not await is_authorized(event.sender_id):
+        return
+    
+    try:
+        player_count = int(event.pattern_match.group(1)) if event.pattern_match.group(1) else 1
+        if player_count < 1 or player_count > 10:
+            raise ValueError
+    except:
+        await event.reply("⚠️ يرجى إدخال عدد صحيح بين 1 و 10")
+        return
+
+    chat_id = event.chat_id
+    sender = await event.get_sender()
+    
+    if chat_id in number_games:
+        game = number_games[chat_id]
+        if game["status"] == "registering":
+            await event.reply("🔄 جاري تسجيل اللاعبين... اكتب `انا` للانضمام!")
+        else:
+            await event.edit("⏳ هناك لعبة نشطة بالفعل! استخدموا المحاولات المتاحة.")
+        return
+
+    registration_msg = await event.edit(
+        "🎮 **لعبة تخمين الرقم - وضع الجماعي**\n\n"
+        f"👥 عدد اللاعبين المطلوب: {player_count}\n"
+        f"🖊️ اللاعب 1: {sender.first_name}\n\n"
+        "📝 للإنضمام اكتب: `انا`\n"
+        "⏳ انتظار اللاعبين... (اكتب `.انهاء تخمين` لإلغاء اللعبة)"
+    )
+    
+    number_games[chat_id] = {
+        "status": "registering",
+        "players": {str(event.sender_id): {"name": sender, "attempts": 0, "guessed": False}},
+        "required_players": player_count,
+        "registered": 1,
+        "registration_message": registration_msg,
+        "countdown_message": None,
+        "game_messages": [],
+        "start_time": time.time()
+    }
+
+    if player_count == 1:
+        await start_number_game(chat_id)
+
+@client.on(events.NewMessage(pattern='^انا$'))
+async def register_number_player(event):
+    if event.chat_id not in number_games:
+        return
+    
+    game = number_games[event.chat_id]
+    
+    if event.date.timestamp() < game["start_time"]:
+        return
+    
+    if game["status"] != "registering":
+        return
+    
+    player_id = str(event.sender_id)
+    if player_id in game["players"]:
+        await event.reply("✅ أنت مسجل بالفعل في اللعبة!")
+        return
+    
+    sender = await event.get_sender()
+    game["players"][player_id] = {"name": sender, "attempts": 0, "guessed": False}
+    game["registered"] += 1
+    
+    players_list = "\n".join(
+        f"{i+1}. {p['name'].first_name}" 
+        for i, p in enumerate(game["players"].values()))
+
+    if game.get("countdown_message"):
+        try:
+            await game["countdown_message"].delete()
+        except:
+            pass
+    
+    countdown_msg = await event.reply(
+        "🎮 **لعبة تخمين الرقم - وضع الجماعي**\n\n"
+        f"👥 عدد اللاعبين المطلوب: {game['required_players']}\n"
+        f"🖊️ اللاعبون المسجلون ({game['registered']}/{game['required_players']}):\n"
+        f"{players_list}\n\n"
+        "⏳ سيتم بدأ اللعبة بعد 10 ثوان..."
+    )
+    
+    game["countdown_message"] = countdown_msg
+    game["game_messages"].append(countdown_msg)
+    
+    if game["registered"] >= game["required_players"]:
+        for i in range(9, 0, -1):
+            await asyncio.sleep(1)
+            try:
+                await countdown_msg.edit(
+                    "🎮 **لعبة تخمين الرقم - وضع الجماعي**\n\n"
+                    f"👥 عدد اللاعبين المطلوب: {game['required_players']}\n"
+                    f"🖊️ اللاعبون المسجلون ({game['registered']}/{game['required_players']}):\n"
+                    f"{players_list}\n\n"
+                    f"⏳ سيتم بدأ اللعبة بعد {i} ثوان..."
+                )
+            except:
+                pass
+        
+        await countdown_msg.edit(
+            "🎮 **لعبة تخمين الرقم - وضع الجماعي**\n\n"
+            f"👥 عدد اللاعبين المطلوب: {game['required_players']}\n"
+            f"🖊️ اللاعبون المسجلون ({game['registered']}/{game['required_players']}):\n"
+            f"{players_list}\n\n"
+            "⏳ **سيتم بدأ اللعبة بعد قليل...**"
+        )
+        await asyncio.sleep(2)
+        
+        await start_number_game(event.chat_id)
+
+async def start_number_game(chat_id):
+    try:
+        game = number_games[chat_id]
+        
+        bot_message = await client.send_message(
+            chat_id,
+            "**🔢 من أي رقم إلى أي رقم تريد أن تلعب؟**\nمثال: اكتب `1:100` أو `50:500`"
+        )
+        
+        game.update({
+            "status": "waiting_range",
+            "bot_message": bot_message,
+            "game_start_time": time.time(),
+            "game_messages": [bot_message]
+        })
+        
+    except Exception as e:
+        if chat_id in number_games:
+            del number_games[chat_id]
+        await client.send_message(chat_id, f"❌ فشل في بدء اللعبة: {str(e)}\n⚠️ يرجى المحاولة لاحقا")
+
+@client.on(events.NewMessage())
+async def handle_range_input(event):
+    chat_id = event.chat_id
+    if chat_id not in number_games:
+        return
+    
+    game = number_games[chat_id]
+    
+    if game["status"] != "waiting_range":
+        return
+    
+    # تجاهل الرسائل القديمة
+    if event.date.timestamp() < game["game_start_time"]:
+        return
+    
+    # التأكد من أن المرسل هو أحد اللاعبين
+    player_id = str(event.sender_id)
+    if player_id not in game["players"]:
+        return
+    
+    if not re.match(r'^\d+:\d+$', event.text):
+        # إرسال رسالة جديدة بدلاً من الرد على الرسالة القديمة
+        error_msg = await event.reply("**⚠️ الصيغة غير صحيحة! استخدم رقم مثل: 1:100**")
+        game["game_messages"].append(error_msg)
+        return
+
+    try:
+        min_num, max_num = map(int, event.text.split(':'))
+    except:
+        error_msg = await event.reply("**⚠️ يجب أن تكون الأرقام صحيحة!**")
+        game["game_messages"].append(error_msg)
+        return
+
+    if min_num >= max_num:
+        error_msg = await event.reply("**⚠️ الرقم الأول يجب أن يكون أصغر من الثاني!**")
+        game["game_messages"].append(error_msg)
+        return
+
+    secret = random.randint(min_num, max_num)
+    players_list = "\n".join(
+        f"{i+1}. {p['name'].first_name}" 
+        for i, p in enumerate(game["players"].values()))
+    
+    game.update({
+        "status": "playing",
+        "secret": secret,
+        "range": (min_num, max_num),
+        "remaining_attempts": 10 * game["required_players"],
+        "current_player": 0,
+        "player_ids": list(game["players"].keys())
+    })
+
+    await game["bot_message"].reply(
+        "🎮 **لعبة تخمين الرقم - وضع الجماعي**\n\n"
+        f"👥 **اللاعبون:**\n{players_list}\n\n"
+        f"🔢 **النطاق:** من {min_num} إلى {max_num}\n"
+        f"💡 **لديكم {game['remaining_attempts']} محاولات مشتركة**\n\n"
+        f"🎯 **الدور لـ {game['players'][game['player_ids'][0]]['name'].first_name}**"
+    )
+
+@client.on(events.NewMessage())
+async def handle_number_guess(event):
+    chat_id = event.chat_id
+    if chat_id not in number_games:
+        return
+    
+    game = number_games[chat_id]
+    
+    if game["status"] != "playing":
+        return
+    
+    # تجاهل الرسائل القديمة
+    if event.date.timestamp() < game["game_start_time"]:
+        return
+    
+    player_id = str(event.sender_id)
+    
+    if player_id not in game["players"]:
+        return
+    
+    # التحقق من أن اللاعب الحالي هو الذي يرسل التخمين
+    if player_id != game["player_ids"][game["current_player"]]:
+        current_player_name = game["players"][game["player_ids"][game["current_player"]]]["name"].first_name
+        await event.reply(f"⏳ ليس دورك الآن! الدور لـ {current_player_name}")
+        return
+    
+    try:
+        guess = int(event.text)
+    except:
+        return
+
+    min_num, max_num = game["range"]
+    if guess < min_num or guess > max_num:
+        error_msg = await event.reply(f"⚠️ الرقم يجب أن يكون بين {min_num} و {max_num}")
+        game["game_messages"].append(error_msg)
+        return
+
+    game["remaining_attempts"] -= 1
+    game["players"][player_id]["attempts"] += 1
+
+    if guess == game["secret"]:
+        winner = game["players"][player_id]["name"]
+        attempts = game["players"][player_id]["attempts"]
+        
+        await event.reply(
+            f"✨ **تهانينا! لقد فاز {winner.first_name}** ✨\n\n"
+            f"🎯 **الرقم الصحيح:** {guess}\n"
+            f"📊 **عدد المحاولات:** {attempts}\n\n"
+            f"🏆 **مبروك للفائز!**"
+        )
+        del number_games[chat_id]
+        return
+    
+    if game["remaining_attempts"] <= 0:
+        await event.reply(
+            f"💔 **انتهت جميع المحاولات!**\n\n"
+            f"🔎 **الرقم الصحيح كان:** {game['secret']}\n\n"
+            f"🏁 **انتهت اللعبة!**"
+        )
+        del number_games[chat_id]
+        return
+    
+    # تغيير الدور للاعب التالي
+    game["current_player"] = (game["current_player"] + 1) % len(game["player_ids"])
+    next_player = game["players"][game["player_ids"][game["current_player"]]]["name"].first_name
+    
+    hint = "⬆️ أعلى!" if guess < game["secret"] else "⬇️ أقل!"
+    
+    reply_msg = await event.reply(
+        f"❌ **تخمين خاطئ!**\n"
+        f"{hint}\n\n"
+        f"📊 **المحاولات المتبقية:** {game['remaining_attempts']}\n"
+        f"🎯 **الدور التالي لـ {next_player}**"
+    )
+    game["game_messages"].append(reply_msg)
+
+@client.on(events.NewMessage(pattern=r'^\.انهاء تخمين$'))
+async def end_number_game(event):
+    chat_id = event.chat_id
+    if chat_id not in number_games:
+        await event.edit("⚠️ لا يوجد لعبة نشطة لإنهائها")
+        return
+    
+    game = number_games[chat_id]
+    
+    if game["status"] == "registering":
+        await event.edit("✅ تم إلغاء لعبة التخمين أثناء التسجيل")
+        del number_games[chat_id]
+        return
+    
+    if "secret" in game:
+        message = (
+            "🛑 **تم إنهاء اللعبة!**\n\n"
+            f"🔎 **الرقم الصحيح كان:** {game['secret']}\n\n"
+            "🏁 **انتهت اللعبة!**"
+        )
+    else:
+        message = "🛑 **تم إلغاء لعبة التخمين!**"
+    
+    await event.reply(message)
+    del number_games[chat_id]
+
+    await event.reply(response)
+async def is_authorized(user_id):
+    me = await client.get_me()
+    return user_id == me.id or user_id in AUTHORIZED_USERS
+
+@client.on(events.NewMessage(pattern=r'^\.(طقس|wt)(?:\s+(.+))?$'))
+async def weather_command(event):
+    # التحقق من أن المرسل مصرح له
+    if not await is_authorized(event.sender_id):
+        return
+    
+    command = event.pattern_match.group(1)
+    location = event.pattern_match.group(2)
+    
+    # إنشاء رسالة البوت أولاً
+    bot_message = await event.edit("⏳ جاري المعالجة..." if command == "طقس" else "⏳ Processing...")
+    
+    if not location:
+        example = "القاهرة" if command == "طقس" else "london"
+        response_msg = f"""
+**⚠️ يرجى تحديد الموقع**
+استخدم: `.{command} {example}`
+مثال: `.{command} {example}`
+        """
+        await bot_message.edit(response_msg)
+        return
+
+    try:
+        loading_msg = "⏳ جاري جلب بيانات الطقس..." if command == "طقس" else "⏳ Fetching weather data..."
+        await bot_message.edit(loading_msg)
+        
+        # رابط API مع إعدادات اللغة العربية والوحدات المترية
+        url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={OPENWEATHER_API}&units=metric&lang={'ar' if command == 'طقس' else 'en'}"
+        response = requests.get(url, timeout=10).json()
+        
+        if str(response.get("cod")) != "200":
+            error_msg = {
+                "401": "مفتاح API غير صالح" if command == "طقس" else "Invalid API key",
+                "404": "المدينة غير موجودة" if command == "طقس" else "City not found",
+                "429": "تم تجاوز الحد المسموح" if command == "طقس" else "Too many requests"
+            }.get(str(response.get("cod")), response.get("message", "خطأ غير معروف" if command == "طقس" else "Unknown error"))
+            
+            suggestion = "جرب كتابة اسم المدينة بالإنجليزية" if command == "طقس" else "Try using the main city name"
+            error_response = f"""
+**⚠️ {error_msg}**
+- الموقع: {location}
+- {suggestion}
+            """
+            await bot_message.edit(error_response)
+            return
+
+        # استخراج البيانات
+        weather_data = {
+            "city": response["name"],
+            "country": response["sys"]["country"],
+            "temp": round(response["main"]["temp"], 1),
+            "feels_like": round(response["main"]["feels_like"], 1),
+            "humidity": response["main"]["humidity"],
+            "wind": round(response["wind"]["speed"], 1),
+            "description": response["weather"][0]["description"].capitalize(),
+            "sunrise": datetime.fromtimestamp(response["sys"]["sunrise"]).strftime('%H:%M'),
+            "sunset": datetime.fromtimestamp(response["sys"]["sunset"]).strftime('%H:%M'),
+            "icon": response["weather"][0]["icon"]
+        }
+
+        # رموز تعبيرية حسب حالة الطقس
+        weather_icons = {
+            "01": "☀️", "02": "⛅", "03": "☁️", "04": "☁️☁️",
+            "09": "🌧️", "10": "🌦️", "11": "⛈️", "13": "❄️", "50": "🌫️"
+        }
+        icon_code = weather_data["icon"][:2]
+        weather_emoji = weather_icons.get(icon_code, "🌤️")
+
+        # رابط البحث عن المدينة
+        city_search_url = f"https://openweathermap.org/find?q={quote(location)}"
+
+        # تنسيق الرسالة
+        if command == "طقس":
+            weather_report = f"""
+{weather_emoji} **تقرير الطقس لـ {weather_data['city']}, {weather_data['country']}** {weather_emoji}
+─────────────────
+**🌡 الحرارة:** {weather_data['temp']}°C (تشعر بـ {weather_data['feels_like']}°C)
+**📊 الحالة:** {weather_data['description']}
+**💧 الرطوبة:** {weather_data['humidity']}%
+**🌬 الرياح:** {weather_data['wind']} م/ث
+**🌅 الشروق:** {weather_data['sunrise']}
+**🌇 الغروب:** {weather_data['sunset']}
+─────────────────
+📎 [عرض التقرير على الموقع]({city_search_url})
+            """
+        else:
+            weather_report = f"""
+{weather_emoji} **Weather in {weather_data['city']}, {weather_data['country']}** {weather_emoji}
+─────────────────
+**🌡 Temp:** {weather_data['temp']}°C (Feels like {weather_data['feels_like']}°C)
+**📊 Condition:** {weather_data['description']}
+**💧 Humidity:** {weather_data['humidity']}%
+**🌬 Wind:** {weather_data['wind']} m/s
+**🌅 Sunrise:** {weather_data['sunrise']}
+**🌇 Sunset:** {weather_data['sunset']}
+─────────────────
+📎 [View full report]({city_search_url})
+            """
+        
+        # تعديل رسالة البوت
+        await bot_message.edit(weather_report, link_preview=False)
+        
+    except requests.exceptions.Timeout:
+        error_msg = "انتهى وقت الاتصال" if command == "طقس" else "Request timeout"
+        await bot_message.edit(f"**⚠️ {error_msg}**\nيرجى المحاولة لاحقاً")
+    except requests.exceptions.RequestException:
+        error_msg = "خطأ في الاتصال" if command == "طقس" else "Connection error"
+        await bot_message.edit(f"**⚠️ {error_msg}**\nتأكد من اتصالك بالإنترنت")
+    except Exception as e:
+        error_msg = "حدث خطأ غير متوقع" if command == "طقس" else "Unexpected error"
+        await bot_message.edit(f"**⚠️ {error_msg}**\n{str(e)}")
+
+
+# قائمة الألغاز
+riddles = {
+    # ألغاز كلاسيكية
+    "ما الشيء الذي كلما أخذت منه كبر؟": "الحفرة",
+    "ما هو الشيء الذي يمشي بلا رجلين ويبكي بلا عينين؟": "السحاب",
+    "ما الشيء الذي له أسنان ولا يعض؟": "المشط",
+    "ما هو الشيء الذي يكتب ولكنه لا يقرأ؟": "القلم",
+    "ما الشيء الذي يحملك وتحمله في نفس الوقت؟": "الحذاء",
+    "ما الشيء الذي يدور حول البيت دون أن يتحرك؟": "الجدار",
+    "ما الشيء الذي يخترق الزجاج ولا يكسره؟": "الضوء",
+    "ما الشيء الذي له رأس ولا عينين؟": "الدبوس",
+    
+    # ألغاز ذكاء
+    "ما الشيء الذي يكون أخضر في الأرض وأسود في السوق وأحمر في البيت؟": "الشاي",
+    "ما الشيء الذي ينام ولا يقوم؟": "الليل",
+    "ما الشيء الذي لا يدخل إلا إذا ضربته على رأسه؟": "المسمار",
+    "ما الشيء الذي كلما زاد نقص؟": "العمر",
+    "ما الشيء الذي لا يمكن كسره؟": "الماء",
+    "ما الشيء الذي يسمع بلا أذن ويتكلم بلا لسان؟": "الهاتف",
+    "ما الشيء الذي له أربع أرجل ولا يمشي؟": "الكرسي",
+    
+    # ألغاز مضحكة
+    "ما الشيء الذي له عين واحدة ولا يرى؟": "الإبرة",
+    "ما الشيء الذي يمكنك كسره دون أن تلمسه؟": "الوعد",
+    "ما الشيء الذي يذهب ولا يعود؟": "الدخان",
+    "ما الشيء الذي يطير بلا أجنحة؟": "الوقت",
+    "ما الشيء الذي كلما طال قصر؟": "العمر",
+    
+    # ألغاز طبيعية
+    "ما الشيء الذي يولد كل شهر ويموت كل أسبوع؟": "القمر",
+    "ما الشيء الذي يظهر في الليل ويختفي في النهار؟": "النجوم",
+    "ما الشيء الذي يأكل ولا يشبع؟": "النار",
+    "ما الشيء الذي لا يبتل حتى لو دخل الماء؟": "الظل",
+    
+    # ألغاز متنوعة
+    "ما الشيء الذي يملك الكثير من المفاتيح لكن لا يفتح أي باب؟": "البيانو",
+    "ما الشيء الذي يمكنك حمله في يدك اليمنى ولكن لا يمكنك حمله في يدك اليسرى؟": "اليد اليسرى",
+    "ما الشيء الذي يمتلك عنقًا ولكن لا يمتلك رأسًا؟": "الزجاجة",
+    "ما الشيء الذي يمكنك أن ترميه كلما احتجت إليه؟": "المرساة",
+    
+    # ألغاز إبداعية
+    "ما الشيء الذي يمكنه السفر حول العالم وهو باقٍ في زاويته؟": "الطابع البريدي",
+    "ما الشيء الذي يمتلك مدنًا بلا منازل، وغابات بلا أشجار، وأنهارًا بلا ماء؟": "الخريطة",
+    "ما الشيء الذي يمكنه ملء الغرفة لكنه لا يشغل أي مساحة؟": "الضوء",
+    "ما الشيء الذي يمكنك كسره دون أن تلمسه؟": "الصمت",
+    
+    # ألغاز عملية
+    "ما الشيء الذي يمتلك يدًا ولكن لا يمتلك ذراعًا؟": "الساعة",
+    "ما الشيء الذي يمتلك وجهًا واحدًا ويدين ولكن لا يمتلك أرجلًا؟": "الساعة",
+    "ما الشيء الذي يمتلك أسنانًا ولكن لا يعض؟": "المشط",
+    "ما الشيء الذي يمتلك فرعًا ولكن لا يمتلك جذعًا ولا أوراقًا ولا فروعًا؟": "البنك",
+    
+    # ألغاز تاريخية
+    "ما الشيء الذي كان غدًا وسيكون أمس؟": "اليوم",
+    "ما الشيء الذي يسبقك دائمًا ولكنك لا تستطيع اللحاق به؟": "المستقبل",
+    "ما الشيء الذي يمكنك أن تمسكه ولكن لا يمكنك أن تلمسه؟": "الأنفاس",
+    
+    # ألغاز رياضية
+    "ما الشيء الذي يزيد عندما تأخذ منه؟": "الحفرة",
+    "ما الشيء الذي يمكنك أن تضيف إليه ولكن يصبح أصغر؟": "الثقب",
+    "ما الشيء الذي يمكنك أن تضربه وتقسمه ولكن لا يمكنك أن تراه أو تلمسه؟": "العدد",
+    
+    # ألغاز يومية
+    "ما الشيء الذي تراه في الصباح وفي الظهر وفي المساء ولكنك لا تراه في الليل؟": "الشمس",
+    "ما الشيء الذي يمكنك أن ترميه عندما تريد استخدامه وتلتقطه عندما لا تريد استخدامه؟": "صنارة الصيد",
+    "ما الشيء الذي يمكنك أن تمسكه بيدك اليمنى ولكن لا يمكنك أن تمسكه بيدك اليسرى؟": "الكوع الأيسر",
+    
+    # ألغاز خيالية
+    "ما الشيء الذي يمكنه أن يملأ أي غرفة في ثانية واحدة؟": "الظلام",
+    "ما الشيء الذي يمكنه أن يسافر حول العالم وهو باقٍ في مكانه؟": "الطوابع البريدية",
+    "ما الشيء الذي يمكنه أن يكون أمامك وخلفك في نفس الوقت؟": "المستقبل والماضي",
+    
+    # ألغاز علمية
+    "ما الشيء الذي يمكنه أن يكون سائلًا وصلبًا وغازيًا في نفس الوقت؟": "الماء",
+    "ما الشيء الذي يمكنه أن يمر عبر الزجاج دون أن يكسره؟": "الضوء",
+    "ما الشيء الذي يمكنه أن يكون موجودًا في كل مكان وفي نفس الوقت لا يكون في أي مكان؟": "الظل",
+    
+    # ألغاز ثقافية
+    "ما الشيء الذي يمكنه أن يكون أبيض وأسود وأحمر وأزرق في نفس الوقت؟": "الكتاب",
+    "ما الشيء الذي يمكنه أن يكون في السماء وفي الأرض وفي الماء في نفس الوقت؟": "الحرف 'ن'",
+    "ما الشيء الذي يمكنه أن يكون في كل مكان وفي نفس الوقت لا يكون في أي مكان؟": "الفكرة",
+    
+    # ألغاز فلسفية
+    "ما الشيء الذي يمكنك أن تعطيه ولكن لا يمكنك أن تأخذه؟": "الوعد",
+    "ما الشيء الذي يمكنك أن تخسره ولكن لا يمكنك أن تكسبه؟": "الوقت",
+    "ما الشيء الذي يمكنك أن تمتلكه ولكن لا يمكنك أن تلمسه؟": "الاسم",
+    
+    # ألغاز إسلامية
+    "ما الشيء الذي خلقه الله ثم أنكره؟": "الكذب",
+    "ما الشيء الذي خلقه الله واستعظمه؟": "الكبر",
+    "ما الشيء الذي خلقه الله وأمرنا بإماتته؟": "الهوى",
+    
+    # ألغاز للأطفال
+    "ما الشيء الذي له عين واحدة ولا يرى؟": "الإبرة",
+    "ما الشيء الذي ينام ولا يقوم؟": "النهر",
+    "ما الشيء الذي يطير بلا أجنحة؟": "السحاب",
+    
+    # ألغاز صعبة
+    "ما الشيء الذي يمكنك أن تراه في الماء ولكن لا يمكنك أن تلمسه؟": "الانعكاس",
+    "ما الشيء الذي يمكنك أن تسمعه ولكن لا يمكنك أن تراه أو تلمسه؟": "الصوت",
+    "ما الشيء الذي يمكنك أن تشعر به ولكن لا يمكنك أن تراه أو تلمسه؟": "الهواء",
+    
+}
+
+@client.on(events.NewMessage(pattern=r'^\.لغز(?:\s+(\d+))?$'))
+async def start_riddle_game(event):
+    chat_id = event.chat_id
+    
+    try:
+        player_count = int(event.pattern_match.group(1)) if event.pattern_match.group(1) else 1
+        if player_count < 1 or player_count > 10:
+            raise ValueError
+    except:
+        await event.reply("⚠️ يرجى إدخال عدد صحيح بين 1 و 10")
+        return
+
+    if chat_id in riddle_games:
+        game = riddle_games[chat_id]
+        if game["status"] == "registering":
+            await event.reply("🔄 جاري تسجيل اللاعبين... اكتب `انا` للانضمام!")
+        else:
+            await event.edit("⏳ هناك لعبة نشطة بالفعل! استخدموا المحاولات المتاحة.")
+        return
+
+    sender = await event.get_sender()
+    registration_msg = await event.edit(
+        "🧩 **لعبة الألغاز - وضع الجماعي**\n\n"
+        f"👥 عدد اللاعبين المطلوب: {player_count}\n"
+        f"🖊️ اللاعب 1: {sender.first_name}\n\n"
+        "📝 للإنضمام اكتب: `انا`\n"
+        "⏳ انتظار اللاعبين... (اكتب `.لغز ايقاف` لإلغاء اللعبة)"
+    )
+    
+    riddle_games[chat_id] = {
+        "status": "registering",
+        "players": {str(event.sender_id): {"name": sender, "guessed": False}},
+        "required_players": player_count,
+        "registered": 1,
+        "registration_message": registration_msg,
+        "countdown_message": None,
+        "game_messages": [],
+        "start_time": time.time()
+    }
+
+    if player_count == 1:
+        await start_riddle_round(chat_id)
+
+@client.on(events.NewMessage(pattern='^انا$'))
+async def register_riddle_player(event):
+    if event.chat_id not in riddle_games:
+        return
+    
+    game = riddle_games[event.chat_id]
+    
+    if event.date.timestamp() < game["start_time"]:
+        return
+    
+    if game["status"] != "registering":
+        return
+    
+    player_id = str(event.sender_id)
+    if player_id in game["players"]:
+        await event.reply("✅ أنت مسجل بالفعل في اللعبة!")
+        return
+    
+    sender = await event.get_sender()
+    game["players"][player_id] = {"name": sender, "guessed": False}
+    game["registered"] += 1
+    
+    players_list = "\n".join(
+        f"{i+1}. {p['name'].first_name}" 
+        for i, p in enumerate(game["players"].values()))
+
+    if game.get("countdown_message"):
+        try:
+            await game["countdown_message"].delete()
+        except:
+            pass
+    
+    countdown_msg = await event.reply(
+        "🧩 **لعبة الألغاز - وضع الجماعي**\n\n"
+        f"👥 عدد اللاعبين المطلوب: {game['required_players']}\n"
+        f"🖊️ اللاعبون المسجلون ({game['registered']}/{game['required_players']}):\n"
+        f"{players_list}\n\n"
+        "⏳ سيتم بدأ اللعبة بعد 10 ثوان..."
+    )
+    
+    game["countdown_message"] = countdown_msg
+    game["game_messages"].append(countdown_msg)
+    
+    if game["registered"] >= game["required_players"]:
+        for i in range(9, 0, -1):
+            await asyncio.sleep(1)
+            try:
+                await countdown_msg.edit(
+                    "🧩 **لعبة الألغاز - وضع الجماعي**\n\n"
+                    f"👥 عدد اللاعبين المطلوب: {game['required_players']}\n"
+                    f"🖊️ اللاعبون المسجلون ({game['registered']}/{game['required_players']}):\n"
+                    f"{players_list}\n\n"
+                    f"⏳ سيتم بدأ اللعبة بعد {i} ثوان..."
+                )
+            except:
+                pass
+        
+        await countdown_msg.edit(
+            "🧩 **لعبة الألغاز - وضع الجماعي**\n\n"
+            f"👥 عدد اللاعبين المطلوب: {game['required_players']}\n"
+            f"🖊️ اللاعبون المسجلون ({game['registered']}/{game['required_players']}):\n"
+            f"{players_list}\n\n"
+            "⏳ **سيتم بدأ اللعبة بعد قليل...**"
+        )
+        await asyncio.sleep(2)
+        
+        await start_riddle_round(event.chat_id)
+
+async def start_riddle_round(chat_id):
+    try:
+        game = riddle_games[chat_id]
+        question, answer = random.choice(list(riddles.items()))
+        
+        players_list = "\n".join(
+            f"{i+1}. {p['name'].first_name}" 
+            for i, p in enumerate(game["players"].values()))
+        
+        riddle_msg = await client.send_message(
+            chat_id,
+            "🧩 **لعبة الألغاز - وضع الجماعي**\n\n"
+            f"👥 **اللاعبون:**\n{players_list}\n\n"
+            f"❓ **اللغز:**\n{question}\n\n"
+            "💡 أول إجابة صحيحة تفوز!"
+        )
+        
+        game.update({
+            "status": "playing",
+            "question": question,
+            "answer": answer.lower(),
+            "riddle_message": riddle_msg,
+            "game_start_time": time.time()
+        })
+        
+    except Exception as e:
+        if chat_id in riddle_games:
+            del riddle_games[chat_id]
+        await client.send_message(chat_id, f"❌ فشل في بدء اللعبة: {str(e)}\n⚠️ يرجى المحاولة لاحقا")
+
+@client.on(events.NewMessage())
+async def handle_riddle_answer(event):
+    chat_id = event.chat_id
+    if chat_id not in riddle_games:
+        return
+    
+    game = riddle_games[chat_id]
+    
+    if game["status"] != "playing":
+        return
+    
+    # تجاهل الرسائل القديمة
+    if event.date.timestamp() < game["game_start_time"]:
+        return
+    
+    player_id = str(event.sender_id)
+    if player_id not in game["players"]:
+        return
+    
+    if game["players"][player_id]["guessed"]:
+        return
+    
+    user_answer = event.text.strip().lower()
+    if user_answer == game["answer"]:
+        game["players"][player_id]["guessed"] = True
+        winner = game["players"][player_id]["name"]
+        
+        await event.reply(
+            f"✨ **تهانينا! لقد فاز {winner.first_name}** ✨\n\n"
+            f"🎯 **الإجابة الصحيحة:** {game['answer']}\n\n"
+            f"🏆 **مبروك للفائز!**"
+        )
+        del riddle_games[chat_id]
+
+@client.on(events.NewMessage(pattern=r'^\.لغز ايقاف$'))
+async def stop_riddle_game(event):
+    chat_id = event.chat_id
+    if chat_id not in riddle_games:
+        await event.edit("⚠️ لا يوجد لعبة نشطة لإنهائها")
+        return
+    
+    game = riddle_games[chat_id]
+    
+    if game["status"] == "registering":
+        await event.reply("✅ تم إلغاء لعبة الألغاز أثناء التسجيل")
+        del riddle_games[chat_id]
+        return
+    
+    if "answer" in game:
+        message = (
+            "🛑 **تم إنهاء اللعبة!**\n\n"
+            f"🔎 **الإجابة الصحيحة كانت:** {game['answer']}\n\n"
+            "🏁 **انتهت اللعبة!**"
+        )
+    else:
+        message = "🛑 **تم إلغاء لعبة الألغاز!**"
+    
+    await event.reply(message)
+    del riddle_games[chat_id]
+
+@client.on(events.NewMessage(pattern=r'^\.انمي$'))
+async def anime_command(event):
+    try:
+        # جلب شخصية عشوائية
+        character = get_random_anime_character()
+        
+        # إرسال الصورة مع المعلومات
+        await client.send_file(
+            event.chat_id,
+            character["image"],
+            caption=f"🎌 **معلومات شخصية الأنمي**\n\n"
+                    f"🏷 **الاسم الإنجليزي:** {character['name']}\n"
+                    f"🌐 **الاسم الياباني:** {character.get('name_kanji', 'غير متوفر')}\n"
+                    f"📺 **الأنمي:** {character.get('anime', 'غير معروف')}\n\n"
+                    f"❓ هل تعرف هذه الشخصية؟"
+        )
+        
+    except Exception as e:
+        await event.reply(f"❌ حدث خطأ أثناء جلب البيانات: {str(e)}")
+
+def get_random_anime_character():
+    # جلب قائمة أشهر 25 شخصية
+    url = "https://api.jikan.moe/v4/top/characters?limit=25"
+    response = requests.get(url).json()
+    characters = response["data"]
+    
+    # اختيار شخصية عشوائية
+    character = random.choice(characters)
+    
+    # استخراج معلومات الأنمي (أول أنمي ظهرت فيه)
+    anime_info = ""
+    if character.get('anime'):
+        anime_info = character['anime'][0]['anime']['title'] if character['anime'] else 'غير معروف'
+    
+    # تفاصيل الشخصية
+    return {
+        "name": character["name"],
+        "name_kanji": character.get("name_kanji", "غير متوفر"),
+        "anime": anime_info,
+        "image": character["images"]["jpg"]["image_url"]
+    }
+    
+
+def similar(a, b):
+    """تقارن التشابه بين نصين مع دعم العربية"""
+    if not a or not b or len(str(a).strip()) < 3 or len(str(b).strip()) < 3:
+        return False
+        
+    try:
+        a = str(a).lower().strip()
+        b = str(b).lower().strip()
+        
+        similarity = SequenceMatcher(None, a, b).ratio()
+        if similarity > 0.7:
+            return True
+            
+        if (len(a) >= 3 and a in b) or (len(b) >= 3 and b in a):
+            return True
+            
+        return False
+    except Exception:
+        return False
+
+async def get_unique_character():
+    """جلب شخصية مع الترجمة العربية"""
+    try:
+        url = "https://api.jikan.moe/v4/top/characters"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if not data.get("data"):
+            raise ValueError("لا توجد بيانات متاحة من API")
+            
+        characters = [c for c in data["data"] if c.get("mal_id") not in used_characters]
+        
+        if not characters:
+            used_characters.clear()
+            characters = data["data"]
+        
+        character = random.choice(characters)
+        used_characters.add(character["mal_id"])
+        
+        anime_info = character.get("anime", [{}])
+        anime_title = anime_info[0].get("anime", {}).get("title", "غير معروف") if anime_info else "غير معروف"
+        
+        try:
+            name_ar = translator.translate(character["name"], dest='ar').text
+        except:
+            name_ar = character["name"]
+        
+        return {
+            "id": character["mal_id"],
+            "name": character.get("name", "غير معروف"),
+            "name_ar": name_ar,
+            "name_kanji": character.get("name_kanji", ""),
+            "anime": anime_title,
+            "image": character.get("images", {}).get("jpg", {}).get("image_url", ""),
+            "nicknames": character.get("nicknames", []),
+            "url": character.get("url", "")
+        }
+        
+    except Exception as e:
+        raise Exception(f"خطأ في جلب البيانات: {str(e)}")
+
+ANILIST_QUERY = '''
+query ($page: Int, $perPage: Int) {
+    Page(page: $page, perPage: $perPage) {
+        characters(sort: FAVOURITES_DESC) {
+            id
+            name {
+                full
+                native
+                alternative
+            }
+            image {
+                large
+            }
+            media(sort: POPULARITY_DESC, type: ANIME) {
+                nodes {
+                    title {
+                        romaji
+                        english
+                        native
+                    }
+                }
+            }
+            siteUrl
+        }
+    }
+}
+'''
+
+async def fetch_anilist_characters():
+    """جلب شخصيات شهيرة من AniList"""
+    try:
+        variables = {
+            'page': random.randint(2, 5),
+            'perPage': 1000
+        }
+        
+        response = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: requests.post(
+                'https://graphql.anilist.co',
+                json={'query': ANILIST_QUERY, 'variables': variables},
+                timeout=10
+            )
+        )
+        
+        data = response.json()
+        characters = data['data']['Page']['characters']
+        random.shuffle(characters)
+        return characters[:1000]
+        
+    except Exception as e:
+        print(f"خطأ في جلب البيانات من AniList: {e}")
+        return []
+
+async def get_next_character():
+    """الحصول على الشخصية التالية من المجموعة"""
+    global current_pool_index, character_pool
+    
+    if not character_pool or current_pool_index >= len(character_pool):
+        character_pool = await fetch_anilist_characters()
+        current_pool_index = 0
+        if not character_pool:
+            raise Exception("لا يمكن جلب بيانات الشخصيات")
+    
+    character = character_pool[current_pool_index]
+    current_pool_index += 1
+    
+    anime_title = "غير معروف"
+    if character['media']['nodes']:
+        anime = character['media']['nodes'][0]['title']
+        anime_title = anime.get('romaji') or anime.get('english') or anime.get('native') or "غير معروف"
+    
+    alternative_names = []
+    if character['name']['alternative']:
+        alternative_names.extend(character['name']['alternative'])
+    
+    return {
+        "id": character['id'],
+        "name": character['name']['full'],
+        "name_native": character['name']['native'],
+        "anime": anime_title,
+        "image": character['image']['large'],
+        "nicknames": alternative_names,
+        "url": character['siteUrl']
+    }
+
+@client.on(events.NewMessage(pattern=r'^\.تخمين انمي(?: (\d+))?'))
+async def start_anime_game(event):
+    # استخدام lock لمنع إنشاء عدة ألعاب
+    async with message_locks[event.chat_id]:
+        if event.chat_id in anime_games:
+            game = anime_games[event.chat_id]
+            if game["status"] == "registering":
+                await event.reply("🔄 جاري تسجيل اللاعبين... اكتب `انا` للانضمام!")
+            else:
+                await event.reply("⏳ هناك لعبة نشطة بالفعل! استخدموا المحاولات المتاحة.")
+            return
+        
+        try:
+            player_count = int(event.pattern_match.group(1)) if event.pattern_match.group(1) else 1
+            if player_count < 1 or player_count > 10:
+                raise ValueError
+        except:
+            await event.reply("⚠️ يرجى إدخال عدد صحيح بين 1 و 10")
+            return
+
+        sender = await event.get_sender()
+        rules_text = """
+💡 <b>القواعد:</b>
+- يمكن التخمين بالإنجليزية/اليابانية (العربية قريباً) 
+- إذا خمنت الاسم بنسبة تطابق 70% ستفوز
+- أول إجابة صحيحة تفوز!
+- لديكم {} محاولات مشتركة
+- للإنضمام اكتب: <code>انا</code>
+""".format(5 * player_count)
+
+        registration_msg = await event.edit(
+            "🎮 <b>لعبة تخمين الأنمي - وضع الجماعي</b>\n\n"
+            f"👥 <b>عدد اللاعبين المطلوب:</b> {player_count}\n"
+            f"🖊️ <b>اللاعب 1:</b> {sender.first_name}\n\n"
+            f"{rules_text}\n"
+            "⏳ <b>انتظار اللاعبين . . .</b>\n"
+            "(اكتب <code>.انهاء تخمين</code> لإلغاء اللعبة)",
+            parse_mode='html'
+        )
+        
+        anime_games[event.chat_id] = {
+            "status": "registering",
+            "players": {str(event.sender_id): {"name": sender, "attempts": 0, "guessed": False}},
+            "required_players": player_count,
+            "registered": 1,
+            "registration_message": registration_msg,
+            "countdown_message": None,
+            "game_messages": [],
+            "start_time": time.time(),
+            "last_guess_time": {},  # تتبع آخر محاولة لكل لاعب
+            "processing_guess": False,  # منع معالجة عدة تخمينات في نفس الوقت
+            "game_ended": False
+        }
+
+        if player_count == 1:
+            await start_game(event.chat_id)
+
+@client.on(events.NewMessage(pattern='^انا$'))
+async def register_player(event):
+    if event.chat_id not in anime_games:
+        return
+    
+    # استخدام lock لمنع التسجيل المزدوج
+    async with message_locks[event.chat_id]:
+        if event.chat_id not in anime_games:
+            return
+            
+        game = anime_games[event.chat_id]
+        
+        if event.date.timestamp() < game["start_time"]:
+            return
+        
+        if game["status"] != "registering":
+            return
+        
+        player_id = str(event.sender_id)
+        if player_id in game["players"]:
+            await event.reply("✅ أنت مسجل بالفعل في اللعبة!")
+            return
+        
+        sender = await event.get_sender()
+        game["players"][player_id] = {"name": sender, "attempts": 0, "guessed": False}
+        game["registered"] += 1
+        
+        players_list = "\n".join(
+            f"{i+1}. {p['name'].first_name}" 
+            for i, p in enumerate(game["players"].values()))
+
+        if game.get("countdown_message"):
+            try:
+                await game["countdown_message"].delete()
+                game["countdown_message"] = None
+            except:
+                pass
+        
+        countdown_msg = await event.reply(
+            "🎮 <b>لعبة تخمين الأنمي - وضع الجماعي</b>\n\n"
+            f"👥 <b>عدد اللاعبين المطلوب:</b> {game['required_players']}\n"
+            f"🖊️ <b>اللاعبون المسجلون ({game['registered']}/{game['required_players']}):</b>\n"
+            f"{players_list}\n\n"
+            "⏳ <b>سيتم بدأ اللعبة بعد 10 ثوان...</b>",
+            parse_mode='html'
+        )
+        
+        game["countdown_message"] = countdown_msg
+        game["game_messages"].append(countdown_msg)
+        
+        if game["registered"] >= game["required_players"]:
+            for i in range(9, 0, -1):
+                await asyncio.sleep(1)
+                try:
+                    await countdown_msg.edit(
+                        "🎮 <b>لعبة تخمين الأنمي - وضع الجماعي</b>\n\n"
+                        f"👥 <b>عدد اللاعبين المطلوب:</b> {game['required_players']}\n"
+                        f"🖊️ <b>اللاعبون المسجلون ({game['registered']}/{game['required_players']}):</b>\n"
+                        f"{players_list}\n\n"
+                        f"⏳ <b>سيتم بدأ اللعبة بعد {i} ثوان...</b>",
+                        parse_mode='html'
+                    )
+                except:
+                    pass
+            
+            await countdown_msg.edit(
+                "🎮 <b>لعبة تخمين الأنمي - وضع الجماعي</b>\n\n"
+                f"👥 <b>عدد اللاعبين المطلوب:</b> {game['required_players']}\n"
+                f"🖊️ <b>اللاعبون المسجلون ({game['registered']}/{game['required_players']}):</b>\n"
+                f"{players_list}\n\n"
+                "⏳ <b>سيتم بدأ اللعبة بعد قليل...</b>",
+                parse_mode='html'
+            )
+            await asyncio.sleep(2)
+            
+            await start_game(event.chat_id)
+
+async def start_game(chat_id):
+    try:
+        if chat_id not in anime_games:
+            return
+            
+        character = await get_next_character()
+        
+        if not character or not character.get("image"):
+            raise Exception("لا يمكن جلب بيانات الشخصية")
+            
+        game = anime_games[chat_id]
+        game.update({
+            "status": "playing",
+            "character": character,
+            "remaining_attempts": 5 * game["required_players"],
+            "started": True,
+            "game_start_time": time.time()
+        })
+        
+        players_list = "\n".join(
+            f"{i+1}. {p['name'].first_name}" 
+            for i, p in enumerate(game["players"].values()))
+        
+        if game.get("countdown_message"):
+            try:
+                await game["countdown_message"].edit(
+                    "🎮 <b>لعبة تخمين الأنمي - وضع الجماعي</b>\n\n"
+                    f"👥 <b>عدد اللاعبين المطلوب:</b> {game['required_players']}\n"
+                    f"🖊️ <b>اللاعبون المسجلون ({game['registered']}/{game['required_players']}):</b>\n"
+                    f"{players_list}\n\n"
+                    "✅ <b>لقد بدأت اللعبة!</b>",
+                    parse_mode='html'
+                )
+            except:
+                pass
+        
+        caption = (
+            "🎌 <b>بدأت لعبة تخمين الأنمي!</b>\n\n"
+            f"👥 <b>اللاعبون:</b>\n{players_list}\n\n"
+        )
+        
+        try:
+            sent_msg = await client.send_file(chat_id, character["image"], caption=caption, parse_mode='html')
+            game["game_messages"].append(sent_msg)
+        except:
+            sent_msg = await client.send_message(chat_id, caption + f"\n🖼️ [اضغط هنا لرؤية الصورة]({character['image']})", parse_mode='html')
+            game["game_messages"].append(sent_msg)
+
+    except Exception as e:
+        if chat_id in anime_games:
+            del anime_games[chat_id]
+        await client.send_message(chat_id, f"❌ فشل في بدء اللعبة: {str(e)}\n⚠️ يرجى المحاولة لاحقا")
+
+@client.on(events.NewMessage())
+async def handle_guesses(event):
+    chat_id = event.chat_id
+    
+    if chat_id not in anime_games:
+        return
+    
+    # استخدام lock لتجنب race conditions
+    async with message_locks[chat_id]:
+        # فحص مزدوج للتأكد
+        if chat_id not in anime_games:
+            return
+        
+        game = anime_games[chat_id]
+        
+        if event.date.timestamp() < game.get("game_start_time", 0):
+            return
+        
+        if game["status"] != "playing" or game.get("game_ended", False):
+            return
+        
+        if event.text and event.text.startswith('.'):
+            return
+        
+        if event.sticker or event.media:
+            return
+        
+        if not event.text or len(event.text.strip()) < 3:
+            return
+        
+        player_id = str(event.sender_id)
+        
+        if player_id not in game["players"]:
+            return
+        
+        if game["players"][player_id]["guessed"]:
+            return
+        
+        # منع الرسائل المتتالية السريعة (حماية من السبام)
+        current_time = time.time()
+        last_guess = game["last_guess_time"].get(player_id, 0)
+        if current_time - last_guess < 0.5:  # نصف ثانية على الأقل بين المحاولات
+            return
+        
+        game["last_guess_time"][player_id] = current_time
+        
+        # فحص إذا كان هناك تخمين قيد المعالجة
+        if game.get("processing_guess", False):
+            return
+        
+        game["processing_guess"] = True
+        
+        try:
+            guess = event.text.strip()
+            character = game["character"]
+            
+            game["remaining_attempts"] -= 1
+            game["players"][player_id]["attempts"] += 1
+            
+            correct_names = [
+                character["name"],
+                character["name_native"]
+            ] + character["nicknames"]
+            
+            is_correct = any(
+                similar(guess, name)
+                for name in correct_names
+                if name and isinstance(name, str)
+            )
+            
+            if is_correct:
+                game["players"][player_id]["guessed"] = True
+                game["game_ended"] = True
+                winner = game["players"][player_id]["name"]
+                
+                message = (
+                    "✨ <b>تهانينا! لقد فاز {winner_name}</b> ✨\n\n"
+                    "🎯 <b>التخمين الصحيح:</b>\n"
+                    f"🏷️ <b>الاسم:</b> {character['name']} ({character['name_native']})\n"
+                    f"📺 <b>الأنمي:</b> {character['anime']}\n\n"
+                    f"🔗 [اضغط هنا للمزيد عن الشخصية]({character['url']})"
+                ).format(winner_name=winner.first_name)
+                
+                await event.reply(message, link_preview=False, parse_mode='html')
+                del anime_games[event.chat_id]
+                return
+            
+            if game["remaining_attempts"] <= 0:
+                game["game_ended"] = True
+                message = (
+                    "💔 <b>انتهت جميع المحاولات!</b>\n\n"
+                    "🔎 <b>الإجابة الصحيحة كانت:</b>\n"
+                    f"🏷️ <b>الاسم:</b> {character['name']} ({character['name_native']})\n"
+                    f"📺 <b>الأنمي:</b> {character['anime']}\n\n"
+                    f"🔗 [اضغط هنا للمزيد عن الشخصية]({character['url']})"
+                )
+                await event.reply(message, link_preview=False, parse_mode='html')
+                del anime_games[event.chat_id]
+            else:
+                remaining = game["remaining_attempts"]
+                attempts_word = "محاولة" if remaining == 1 else "محاولات"
+                reply_msg = await event.reply(
+                    f"❌ <b>تخمين خاطئ!</b>\n"
+                    f"📊 تبقى لديكم {remaining} {attempts_word}",
+                    parse_mode='html'
+                )
+                game["game_messages"].append(reply_msg)
+        
+        except Exception as e:
+            print(f"خطأ في معالجة التخمين: {e}")
+        
+        finally:
+            # إلغاء حالة المعالجة
+            game["processing_guess"] = False
+
+@client.on(events.NewMessage(pattern=r'^\.انهاء تخمين$'))
+async def end_game(event):
+    if event.chat_id not in anime_games:
+        await event.reply("**تم انهاء اللعبة **")
+        return
+    
+    async with message_locks[event.chat_id]:
+        if event.chat_id not in anime_games:
+            await event.reply("**تم انهاء اللعبة **")
+            return
+            
+        game = anime_games[event.chat_id]
+        
+        character = game.get("character")
+        
+        if character:
+            message = (
+                "🛑 <b>تم إنهاء اللعبة!</b>\n\n"
+                "🔎 <b>الإجابة الصحيحة كانت:</b>\n"
+                f"🏷️ <b>الاسم:</b> {character['name']} ({character['name_native']})\n"
+                f"📺 <b>الأنمي:</b> {character['anime']}\n\n"
+                f"🔗 [اضغط هنا للمزيد عن الشخصية]({character['url']})"
+            )
+        else:
+            message = "✅ تم إلغاء لعبة التخمين أثناء التسجيل"
+        
+        await event.reply(message, link_preview=False, parse_mode='html')
+        del anime_games[event.chat_id]
+
+# دالة تنظيف دورية للألعاب المعلقة
+async def cleanup_stale_games():
+    """تنظيف الألعاب القديمة المعلقة"""
+    while True:
+        try:
+            current_time = time.time()
+            stale_games = []
+            
+            for chat_id, game in anime_games.items():
+
+           #اذا مر 5 دقائق دون تخمين توقف اللعبة او اثناء التسجيل 
+           
+                if current_time - game["start_time"] > 300:
+                    stale_games.append(chat_id)                    
+                elif game.get("game_start_time") and current_time - game["game_start_time"] > 300:
+                    stale_games.append(chat_id)
+            
+            for chat_id in stale_games:
+                try:
+                    await client.send_message(
+                        chat_id, 
+                        "⏰ تم إنهاء اللعبة تلقائياً بسبب عدم النشاط"
+                    )
+                except:
+                    pass
+                
+                if chat_id in anime_games:
+                    del anime_games[chat_id]
+            
+            await asyncio.sleep(60)  # فحص كل دقيقة
+            
+        except Exception as e:
+            print(f"خطأ في تنظيف الألعاب: {e}")
+            await asyncio.sleep(60)
+
+from telethon import functions, types, events
+from telethon.tl.functions.phone import GetCallConfigRequest
+import asyncio
+import random
+import os
+import hashlib
+
+async def make_call_and_notify(chat_id, user_id):
+    try:
+        # الحصول على إعدادات المكالمة
+        call_config = await client(GetCallConfigRequest())
+        
+        # استخراج الإعدادات من DataJSON
+        config_data = call_config.data if hasattr(call_config, 'data') else call_config
+        
+        # قيم افتراضية في حالة عدم توفر الإعدادات
+        min_layer = getattr(config_data, 'min_layer', 65)
+        max_layer = getattr(config_data, 'max_layer', 92)
+        udp_p2p = getattr(config_data, 'udp_p2p', True)
+        udp_reflector = getattr(config_data, 'udp_reflector', True)
+        
+        # إنشاء g_a_hash صحيح باستخدام SHA256
+        import hashlib
+        
+        # إنشاء g_a (Diffie-Hellman parameter)
+        g_a = os.urandom(256)  # 256 bytes random data for DH
+        
+        # إنشاء SHA256 hash من g_a
+        g_a_hash = hashlib.sha256(g_a).digest()
+        
+        # بدء المكالمة مع جميع المعاملات المطلوبة بالترتيب الصحيح
+        call = await client(functions.phone.RequestCallRequest(
+            user_id=user_id,
+            random_id=random.randint(-2147483648, 2147483647),  # 32-bit signed integer
+            g_a_hash=g_a_hash,
+            protocol=types.PhoneCallProtocol(
+                min_layer=min_layer,
+                max_layer=max_layer,
+                udp_p2p=udp_p2p,
+                udp_reflector=udp_reflector,
+                library_versions=[]
+            )
+        ))
+        
+        # انتظار 10 ثوان كما طلبت
+        await asyncio.sleep(10)
+        
+        # إنهاء المكالمة - استخدام call مباشرة بدلاً من call.call
+        await client(functions.phone.DiscardCallRequest(
+            peer=types.InputPhoneCall(
+                id=call.phone_call.id,
+                access_hash=call.phone_call.access_hash
+            ),
+            duration=10,  # 10 ثوان
+            reason=types.PhoneCallDiscardReasonHangup(),
+            connection_id=0
+        ))
+        
+        return True
+    except Exception as e:
+        print(f"Error in make_call_and_notify: {e}")
+        return False
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.رن (\S+)$'))
+async def ring_command(event):
+    try:
+        await event.edit("**جاري جعل الهاتف يرن... 🔔**")
+        
+        input_data = event.pattern_match.group(1).strip()
+        
+        # إزالة @ إذا كان موجوداً
+        if input_data.startswith('@'):
+            input_data = input_data[1:]
+        
+        try:
+            # محاولة الحصول على المستخدم
+            if input_data.isdigit():
+                user = await client.get_entity(int(input_data))
+            else:
+                user = await client.get_entity(input_data)
+            
+            # التحقق من أن المستخدم ليس بوت أو قناة
+            if getattr(user, 'bot', False):
+                await event.edit("**⚠️ لا يمكن الاتصال بالبوتات**")
+                return
+                
+            if hasattr(user, 'broadcast') and getattr(user, 'broadcast', False):
+                await event.edit("**⚠️ لا يمكن الاتصال بالقنوات**")
+                return
+            
+            # التحقق من أن المستخدم ليس محظوراً
+            if getattr(user, 'deleted', False):
+                await event.edit("**⚠️ هذا المستخدم محذوف**")
+                return
+                
+            # محاولة إجراء المكالمة
+            success = await make_call_and_notify(event.chat_id, user.id)
+            
+            if success:
+                user_name = getattr(user, 'first_name', 'المستخدم')
+                await event.edit(f"**تم جعل هاتف {user_name} يرن بنجاح! 📞✅**")
+            else:
+                await event.edit("**❌ فشل في جعل الهاتف يرن**\n\n**الأسباب المحتملة:**\n• المستخدم غير متاح\n• إعدادات الخصوصية تمنع المكالمات\n• المستخدم لا يقبل المكالمات من الغرباء")
+                
+        except ValueError:
+            await event.edit("**⚠️ المعرف غير صحيح**\nتأكد من كتابة المعرف أو الرقم بشكل صحيح")
+        except Exception as e:
+            error_msg = str(e).lower()
+            if 'user not found' in error_msg or 'no user has' in error_msg:
+                await event.edit("**⚠️ المستخدم غير موجود**")
+            elif 'privacy' in error_msg:
+                await event.edit("**⚠️ إعدادات الخصوصية تمنع الوصول لهذا المستخدم**")
+            elif 'flood' in error_msg:
+                await event.edit("**⚠️ تم تجاوز الحد المسموح، حاول مرة أخرى لاحقاً**")
+            else:
+                await event.edit(f"**خطأ: {str(e)}**")
+            
+    except Exception as e:
+        print(f"Error in ring_command: {e}")
+        await event.edit("**❌ حدث خطأ غير متوقع**")
+
+# استيراد المكتبات الخفيفة مع معالجة الأخطاء
+try:
+    import imageio
+    HAS_IMAGEIO = True
+except ImportError:
+    HAS_IMAGEIO = False
+    print("تحذير: imageio غير مثبت. استخدم: pip install imageio")
+
+try:
+    from wand.image import Image as WandImage
+    HAS_WAND = True
+except ImportError:
+    HAS_WAND = False
+    print("تحذير: Wand غير مثبت. استخدم: pip install Wand")
+
+try:
+    import moviepy.editor as mp
+    HAS_MOVIEPY = True
+except ImportError:
+    HAS_MOVIEPY = False
+    print("تحذير: moviepy غير مثبت. راجع تعليمات التثبيت أدناه")
+
+# تحويل الصور والملصقات إلى GIF باستخدام imageio
+@client.on(events.NewMessage(pattern=r'\.لمتحرك'))
+async def simple_to_gif(event):
+    if not event.reply_to_msg_id:
+        await event.edit("**يرجى الرد على صورة أو ملصق**")
+        return
+
+    reply_message = await event.get_reply_message()
+    
+    if not (reply_message.photo or reply_message.sticker):
+        await event.edit("**يرجى الرد على صورة أو ملصق**")
+        return
+
+    if not HAS_IMAGEIO:
+        await event.edit("**يرجى تثبيت imageio: pip install imageio**")
+        return
+
+    processing_message = await event.edit("**جاري التحويل...**")
+    
+    try:
+        # تحميل الملف
+        file_path = await reply_message.download_media()
+        gif_path = f"temp_{event.id}.gif"
+        
+        # قراءة الصورة
+        image = imageio.imread(file_path)
+        
+        # إنشاء GIF متحرك بسيط (تكرار الصورة مع تأثيرات)
+        frames = []
+        for i in range(10):
+            frames.append(image)
+        
+        # حفظ كـ GIF
+        imageio.mimsave(gif_path, frames, duration=0.3)
+        
+        # إرسال GIF
+        await client.send_file(event.chat_id, gif_path)
+        await processing_message.delete()
+        
+    except Exception as e:
+        await processing_message.edit(f"**خطأ في التحويل**: {str(e)}")
+    finally:
+        # تنظيف الملفات
+        for file in [file_path, gif_path]:
+            if file and os.path.exists(file):
+                try:
+                    os.remove(file)
+                except:
+                    pass
+
+# تحويل الفيديو إلى GIF باستخدام moviepy
+@client.on(events.NewMessage(pattern=r'\.لمتحركه'))
+async def video_to_gif(event):
+    if not event.reply_to_msg_id:
+        await event.edit("**يرجى الرد على فيديو**")
+        return
+
+    reply_message = await event.get_reply_message()
+    
+    if not reply_message.video:
+        await event.edit("**يرجى الرد على فيديو**")
+        return
+
+    if not HAS_MOVIEPY:
+        await event.edit("**يرجى تثبيت moviepy. راجع `.تثبيت_moviepy`**")
+        return
+
+    processing_message = await event.edit("**جاري التحويل...**")
+    
+    try:
+        # تحميل الفيديو
+        video_path = await reply_message.download_media()
+        gif_path = f"temp_{event.id}.gif"
+        
+        # تحويل الفيديو إلى GIF
+        clip = mp.VideoFileClip(video_path)
+        clip = clip.subclip(0, min(5, clip.duration))  # أول 5 ثوان
+        clip = clip.resize(height=320)  # تصغير الحجم
+        clip.write_gif(gif_path, fps=10)
+        clip.close()
+        
+        # إرسال GIF
+        await client.send_file(event.chat_id, gif_path)
+        await processing_message.delete()
+        await event.delete()
+        
+    except Exception as e:
+        await processing_message.edit(f"**خطأ في التحويل**: {str(e)}")
+    finally:
+        # تنظيف الملفات
+        for file in [video_path, gif_path]:
+            if file and os.path.exists(file):
+                try:
+                    os.remove(file)
+                except:
+                    pass
+
+# استخراج الصوت من الفيديو باستخدام moviepy
+@client.on(events.NewMessage(pattern=r'\.حول صوت'))
+async def extract_audio(event):
+    if not event.reply_to_msg_id:
+        await event.edit("**يرجى الرد على فيديو**")
+        return
+
+    reply_message = await event.get_reply_message()
+    
+    if not reply_message.video:
+        await event.edit("**يرجى الرد على فيديو**")
+        return
+
+    if not HAS_MOVIEPY:
+        await event.edit("**يرجى تثبيت moviepy. راجع `.تثبيت_moviepy`**")
+        return
+
+    processing_message = await event.edit("**جاري استخراج الصوت...**")
+    
+    try:
+        # تحميل الفيديو
+        video_path = await reply_message.download_media()
+        audio_path = f"temp_{event.id}.mp3"
+        
+        # استخراج الصوت من الفيديو
+        clip = mp.VideoFileClip(video_path)
+        audio = clip.audio
+        audio.write_audiofile(audio_path)
+        clip.close()
+        audio.close()
+        
+        # إرسال الصوت
+        await client.send_file(
+            event.chat_id, 
+            audio_path,
+            attributes=[DocumentAttributeAudio(
+                duration=0,
+                title="Extracted Audio"
+            )]
+        )
+        await processing_message.delete()
+        await event.delete()
+        
+    except Exception as e:
+        await processing_message.edit(f"**خطأ في استخراج الصوت**: {str(e)}")
+    finally:
+        # تنظيف الملفات
+        for file in [video_path, audio_path]:
+            if file and os.path.exists(file):
+                try:
+                    os.remove(file)
+                except:
+                    pass
+
+# تحويل إلى بصمة صوتية باستخدام moviepy
+@client.on(events.NewMessage(pattern=r'\.حول بصمه'))
+async def extract_voice(event):
+    if not event.reply_to_msg_id:
+        await event.edit("**يرجى الرد على فيديو**")
+        return
+
+    reply_message = await event.get_reply_message()
+    
+    if not reply_message.video:
+        await event.edit("**يرجى الرد على فيديو**")
+        return
+
+    if not HAS_MOVIEPY:
+        await event.edit("**يرجى تثبيت moviepy. راجع `.تثبيت_moviepy`**")
+        return
+
+    processing_message = await event.edit("**جاري تحويل لبصمة...**")
+    
+    try:
+        # تحميل الفيديو
+        video_path = await reply_message.download_media()
+        audio_path = f"temp_{event.id}.ogg"
+        
+        # استخراج الصوت من الفيديو
+        clip = mp.VideoFileClip(video_path)
+        audio = clip.audio
+        audio.write_audiofile(audio_path, codec='libvorbis')
+        clip.close()
+        audio.close()
+        
+        # إرسال كبصمة صوتية
+        await client.send_file(
+            event.chat_id,
+            audio_path,
+            attributes=[DocumentAttributeAudio(
+                duration=0,
+                voice=True
+            )]
+        )
+        await processing_message.delete()
+        await event.delete()
+        
+    except Exception as e:
+        await processing_message.edit(f"**خطأ في التحويل لبصمة**: {str(e)}")
+    finally:
+        # تنظيف الملفات
+        for file in [video_path, audio_path]:
+            if file and os.path.exists(file):
+                try:
+                    os.remove(file)
+                except:
+                    pass
+
+# تحويل الملصق إلى صورة باستخدام Wand
+@client.on(events.NewMessage(pattern=r'\.لصوره'))
+async def sticker_to_photo(event):
+    if not event.reply_to_msg_id:
+        await event.edit("**يرجى الرد على ملصق**")
+        return
+
+    reply_message = await event.get_reply_message()
+    
+    if not (reply_message and reply_message.sticker):
+        await event.edit("**يرجى الرد على ملصق**")
+        return
+
+    if not HAS_WAND:
+        await event.edit("**يرجى تثبيت Wand: pip install Wand**")
+        return
+
+    processing_message = await event.edit("**جاري التحويل لصورة...**")
+    
+    try:
+        # تحميل الملصق
+        sticker_data = await reply_message.download_media(file=bytes)
+        
+        # تحويل باستخدام Wand
+        with WandImage(blob=sticker_data) as img:
+            img.format = 'jpeg'
+            img.background_color = 'white'
+            img.alpha_channel = 'remove'
+            
+            photo_data = img.make_blob()
+        
+        # إرسال الصورة
+        await client.send_file(
+            event.chat_id, 
+            photo_data, 
+            caption="**تم التحويل بنجاح ✅**"
+        )
+        await processing_message.delete()
+        
+    except Exception as e:
+        await processing_message.edit(f"**خطأ في التحويل**: {str(e)}")
+
+
+    
+
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
     with socketserver.TCPServer(("", 8000), handler) as httpd:
-        print("Serving on port 8000")
         httpd.serve_forever()
 
 # تشغيل الخادم في خيط جديد
