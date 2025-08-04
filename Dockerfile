@@ -5,7 +5,12 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     imagemagick \
     libmagickwand-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
+
+# إعداد متغيرات البيئة لـ ImageMagick
+ENV MAGICK_HOME=/usr
+ENV PATH="$MAGICK_HOME/bin:$PATH"
 
 # إنشاء مجلد العمل
 WORKDIR /app
