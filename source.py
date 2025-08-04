@@ -98,7 +98,11 @@ from telethon.tl.types import (
 # ========== ثوابت التليجرام ==========
 API_ID = os.getenv('API_ID')  # أدخل الـ API_ID الخاص بك
 API_HASH = os.getenv('API_HASH') # أدخل الـ API_HASH الخاص بك
-AUTHORIZED_USERS = [6450027446]  # قائمة المستخدمين المخولين (بصلاحيات مطور)
+
+# ========== المستخدمون المصرح لهم ==========
+AUTHORIZED_USERS = [
+    int(uid.strip()) for uid in os.getenv("AUTHORIZED_USERS", "").split(",") if uid.strip().isdigit()
+]
 
 STRING_SESSION = os.getenv('STRING_SESSION') #اضف سيشن 
 
