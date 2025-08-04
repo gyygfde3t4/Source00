@@ -62,31 +62,16 @@ RUN pip install --no-cache-dir moviepy>=1.0.3
 RUN pip install --no-cache-dir -r requirements.txt
 
 # التحقق الشامل من التثبيت
-RUN python -c "
-import sys
-print('🐍 Python version:', sys.version)
-
-# اختبار جميع المكتبات
-libraries = ['imageio', 'numpy', 'PIL', 'wand', 'moviepy']
-for lib in libraries:
-    try:
-        module = __import__(lib)
-        version = getattr(module, '__version__', 'غير معروف')
-        print(f'✅ {lib}: {version}')
-    except Exception as e:
-        print(f'❌ {lib}: {e}')
-
-# اختبار عملي لـ MoviePy
-try:
-    from moviepy.editor import ColorClip
-    test_clip = ColorClip(size=(10, 10), color=(255, 0, 0), duration=0.1)
-    test_clip.close()
-    print('✅ MoviePy: الاختبار العملي نجح')
-except Exception as e:
-    print(f'❌ MoviePy test failed: {e}')
-
-print('🎯 جميع الاختبارات اكتملت!')
-"
+RUN python -c "\
+import sys; \
+print('🐍 Python version:', sys.version); \
+libraries = ['imageio', 'numpy', 'PIL', 'wand', 'moviepy']; \
+[print(f'✅ {lib}: {getattr(__import__(lib), \"__version__\", \"غير معروف\")}') if __import__(lib) else print(f'❌ {lib}: failed') for lib in libraries]; \
+from moviepy.editor import ColorClip; \
+test_clip = ColorClip(size=(10, 10), color=(255, 0, 0), duration=0.1); \
+test_clip.close(); \
+print('✅ MoviePy: الاختبار العملي نجح'); \
+print('🎯 جميع الاختبارات اكتملت!')"
 
 # نسخ سكريبت الإعداد
 COPY setup_moviepy.sh /usr/local/bin/
