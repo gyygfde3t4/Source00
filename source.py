@@ -4398,805 +4398,223 @@ async def ring_command(event):
         await event.edit("**❌ حدث خطأ غير متوقع**")
 
 
-import tempfile
-import subprocess
-
-# استيراد المكتبات الخفيفة مع معالجة الأخطاء المحسنة
-try:
-    import imageio
-    HAS_IMAGEIO = True
-    print("✅ imageio: تم التحميل بنجاح")
-except ImportError:
-    HAS_IMAGEIO = False
-    print("❌ تحذير: imageio غير مثبت. استخدم: pip install imageio")
-
-try:
-    from wand.image import Image as WandImage
-    from wand.color import Color
-    HAS_WAND = True
-    print("✅ Wand: تم التحميل بنجاح")
-except ImportError:
-    HAS_WAND = False
-    print("❌ تحذير: Wand غير مثبت. استخدم: pip install Wand")
-
-try:
-    from PIL import Image as PILImage
-    HAS_PIL = True
-    print("✅ PIL: تم التحميل بنجاح")
-except ImportError:
-    HAS_PIL = False
-    print("❌ تحذير: PIL غير مثبت. استخدم: pip install Pillow")
-
-# معالجة MoviePy المحسنة
-HAS_MOVIEPY = False
-mp = None
-
-def setup_moviepy():
-    """إعداد MoviePy مع معالجة شاملة للأخطاء"""
-    global HAS_MOVIEPY, mp
-    
-    try:
-        # إعداد متغيرات البيئة أولاً
-        os.environ['IMAGEIO_FFMPEG_EXE'] = '/usr/bin/ffmpeg'
-        os.environ['FFMPEG_BINARY'] = '/usr/bin/ffmpeg'
-        
-        # تحميل imageio-ffmpeg
-        try:
-            import imageio_ffmpeg
-            imageio_ffmpeg.download()
-        except:
-            pass
-        
-        # استيراد MoviePy
-        import moviepy.editor as mp_module
-        mp = mp_module
-        
-        # اختبار سريع
-        test_clip = mp.ColorClip(size=(10, 10), color=(255, 0, 0), duration=0.1)
-        test_clip.close()
-        
-        HAS_MOVIEPY = True
-        print("✅ MoviePy: تم التحميل والإعداد بنجاح")
-        
-        # فحص FFmpeg
-        try:
-            result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                print("✅ FFmpeg: متاح ويعمل")
-            else:
-                print("⚠️ FFmpeg: متاح لكن قد يواجه مشاكل")
-        except:
-            print("❌ FFmpeg: غير متاح - بعض وظائف MoviePy قد لا تعمل")
-            
-    except Exception as e:
-        HAS_MOVIEPY = False
-        print(f"❌ MoviePy: فشل في التحميل - {str(e)}")
-        print("للإصلاح:")
-        print("1. تأكد من تثبيت: pip install moviepy imageio-ffmpeg")
-        print("2. تأكد من وجود FFmpeg: apt-get install ffmpeg")
-
-# تشغيل إعداد MoviePy
-setup_moviepy()
-
-# دالة مساعدة لإنشاء ملف مؤقت آمن
-def create_temp_file(suffix=""):
-    """إنشاء ملف مؤقت آمن"""
-    fd, path = tempfile.mkstemp(suffix=suffix)
-    os.close(fd)
-    return path
-
-# دالة تنظيف الملفات المحسنة
-def cleanup_files(*files):
-    """تنظيف الملفات بأمان"""
-    for file_path in files:
-        if file_path and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception as e:
-                print(f"تحذير: لا يمكن حذف {file_path}: {e}")
-
-# تحويل الصور والملصقات إلى GIF باستخدام imageio - محسن
-@client.on(events.NewMessage(pattern=r'\.لمتحرك'))
-async def simple_to_gif(event):
-    if not event.reply_to_msg_id:
-        await event.edit("**يرجى الرد على صورة أو ملصق**")
-        return
-
-    reply_message = await event.get_reply_message()
-    
-    if not (reply_message.photo or reply_message.sticker):
-        await event.edit("**يرجى الرد على صورة أو ملصق**")
-        return
-
-    if not HAS_IMAGEIO:
-        await event.edit("**❌ imageio غير متاح\nيرجى تثبيت: pip install imageio**")
-        return
-
-    processing_message = await event.edit("**🔄 جاري التحويل إلى GIF...**")
-    
-    file_path = None
-    gif_path = None
-    
-    try:
-        # تحميل الملف
-        file_path = await reply_message.download_media()
-        gif_path = create_temp_file(".gif")
-        
-        # قراءة الصورة
-        image = imageio.imread(file_path)
-        
-        # إنشاء تأثيرات متحركة
-        frames = []
-        
-        # تأثير الدوران والتلاشي
-        for i in range(20):
-            frame = image.copy()
-            # تأثير التلاشي
-            alpha = 0.3 + 0.7 * (0.5 + 0.5 * abs(((i / 10) % 2) - 1))
-            if len(frame.shape) == 3:
-                frame = (frame * alpha).astype('uint8')
-            frames.append(frame)
-        
-        # حفظ كـ GIF مع إعدادات محسنة
-        imageio.mimsave(gif_path, frames, duration=0.2, loop=0)
-        
-        # إرسال GIF
-        await client.send_file(
-            event.chat_id, 
-            gif_path,
-            caption="**✅ تم التحويل إلى GIF بنجاح**"
-        )
-        await processing_message.delete()
-        await event.delete()
-        
-    except Exception as e:
-        await processing_message.edit(f"**❌ خطأ في التحويل**: {str(e)}")
-    finally:
-        cleanup_files(file_path, gif_path)
-
-# تحويل الفيديو إلى GIF باستخدام moviepy - محسن
-@client.on(events.NewMessage(pattern=r'\.لمتحركه'))
-async def video_to_gif(event):
-    if not event.reply_to_msg_id:
-        await event.edit("**يرجى الرد على فيديو**")
-        return
-
-    reply_message = await event.get_reply_message()
-    
-    if not reply_message.video:
-        await event.edit("**يرجى الرد على فيديو**")
-        return
-
-    if not HAS_MOVIEPY:
-        await event.edit("**❌ MoviePy غير متاح**\nتحقق من التثبيت والإعدادات")
-        return
-
-    processing_message = await event.edit("**🔄 جاري تحويل الفيديو إلى GIF...**")
-    
-    video_path = None
-    gif_path = None
-    
-    try:
-        # تحميل الفيديو
-        video_path = await reply_message.download_media()
-        gif_path = create_temp_file(".gif")
-        
-        # تحويل الفيديو إلى GIF
-        with mp.VideoFileClip(video_path) as clip:
-            # قص الفيديو إلى أول 15 ثانية أو المدة الكاملة
-            duration = min(15, clip.duration)
-            clip = clip.subclip(0, duration)
-            
-            # تحسين الحجم والجودة
-            # تصغير الحجم للحصول على ملف أصغر
-            if clip.w > 480:
-                clip = clip.resize(width=480)
-            elif clip.h > 480:
-                clip = clip.resize(height=480)
-            
-            # كتابة GIF مع إعدادات محسنة
-            clip.write_gif(
-                gif_path, 
-                fps=12,
-                program='ffmpeg',
-                opt='optimizeplus',
-                verbose=False,
-                logger=None
-            )
-        
-        # إرسال GIF
-        await client.send_file(
-            event.chat_id, 
-            gif_path,
-            caption=f"**✅ تم التحويل إلى GIF بنجاح**\n**المدة**: {duration:.1f} ثانية"
-        )
-        await processing_message.delete()
-        await event.delete()
-        
-    except Exception as e:
-        await processing_message.edit(f"**❌ خطأ في التحويل**: {str(e)}")
-    finally:
-        cleanup_files(video_path, gif_path)
-
-# استخراج الصوت من الفيديو - محسن
-@client.on(events.NewMessage(pattern=r'\.حول صوت'))
-async def extract_audio(event):
-    if not event.reply_to_msg_id:
-        await event.edit("**يرجى الرد على فيديو**")
-        return
-
-    reply_message = await event.get_reply_message()
-    
-    if not reply_message.video:
-        await event.edit("**يرجى الرد على فيديو**")
-        return
-
-    if not HAS_MOVIEPY:
-        await event.edit("**❌ MoviePy غير متاح**\nتحقق من التثبيت والإعدادات")
-        return
-
-    processing_message = await event.edit("**🔄 جاري استخراج الصوت...**")
-    
-    video_path = None
-    audio_path = None
-    
-    try:
-        # تحميل الفيديو
-        video_path = await reply_message.download_media()
-        audio_path = create_temp_file(".mp3")
-        
-        # استخراج الصوت من الفيديو
-        with mp.VideoFileClip(video_path) as clip:
-            if clip.audio is None:
-                await processing_message.edit("**❌ هذا الفيديو لا يحتوي على صوت**")
-                return
-            
-            # استخراج الصوت مع جودة عالية
-            clip.audio.write_audiofile(
-                audio_path, 
-                bitrate="192k",
-                verbose=False, 
-                logger=None
-            )
-            
-            duration = int(clip.audio.duration)
-        
-        # إرسال الصوت مع معلومات إضافية
-        await client.send_file(
-            event.chat_id, 
-            audio_path,
-            caption=f"**🎵 تم استخراج الصوت بنجاح**\n**المدة**: {duration // 60}:{duration % 60:02d}",
-            attributes=[DocumentAttributeAudio(
-                duration=duration,
-                title="Extracted Audio",
-                performer="Telegram Bot"
-            )]
-        )
-        await processing_message.delete()
-        await event.delete()
-        
-    except Exception as e:
-        await processing_message.edit(f"**❌ خطأ في استخراج الصوت**: {str(e)}")
-    finally:
-        cleanup_files(video_path, audio_path)
-
-# تحويل إلى بصمة صوتية - مُصحح ومحسن
-@client.on(events.NewMessage(pattern=r'\.حول بصمه'))
-async def extract_voice(event):
-    if not event.reply_to_msg_id:
-        await event.edit("**يرجى الرد على فيديو أو ملف صوتي**")
-        return
-
-    reply_message = await event.get_reply_message()
-    
-    if not (reply_message.video or reply_message.audio or reply_message.voice):
-        await event.edit("**يرجى الرد على فيديو أو ملف صوتي**")
-        return
-
-    if not HAS_MOVIEPY:
-        await event.edit("**❌ MoviePy غير متاح**\nتحقق من التثبيت والإعدادات")
-        return
-
-    processing_message = await event.edit("**🔄 جاري تحويل لبصمة صوتية...**")
-    
-    file_path = None
-    voice_path = None
-    
-    try:
-        # تحميل الملف
-        file_path = await reply_message.download_media()
-        voice_path = create_temp_file(".ogg")
-        
-        duration = 0
-        
-        if reply_message.video:
-            # استخراج الصوت من الفيديو
-            with mp.VideoFileClip(file_path) as clip:
-                if clip.audio is None:
-                    await processing_message.edit("**❌ هذا الفيديو لا يحتوي على صوت**")
-                    return
-                
-                # تحسين جودة البصمة الصوتية
-                clip.audio.write_audiofile(
-                    voice_path, 
-                    codec='libopus',  # أفضل للبصمات الصوتية
-                    bitrate="64k",    # جودة مناسبة للبصمات
-                    verbose=False, 
-                    logger=None
-                )
-                duration = int(clip.audio.duration)
-        else:
-            # تحويل الملف الصوتي
-            with mp.AudioFileClip(file_path) as audio:
-                audio.write_audiofile(
-                    voice_path, 
-                    codec='libopus',
-                    bitrate="64k",
-                    verbose=False, 
-                    logger=None
-                )
-                duration = int(audio.duration)
-        
-        # إرسال كبصمة صوتية
-        with open(voice_path, 'rb') as voice_file:
-            await client.send_file(
-                event.chat_id,
-                voice_file,
-                voice_note=True,
-                caption=f"**🎤 بصمة صوتية - {duration}s**",
-                attributes=[DocumentAttributeAudio(
-                    duration=duration,
-                    voice=True,
-                    waveform=b''  # يمكن إضافة موجة صوتية هنا
-                )]
-            )
-        
-        await processing_message.delete()
-        await event.delete()
-        
-    except Exception as e:
-        await processing_message.edit(f"**❌ خطأ في التحويل لبصمة**: {str(e)}")
-    finally:
-        cleanup_files(file_path, voice_path)
-
-# تحويل الملصق إلى صورة - مُصحح تماماً
 @client.on(events.NewMessage(pattern=r'\.لصوره'))
 async def sticker_to_photo(event):
-    if not event.reply_to_msg_id:
-        await event.edit("**يرجى الرد على ملصق**")
-        return
+    # تحقق من وجود رد على رسالة تحتوي على ملصق
+    if event.reply_to_msg_id:
+        reply_message = await event.get_reply_message()
 
-    reply_message = await event.get_reply_message()
-    
-    if not (reply_message and reply_message.sticker):
-        await event.edit("**يرجى الرد على ملصق**")
-        return
+        if reply_message and reply_message.sticker:
+            # أرسل رسالة جاري التحويل
+            processing_message = await event.edit("**جاري التحويل لصورة...**")
 
-    processing_message = await event.edit("**🔄 جاري التحويل إلى صورة...**")
-    
-    temp_file = None
-    
-    try:
-        # تحميل الملصق كبيانات
-        sticker_data = await reply_message.download_media(file=bytes)
-        
-        # الطريقة الأولى: استخدام Wand إذا كان متاحاً
-        if HAS_WAND:
+            # تحميل الملصق
+            sticker = await reply_message.download_media(file=bytes)
+
             try:
-                with WandImage(blob=sticker_data) as img:
-                    # تحسين الصورة
-                    img.format = 'jpeg'
-                    img.compression_quality = 95
-                    
-                    # إزالة الخلفية الشفافة
-                    if img.alpha_channel:
-                        with Color('white') as bg_color:
-                            img.background_color = bg_color
-                        img.alpha_channel = 'remove'
-                    
-                    # تحسين الحجم
-                    if img.width > 1920 or img.height > 1920:
-                        img.transform(resize='1920x1920>')
-                    
-                    photo_data = img.make_blob()
-                
-                # إرسال كصورة حقيقية
-                await client.send_file(
-                    event.chat_id,
-                    io.BytesIO(photo_data),
-                    caption="**✅ تم التحويل إلى صورة بنجاح**",
-                    force_document=False,
-                    file_name="converted_image.jpg"
-                )
-                
+                # فتح الملصق باستخدام PIL للتعامل مع صيغ .webp أو غيرها
+                image = Image.open(io.BytesIO(sticker))
+
+                # في حال كان الملصق متحركًا (مثل .webp)، خذ أول إطار
+                if image.is_animated:
+                    image = image.convert("RGBA")  # قم بتحويل الصورة إلى صيغة RGBA لضمان شفافية صحيحة
+                    frame = image.seek(0)  # اختيار الإطار الأول
+                else:
+                    image = image.convert("RGBA")  # تحويل أي صورة إلى صيغة RGBA إذا كانت غير متحركة
+
+                # تحويل الصورة إلى JPEG
+                output_image = io.BytesIO()
+                image.convert("RGB").save(output_image, format="JPEG")
+                output_image.name = "sticker.jpg"
+                output_image.seek(0)
+
+                # حذف رسالة "جاري التحويل لصورة..."
                 await processing_message.delete()
-                await event.delete()
-                return
-                
-            except Exception as wand_error:
-                print(f"Wand failed: {wand_error}")
-        
-        # الطريقة الثانية: استخدام PIL كبديل
-        if HAS_PIL:
-            try:
-                # حفظ البيانات في ملف مؤقت أولاً
-                temp_file = create_temp_file(".webp")
-                with open(temp_file, 'wb') as f:
-                    f.write(sticker_data)
-                
-                # تحويل باستخدام PIL
-                with PILImage.open(temp_file) as img:
-                    # تحويل إلى RGB إذا كان RGBA
-                    if img.mode in ('RGBA', 'LA', 'P'):
-                        # إنشاء خلفية بيضاء
-                        background = PILImage.new('RGB', img.size, (255, 255, 255))
-                        if img.mode == 'P':
-                            img = img.convert('RGBA')
-                        background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-                        img = background
-                    
-                    # تحسين الحجم
-                    if img.width > 1920 or img.height > 1920:
-                        img.thumbnail((1920, 1920), PILImage.Resampling.LANCZOS)
-                    
-                    # حفظ في ذاكرة كـ JPEG
-                    output = io.BytesIO()
-                    img.save(output, format='JPEG', quality=95, optimize=True)
-                    output.seek(0)
-                
-                # إرسال كصورة
-                await client.send_file(
-                    event.chat_id,
-                    output,
-                    caption="**✅ تم التحويل إلى صورة بنجاح**",
-                    force_document=False,
-                    file_name="converted_image.jpg"
-                )
-                
-                await processing_message.delete()
-                await event.delete()
-                return
-                
-            except Exception as pil_error:
-                print(f"PIL failed: {pil_error}")
-        
-        # إذا فشلت كل الطرق
-        await processing_message.edit("**❌ فشل التحويل**\nيرجى تثبيت Wand أو التحقق من صيغة الملصق")
-        
-    except Exception as e:
-        await processing_message.edit(f"**❌ خطأ في التحويل**: {str(e)}")
-    finally:
-        cleanup_files(temp_file)
 
-# تحويل صيغة الفيديو
-@client.on(events.NewMessage(pattern=r'\.حول فيديو (\w+)'))
-async def convert_video_format(event):
-    target_format = event.pattern_match.group(1).lower()
-    
-    if target_format not in ['mp4', 'avi', 'mkv', 'mov', 'webm']:
-        await event.edit("**الصيغ المدعومة**: mp4, avi, mkv, mov, webm")
-        return
-    
-    if not event.reply_to_msg_id:
-        await event.edit("**يرجى الرد على فيديو**")
-        return
+                # إرسال الصورة
+                await client.send_file(event.chat_id, output_image, caption="**تم التحويل بنجاح ✅**")
 
-    reply_message = await event.get_reply_message()
-    
-    if not reply_message.video:
-        await event.edit("**يرجى الرد على فيديو**")
-        return
-
-    if not HAS_MOVIEPY:
-        await event.edit("**❌ MoviePy غير متاح**")
-        return
-
-    processing_message = await event.edit(f"**🔄 جاري التحويل إلى {target_format.upper()}...**")
-    
-    input_path = None
-    output_path = None
-    
-    try:
-        input_path = await reply_message.download_media()
-        output_path = create_temp_file(f".{target_format}")
-        
-        with mp.VideoFileClip(input_path) as clip:
-            # إعدادات التحويل حسب الصيغة
-            codec_settings = {
-                'mp4': {'codec': 'libx264', 'audio_codec': 'aac'},
-                'avi': {'codec': 'libxvid', 'audio_codec': 'mp3'},
-                'mkv': {'codec': 'libx264', 'audio_codec': 'aac'},
-                'mov': {'codec': 'libx264', 'audio_codec': 'aac'},
-                'webm': {'codec': 'libvpx', 'audio_codec': 'libvorbis'}
-            }
-            
-            settings = codec_settings.get(target_format, {'codec': 'libx264', 'audio_codec': 'aac'})
-            
-            clip.write_videofile(
-                output_path,
-                **settings,
-                temp_audiofile='temp-audio.m4a',
-                remove_temp=True,
-                verbose=False,
-                logger=None
-            )
-        
-        await client.send_file(
-            event.chat_id,
-            output_path,
-            caption=f"**✅ تم التحويل إلى {target_format.upper()} بنجاح**"
-        )
-        await processing_message.delete()
-        await event.delete()
-        
-    except Exception as e:
-        await processing_message.edit(f"**❌ خطأ في التحويل**: {str(e)}")
-    finally:
-        cleanup_files(input_path, output_path)
-
-# ضغط الفيديو
-@client.on(events.NewMessage(pattern=r'\.اضغط'))
-async def compress_video(event):
-    if not event.reply_to_msg_id:
-        await event.edit("**يرجى الرد على فيديو**")
-        return
-
-    reply_message = await event.get_reply_message()
-    
-    if not reply_message.video:
-        await event.edit("**يرجى الرد على فيديو**")
-        return
-
-    if not HAS_MOVIEPY:
-        await event.edit("**❌ MoviePy غير متاح**")
-        return
-
-    processing_message = await event.edit("**🔄 جاري ضغط الفيديو...**")
-    
-    input_path = None
-    output_path = None
-    
-    try:
-        input_path = await reply_message.download_media()
-        output_path = create_temp_file(".mp4")
-        
-        with mp.VideoFileClip(input_path) as clip:
-            # ضغط الفيديو مع الحفاظ على جودة مقبولة
-            compressed_clip = clip.resize(height=min(720, clip.h))
-            
-            compressed_clip.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                bitrate='1000k',  # بيت ريت منخفض للضغط
-                temp_audiofile='temp-audio.m4a',
-                remove_temp=True,
-                verbose=False,
-                logger=None
-            )
-        
-        # مقارنة الأحجام
-        original_size = os.path.getsize(input_path) / (1024 * 1024)  # MB
-        compressed_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
-        compression_ratio = (1 - compressed_size / original_size) * 100
-        
-        await client.send_file(
-            event.chat_id,
-            output_path,
-            caption=f"**✅ تم ضغط الفيديو بنجاح**\n"
-                   f"**الحجم الأصلي**: {original_size:.1f} MB\n"
-                   f"**الحجم المضغوط**: {compressed_size:.1f} MB\n"
-                   f"**نسبة الضغط**: {compression_ratio:.1f}%"
-        )
-        await processing_message.delete()
-        await event.delete()
-        
-    except Exception as e:
-        await processing_message.edit(f"**❌ خطأ في الضغط**: {str(e)}")
-    finally:
-        cleanup_files(input_path, output_path)
-
-# أمر شامل للتحقق من حالة المكتبات - محسن
-@client.on(events.NewMessage(pattern=r'\.فحص_مكتبات'))
-async def check_libraries(event):
-    status = "**🔍 فحص حالة المكتبات:**\n\n"
-    
-    # فحص imageio
-    if HAS_IMAGEIO:
-        try:
-            import imageio
-            status += f"✅ **imageio**: متاح - الإصدار {imageio.__version__}\n"
-        except:
-            status += "✅ **imageio**: متاح\n"
-    else:
-        status += "❌ **imageio**: غير متاح\n"
-        status += "   📝 التثبيت: `pip install imageio`\n"
-    
-    # فحص Wand
-    if HAS_WAND:
-        try:
-            import wand
-            status += f"✅ **Wand**: متاح - الإصدار {wand.version.WAND_VERSION}\n"
-        except:
-            status += "✅ **Wand**: متاح\n"
-    else:
-        status += "❌ **Wand**: غير متاح\n"
-        status += "   📝 التثبيت: `pip install Wand`\n"
-    
-    # فحص PIL
-    if HAS_PIL:
-        try:
-            import PIL
-            status += f"✅ **PIL/Pillow**: متاح - الإصدار {PIL.__version__}\n"
-        except:
-            status += "✅ **PIL/Pillow**: متاح\n"
-    else:
-        status += "❌ **PIL/Pillow**: غير متاح\n"
-        status += "   📝 التثبيت: `pip install Pillow`\n"
-    
-    # فحص MoviePy
-    if HAS_MOVIEPY:
-        try:
-            import moviepy
-            status += f"✅ **MoviePy**: متاح - الإصدار {moviepy.__version__}\n"
-        except:
-            status += "✅ **MoviePy**: متاح\n"
-            
-        # فحص FFmpeg
-        try:
-            result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                version_line = result.stdout.split('\n')[0]
-                status += f"✅ **FFmpeg**: متاح - {version_line.split()[2] if len(version_line.split()) > 2 else 'غير معروف'}\n"
-            else:
-                status += "⚠️ **FFmpeg**: متاح لكن يواجه مشاكل\n"
-        except:
-            status += "❌ **FFmpeg**: غير متاح\n"
-    else:
-        status += "❌ **MoviePy**: غير متاح\n"
-        status += "   📝 التثبيت: `pip install moviepy imageio-ffmpeg`\n"
-        status += "   📝 FFmpeg: `apt-get install ffmpeg`\n"
-    
-    status += "\n**📋 الأوامر المتاحة:**\n"
-    if HAS_IMAGEIO:
-        status += "• `.لمتحرك` - تحويل صورة لـ GIF\n"
-    if HAS_MOVIEPY:
-        status += "• `.لمتحركه` - تحويل فيديو لـ GIF\n"
-        status += "• `.حول صوت` - استخراج الصوت\n"
-        status += "• `.حول بصمه` - تحويل لبصمة صوتية\n"
-        status += "• `.حول فيديو [صيغة]` - تحويل صيغة فيديو\n"
-        status += "• `.اضغط` - ضغط الفيديو\n"
-    if HAS_WAND or HAS_PIL:
-        status += "• `.لصوره` - تحويل ملصق لصورة\n"
-    
-    await event.edit(status)
-
-# أمر المساعدة
-@client.on(events.NewMessage(pattern=r'\.مساعده_تحويل'))
-async def help_converter(event):
-    help_text = """
-**🎬 مساعدة محول الوسائط**
-
-**📱 أوامر تحويل الصور:**
-• `.لصوره` - تحويل ملصق إلى صورة
-• `.لمتحرك` - تحويل صورة/ملصق إلى GIF متحرك
-
-**🎥 أوامر تحويل الفيديو:**
-• `.لمتحركه` - تحويل فيديو إلى GIF
-• `.حول فيديو mp4` - تحويل فيديو إلى MP4
-• `.حول فيديو avi` - تحويل فيديو إلى AVI
-• `.حول فيديو mkv` - تحويل فيديو إلى MKV
-• `.حول فيديو mov` - تحويل فيديو إلى MOV
-• `.حول فيديو webm` - تحويل فيديو إلى WebM
-• `.اضغط` - ضغط حجم الفيديو
-
-**🎵 أوامر تحويل الصوت:**
-• `.حول صوت` - استخراج الصوت من فيديو
-• `.حول بصمه` - تحويل صوت/فيديو إلى بصمة صوتية
-
-**🔧 أوامر المساعدة:**
-• `.فحص_مكتبات` - فحص حالة المكتبات المثبتة
-• `.مساعده_تحويل` - عرض هذه المساعدة
-
-**📋 طريقة الاستخدام:**
-1. ارد على الملف المراد تحويله
-2. اكتب الأمر المطلوب
-3. انتظر انتهاء التحويل
-
-**⚠️ ملاحظات مهمة:**
-• حجم الملفات محدود حسب إعدادات تيليجرام
-• بعض التحويلات تحتاج وقت حسب حجم الملف
-• تأكد من وجود مساحة كافية على الخادم
-
-**🛠️ في حالة الأخطاء:**
-• استخدم `.فحص_مكتبات` للتأكد من المكتبات
-• تأكد من أن الملف سليم وغير معطوب
-• جرب مع ملف أصغر حجماً
-"""
-    
-    await event.edit(help_text)
-
-# إعداد تنظيف دوري للملفات المؤقتة
-async def cleanup_temp_files():
-    """تنظيف دوري للملفات المؤقتة"""
-    import glob
-    import time
-    
-    temp_patterns = [
-        '/tmp/tmp*',
-        '/tmp/moviepy*',
-        'temp_*.gif',
-        'temp_*.mp4',
-        'temp_*.mp3',
-        'temp_*.ogg',
-        'temp_*.jpg',
-        'temp_*.webp'
-    ]
-    
-    current_time = time.time()
-    
-    for pattern in temp_patterns:
-        for file_path in glob.glob(pattern):
-            try:
-                # حذف الملفات الأقدم من ساعة واحدة
-                if current_time - os.path.getmtime(file_path) > 3600:
-                    os.remove(file_path)
-                    print(f"تم حذف الملف المؤقت: {file_path}")
             except Exception as e:
-                print(f"خطأ في حذف {file_path}: {e}")
+                await processing_message.delete()
+                await event.edit(f"⚠️ حدث خطأ أثناء التحويل: {e}")
+        else:
+            await event.edit("⚠️ يرجى الرد على ملصق لتحويله إلى صورة.")
+    else:
+        await event.edit("⚠️ يرجى الرد على ملصق لتحويله إلى صورة.")
 
-# تشغيل التنظيف الدوري كل 30 دقيقة
-async def periodic_cleanup():
-    """تشغيل التنظيف الدوري"""
-    while True:
-        await cleanup_temp_files()
-        await asyncio.sleep(1800)  # 30 دقيقة
+@client.on(events.NewMessage(pattern=r'\.حول بصمه'))
+async def handler(event):
+    # التحقق من وجود رسالة رد تحتوي على فيديو
+    if event.reply_to_msg_id:
+        reply_message = await event.get_reply_message()
+        
+        if reply_message.video:
+            # إرسال رسالة "جاري التحويل..." والاحتفاظ بمعرف الرسالة
+            processing_message = await event.edit("**جاري التحويل...**")
+            # تحميل الفيديو
+            video_path = await reply_message.download_media()
 
-# بدء التنظيف الدوري عند تشغيل البوت
-if __name__ == "__main__":
-    # تشغيل التنظيف الدوري في الخلفية
-    asyncio.create_task(periodic_cleanup())
-    
-    print("🚀 تم تشغيل محول الوسائط!")
-    print("📚 استخدم .مساعده_تحويل لعرض الأوامر المتاحة")
-    print("🔍 استخدم .فحص_مكتبات للتحقق من المكتبات")
-    
-    # عرض حالة المكتبات عند البدء
-    print("\n" + "="*50)
-    print("حالة المكتبات عند البدء:")
-    print("="*50)
-    
-    libraries_status = {
-        "imageio": HAS_IMAGEIO,
-        "Wand": HAS_WAND, 
-        "PIL": HAS_PIL,
-        "MoviePy": HAS_MOVIEPY
-    }
-    
-    for lib, status in libraries_status.items():
-        status_icon = "✅" if status else "❌"
-        print(f"{status_icon} {lib}: {'متاح' if status else 'غير متاح'}")
-    
-    if HAS_MOVIEPY:
-        try:
-            result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                print("✅ FFmpeg: متاح")
-            else:
-                print("⚠️ FFmpeg: متاح لكن يواجه مشاكل")
-        except:
-            print("❌ FFmpeg: غير متاح")
-    
-    print("="*50)
-    
-    if not any(libraries_status.values()):
-        print("\n⚠️ تحذير: لا توجد مكتبات متاحة!")
-        print("يرجى تثبيت المكتبات المطلوبة:")
-        print("pip install imageio moviepy Wand Pillow imageio-ffmpeg")
-        print("apt-get install ffmpeg imagemagick")
-    
-    print("\n🎯 البوت جاهز للاستخدام!")
+            # استخراج الصوت من الفيديو باستخدام pydub
+            audio_path = video_path.split('.')[0] + ".mp3"
+            try:
+                # تحويل الفيديو إلى صوت باستخدام ffmpeg
+                video = AudioSegment.from_file(video_path)
+                video.export(audio_path, format="mp3")
+                
+                # إرسال الصوت كبصمة صوتية
+                await client.send_file(event.chat_id, audio_path, voice_note=True)
+                
+            except Exception as e:
+                await event.edit(f"حدث خطأ أثناء التحويل: {str(e)}")
+            
+            finally:
+                # حذف رسالة "جاري التحويل..." بعد إرسال البصمة
+                await client.delete_messages(event.chat_id, processing_message)
 
+                # حذف الرسالة الأصلية
+                await event.delete()
+
+                # حذف الملفات المؤقتة
+                if os.path.exists(video_path):
+                    os.remove(video_path)
+                if os.path.exists(audio_path):
+                    os.remove(audio_path)
+                
+        else:
+            await event.edit("**يرجى الرد على فيديو للتحويل.**")
+    else:
+        await event.edit("**يرجى الرد على فيديو.**")
+
+
+@client.on(events.NewMessage(pattern=r'\.حول صوت'))
+async def handler(event):
+    # التحقق من وجود رسالة رد تحتوي على فيديو
+    if event.reply_to_msg_id:
+        reply_message = await event.get_reply_message()
+        
+        if reply_message.video:
+            # إرسال رسالة "جاري التحويل..." والاحتفاظ بمعرف الرسالة
+            processing_message = await event.edit("**جاري التحويل...**")
+
+            # تحميل الفيديو
+            video_path = await reply_message.download_media()
+
+            # استخراج الصوت من الفيديو باستخدام pydub
+            audio_path = video_path.split('.')[0] + ".mp3"
+            try:
+                # تحويل الفيديو إلى صوت باستخدام ffmpeg
+                video = AudioSegment.from_file(video_path)
+                video.export(audio_path, format="mp3")
+            except Exception as e:
+                await event.edit(f"**حدث خطأ أثناء التحويل**: {str(e)}")
+                return
+            
+            # إرسال الصوت كملف صوت MP3
+            await client.send_file(event.chat_id, audio_path)
+
+            # حذف رسالة "جاري التحويل..." بعد إرسال الملف الصوتي
+            await client.delete_messages(event.chat_id, processing_message)
+
+            # حذف الرسالة الأصلية
+            await event.delete()
+            
+            # حذف الملفات المؤقتة
+            os.remove(video_path)
+            os.remove(audio_path)
+        else:
+            await event.edit("**يرجى الرد على فيديو للتحويل.**")
+    else:
+        await event.edit("**يرجى الرد على فيديو.**")
+
+@client.on(events.NewMessage(pattern=r'\.لمتحرك'))
+async def handler(event):
+    # التحقق من وجود رسالة رد تحتوي على صورة أو ملصق
+    if event.reply_to_msg_id:
+        reply_message = await event.get_reply_message()
+        
+        if reply_message.photo or reply_message.sticker:  # التحقق مما إذا كانت الرسالة تحتوي على صورة أو ملصق
+            # إرسال رسالة "جاري التحويل..." والاحتفاظ بمعرف الرسالة
+            processing_message = await event.edit("**جاري التحويل...**")
+
+            # تحميل الصورة أو الملصق
+            file_path = await reply_message.download_media()
+
+            # تحديد مسار GIF النهائي
+            gif_path = file_path.split('.')[0] + ".gif"
+            try:
+                # تحويل الصورة أو الملصق إلى GIF باستخدام ffmpeg
+                subprocess.run([
+                    'ffmpeg', 
+                    '-i', file_path,  # إدخال الملف
+                    '-vf', 'fps=24,scale=512:-1:flags=lanczos',  # تحسين عدد الإطارات والدقة
+                    '-t', '5',  # تحديد مدة الـ GIF (يمكنك تعديل المدة إذا لزم الأمر)
+                    '-y',  # السماح بالكتابة فوق الملف إذا كان موجوداً
+                    gif_path
+                ], check=True)
+            except Exception as e:
+                await event.edit(f"**حدث خطأ أثناء التحويل**: {str(e)}")
+                return
+            
+            # إرسال GIF
+            await client.send_file(event.chat_id, gif_path)
+
+            # حذف رسالة "جاري التحويل..." بعد إرسال GIF
+            await client.delete_messages(event.chat_id, processing_message)
+
+            # حذف الملفات المؤقتة
+            os.remove(file_path)
+            os.remove(gif_path)
+        else:
+            await event.edit("**يرجى الرد على صورة أو ملصق للتحويل.**")
+    else:
+        await event.edit("**يرجى الرد على صورة أو ملصق.**")
+
+
+@client.on(events.NewMessage(pattern=r'\.لمتحركه'))
+async def handler(event):
+    # التحقق من وجود رسالة رد تحتوي على فيديو
+    if event.reply_to_msg_id:
+        reply_message = await event.get_reply_message()
+
+        if reply_message.video:
+            # إرسال رسالة "جاري التحويل..." والاحتفاظ بها
+            processing_message = await event.edit("**جاري التحويل...**")
+
+            # تحميل الفيديو
+            file_path = await reply_message.download_media()
+
+            # تحديد مسار GIF النهائي
+            gif_path = file_path.split('.')[0] + ".gif"
+            try:
+                # تحويل الفيديو إلى GIF باستخدام ffmpeg
+                subprocess.run([
+                    'ffmpeg',
+                    '-i', file_path,
+                    '-vf', 'fps=10,scale=320:-1:flags=lanczos',
+                    '-t', '5',  # تحديد مدة GIF (ثوانٍ)
+                    gif_path
+                ], check=True)
+            except Exception as e:
+                await event.edit(f"**حدث خطأ أثناء التحويل:** {e}")
+                return
+
+            # إرسال GIF
+            await client.send_file(event.chat_id, gif_path)
+
+            # حذف رسالة "جاري التحويل..." بعد إرسال GIF
+            await processing_message.delete()
+
+            # حذف الرسالة الأصلية
+            await event.delete()
+
+            # حذف الملفات المؤقتة
+            os.remove(file_path)
+            os.remove(gif_path)
+        else:
+            await event.edit("**يرجى الرد على فيديو.**")
+    else:
+        await event.edit("**يرجى الرد على فيديو.**")
+                                                                                                                                                   
     
 
 def run_server():
