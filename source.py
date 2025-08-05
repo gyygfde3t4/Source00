@@ -21,6 +21,10 @@ from collections import defaultdict
 from typing import Optional
 from urllib.parse import urlparse, quote
 from difflib import SequenceMatcher
+import io  
+import subprocess
+from PIL import Image
+from pydub import AudioSegment
 
 # ========== مكتبات HTTP وطلبات الويب ==========
 import requests
