@@ -41,7 +41,7 @@ import yt_dlp as youtube_dl
 from yt_dlp import YoutubeDL
 from googletrans import Translator
 from deep_translator import GoogleTranslator
-
+from telethon import events, functions, types, utils
 # ========== Telethon - استيراد رئيسي ==========
 from telethon import TelegramClient, events, functions, types, Button
 from telethon.sessions import StringSession
