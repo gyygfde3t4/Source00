@@ -5528,14 +5528,7 @@ def run_server():
 server_thread = threading.Thread(target=run_server)
 server_thread.start()                
                                               
-async def main():
-    await start_client()
-    
-    # إنشاء المهمة بعد أن تكون الحلقة نشطة
-    task = asyncio.create_task(start_auto_monitor())
-    
-    await client.run_until_disconnected()
+await client.run_until_disconnected()
 
 if __name__ == "__main__":
-    client.start()
-    client.loop.run_until_complete(main())
+    asyncio.run(main())
