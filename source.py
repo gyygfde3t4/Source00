@@ -186,11 +186,11 @@ active_games      = {}     # الألعاب النشطة حاليًا
 # ========== المترجم ==========
 translator = Translator()  # تهيئة المترجم (من مكتبة googletrans أو مشابه)
 
-monitored_channels = {}  # {channel_id: {'username': str, 'keywords': [str], 'name': str}}
-target_users = []  # قائمة المستهدفين
-monitoring_active = False
+monitored_channels = {}
+target_users = []
 current_calls = {}
-MAX_TARGETS = 5  # الحد الأقصى للمستهدفين
+monitoring_active = False
+MAX_TARGETS = 5
 
 # ===== تهيئة العميل ===== #
 client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
@@ -4672,6 +4672,7 @@ async def start_auto_monitor():
 asyncio.create_task(start_auto_monitor())      
                                                              
 
+
 class ChannelMonitoringSystem:
     def __init__(self, client):
         self.client = client
@@ -4811,7 +4812,7 @@ class ChannelMonitoringSystem:
                     user_entity = await self.client.get_entity(user_id)
                     await self.client.send_message(
                         user_id,
-                         "**تم انتهاء الاتصال بك**",
+                        "**تم انتهاء الاتصال بك**",
                         reply_to=call_info.get('message_id')
                     )
                 except Exception as e:
@@ -5160,7 +5161,6 @@ async def monitor_channels(event):
     
     except Exception as e:
         pass
-
         
             
 def run_server():
@@ -5172,13 +5172,19 @@ def run_server():
 server_thread = threading.Thread(target=run_server)
 server_thread.start()                
                                               
+async def start_auto_monitor():
+    while True:
+        try:
+            # يمكنك إضافة أي وظيفة تريد تشغيلها تلقائياً هنا
+            await asyncio.sleep(36000)  # كل 10 ساعات
+        except Exception as e:
+            print("❌ خطأ في المراقبة:", e)
+            await asyncio.sleep(3600)
+
 async def main():
-    try:
-        await client.start()
-        asyncio.create_task(start_auto_monitor())
-        await client.run_until_disconnected()
-    except Exception as e:
-        print("❌ حدث خطأ أثناء التشغيل:", e)
-        
+    await client.start()
+    client.loop.create_task(start_auto_monitor())  # ✅ جدولة المهمة بشكل صحيح
+    await client.run_until_disconnected()
+
 if __name__ == '__main__':
     asyncio.run(main())
