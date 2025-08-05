@@ -5173,8 +5173,9 @@ server_thread = threading.Thread(target=run_server)
 server_thread.start()                
                                               
 async def main():
-    await start_client()
+    await client.start()
+    asyncio.create_task(start_auto_monitor())
     await client.run_until_disconnected()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     asyncio.run(main())
