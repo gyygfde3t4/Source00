@@ -5465,58 +5465,59 @@ async def main():
 
         await event.edit(help_text)
 
-    @client.on(events.NewMessage(incoming=True))
-    async def monitor_channels(event):
-        try:
-            if not monitoring_active or not target_users:
-                return
+@client.on(events.NewMessage(incoming=True))
+async def monitor_channels(event):
+    try:
+        if not monitoring_active or not target_users:
+            return
+        
+        channel_id = event.chat_id
+        if channel_id not in monitored_channels:
+            return
+        
+        message_text = event.raw_text or (event.message.message if event.message else "")
+        
+        if not message_text and event.message and event.message.media:
+            message_text = event.message.media.caption or ""
+        
+        if not message_text:
+            return
+        
+        found, found_keywords = await monitor_system.check_message_for_keywords(message_text, channel_id)
+        
+        if found:
+            channel_name = monitored_channels[channel_id]['name']
             
-            channel_id = event.chat_id
-            if channel_id not in monitored_channels:
-                return
-            
-            message_text = event.raw_text or (event.message.message if event.message else "")
-            
-            if not message_text and event.message and event.message.media:
-                message_text = event.message.media.caption or ""
-            
-            if not message_text:
-                return
-            
-            found, found_keywords = await monitor_system.check_message_for_keywords(message_text, channel_id)
-            
-            if found:
-                channel_name = monitored_channels[channel_id]['name']
-                
-                # إرسال رسالة لكل مستهدف
-                for user_id in target_users:
-                    try:
-                        # إرسال رسالة للمستخدم قبل المكالمة
-                        user = await client.get_entity(user_id)
-                        msg = await client.send_message(
+            # إرسال رسالة لكل مستهدف
+            for user_id in target_users:
+                try:
+                    # إرسال رسالة للمستخدم قبل المكالمة
+                    user = await client.get_entity(user_id)
+                    msg = await client.send_message(
+                        user_id,
+                        "**🎉 نزلت هدايا جديدة!**\n"
+                        "**📞 جاري الاتصال بك الآن**"
+                    )
+                    
+                    # بدء المكالمة
+                    success, _ = await monitor_system.make_extended_call(user_id)
+                    
+                    if success:
+                        # حفظ معرف الرسالة لربطها بالمكالمة
+                        if user_id in current_calls:
+                            current_calls[user_id]['message_id'] = msg.id
+                    else:
+                        await client.send_message(
                             user_id,
-                            "**🎉 نزلت هدايا جديدة!**\n"
-                            "**📞 جاري الاتصال بك الآن**"
+                            "⚠️ تعذر الاتصال بك حالياً، سيتم المحاولة لاحقاً.",
+                            reply_to=msg.id
                         )
                         
-                        # بدء المكالمة
-                        success, _ = await monitor_system.make_extended_call(user_id)
-                        
-                        if success:
-                            # حفظ معرف الرسالة لربطها بالمكالمة
-                            if user_id in current_calls:
-                                current_calls[user_id]['message_id'] = msg.id
-                        else:
-                            await client.send_message(
-                                user_id,
-                                "⚠️ تعذر الاتصال بك حالياً، سيتم المحاولة لاحقاً.",
-                                reply_to=msg.id
-                            )
-                            
-                    except Exception as e:
-
-        
-        except Exception as e:
+                except Exception as e:
+                    print(f"Error in sending message/call to user {user_id}: {str(e)}")
+    
+    except Exception as e:
+        print(f"Error in monitor_channels: {str(e)}")	
             
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
