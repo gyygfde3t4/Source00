@@ -5173,9 +5173,12 @@ server_thread = threading.Thread(target=run_server)
 server_thread.start()                
                                               
 async def main():
-    await client.start()
-    asyncio.create_task(start_auto_monitor())
-    await client.run_until_disconnected()
-
+    try:
+        await client.start()
+        asyncio.create_task(start_auto_monitor())
+        await client.run_until_disconnected()
+    except Exception as e:
+        print("❌ حدث خطأ أثناء التشغيل:", e)
+        
 if __name__ == '__main__':
     asyncio.run(main())
