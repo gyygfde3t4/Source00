@@ -22,10 +22,10 @@ from typing import Optional
 from urllib.parse import urlparse, quote
 from difflib import SequenceMatcher
 import io  
-import subprocess
 from PIL import Image
 from pydub import AudioSegment
 import hashlib
+import string
 
 # ========== مكتبات HTTP وطلبات الويب ==========
 import requests
@@ -120,8 +120,6 @@ AUTHORIZED_USERS = [
     int(uid.strip()) for uid in os.getenv("AUTHORIZED_USERS", "").split(",") if uid.strip().isdigit()
 ]
 
-
-
 # ========== إعدادات البوت ==========
 bot_username = os.getenv("bot_username")
 
@@ -147,6 +145,12 @@ OPENWEATHER_API = os.getenv("OPENWEATHER_API")
 # ========== مفتاح CoinMarketCap ==========
 CMC_API_KEY = os.getenv("CMC_API_KEY")
 
+
+MAILSAC_API_KEY =os.getenv('MAILSAC_API_KEY') 
+
+# تخزين البريد الحالي
+current_email = None
+seen_ids = set()
 
 # ========== حالات النظام ==========
 protection_enabled = False  #حالة الحماية
@@ -191,6 +195,12 @@ target_users = []
 current_calls = {}
 monitoring_active = False
 MAX_TARGETS = 5
+
+# متغيرات التحكم
+current_email = None
+seen_ids = set()
+monitoring_active = False
+monitoring_task = None
 
 # ===== تهيئة العميل ===== #
 client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
@@ -423,6 +433,10 @@ async def show_additional_commands(event):
 2- ☆ `.حفظ` - **حفظ منشور من قناة/مجموعة (بالرد على الرابط)** ☆
 3- ☆ `.انمي` - **عرض شخصية أنمي عشوائية** ☆
 4- ☆ `.معرفة الانمي` - **التعرف على مشهد أنمي (بالرد على صورة)** ☆
+5- ☆ `.شرح المراقبة` - **شرح كيفية مراقبة المجموعات** ☆
+6- ☆ `.بريد وهمي` - **إنشاء بريد إلكتروني وهمي** ☆
+7- ☆ `.فحص البريد` - **فحص البريد الوارد للبريد الوهمي** ☆
+8- ☆ `.ايقاف الوهمي` - **إيقاف البريد الوهمي** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
@@ -575,7 +589,7 @@ async def show_user_info(event):
             username = user.username if user.username else "غير متوفر"
             user_name = user.first_name or "غير متوفر"
 
-            # إصلاح مشكلة البايو
+            # البايو
             bio = "لا يوجد"
             try:
                 from telethon.tl import functions
@@ -585,13 +599,13 @@ async def show_user_info(event):
             except:
                 bio = "لا يوجد"
 
-            # تحديد الرتبة
+            # الرتبة
             if user_id == 5683930416:
                 rank = "مطـور السـورس 𓄂"
             else:
                 rank = "مميز"
 
-            # فحص البريميوم
+            # البريميوم
             account_type = "بريميوم" if getattr(user, 'premium', False) else "عادي"
 
             # عدد الصور
@@ -601,14 +615,9 @@ async def show_user_info(event):
             except:
                 num_photos = "غير معروف"
 
-            # الهدايا والمقتنيات
-            gifts = "غير معروف"
-            collectibles = "غير معروف"
-
-            # حساب عدد الرسائل بدقة - طرق متعددة للحصول على العدد الصحيح
+            # حساب عدد الرسائل
             messages_count = 0
             try:
-                # الطريقة الأولى: استخدام البحث للحصول على العدد الإجمالي
                 from telethon.tl.functions.messages import SearchRequest
                 from telethon.tl.types import InputMessagesFilterEmpty
                 
@@ -629,138 +638,48 @@ async def show_user_info(event):
                 
                 if hasattr(search_result, 'count'):
                     messages_count = search_result.count
-                else:
-                    raise Exception("البحث لم يعطي عدد")
-                    
             except:
-                try:
-                    # الطريقة الثانية: العد التدريجي
-                    messages_count = 0
-                    last_id = 0
-                    
-                    while True:
-                        messages = await client.get_messages(
-                            event.chat_id, 
-                            from_user=user.id, 
-                            limit=100,
-                            max_id=last_id if last_id > 0 else None
-                        )
-                        
-                        if not messages:
-                            break
-                            
-                        messages_count += len(messages)
-                        
-                        # إذا حصلنا على أقل من 100 رسالة، فهذا يعني أننا وصلنا للنهاية
-                        if len(messages) < 100:
-                            break
-                            
-                        last_id = messages[-1].id
-                        
-                        # حد أقصى لتجنب التأخير الطويل
-                        if messages_count > 10000:
-                            messages_count = f"{messages_count}+"
-                            break
-                            
-                except:
-                    # الطريقة الثالثة: تقدير بسيط
-                    try:
-                        recent_messages = await client.get_messages(event.chat_id, from_user=user.id, limit=100)
-                        messages_count = len(recent_messages)
-                        if messages_count == 100:
-                            messages_count = "100+"
-                    except:
-                        messages_count = 0
+                messages_count = "غير معروف"
 
-            # تحديد التفاعل
-            if isinstance(messages_count, int):
-                interaction = "نار وشرار" if messages_count >= 1000 else "ضعيف"
-            elif isinstance(messages_count, str) and "+" in messages_count:
-                interaction = "نار وشرار"
-            else:
-                interaction = "ضعيف"
+            # التفاعل
+            interaction = "نشط" if isinstance(messages_count, int) and messages_count > 100 else "ضعيف"
 
-            # إصلاح مشكلة تاريخ الإنشاء - استخدام seed ثابت لنفس المستخدم
+            # تاريخ الإنشاء
             import random
-            random.seed(user_id)  # استخدام معرف المستخدم كـ seed لضمان نفس النتيجة دائماً
-            
-            try:
-                if user_id < 10000:
-                    year = "2013"
-                    month = random.randint(1, 6)
-                    day = random.randint(1, 28)
-                elif user_id < 100000:
-                    year = "2014"
-                    month = random.randint(1, 8)
-                    day = random.randint(1, 28)
-                elif user_id < 1000000:
-                    year = "2015"
-                    month = random.randint(1, 10)
-                    day = random.randint(1, 28)
-                elif user_id < 10000000:
-                    year = "2016"
-                    month = random.randint(2, 12)
-                    day = random.randint(1, 28)
-                elif user_id < 100000000:
-                    year = "2017"
-                    month = random.randint(1, 12)
-                    day = random.randint(1, 28)
-                elif user_id < 500000000:
-                    year = "2018"
-                    month = random.randint(1, 12)
-                    day = random.randint(1, 28)
-                elif user_id < 1000000000:
-                    year = "2019"
-                    month = random.randint(1, 12)
-                    day = random.randint(1, 28)
-                elif user_id < 1500000000:
-                    year = "2020"
-                    month = random.randint(1, 12)
-                    day = random.randint(1, 28)
-                elif user_id < 2000000000:
-                    year = "2021"
-                    month = random.randint(1, 12)
-                    day = random.randint(1, 28)
-                elif user_id < 5000000000:
-                    year = "2022"
-                    month = random.randint(1, 12)
-                    day = random.randint(1, 28)
-                elif user_id < 6000000000:
-                    year = "2023"
-                    month = random.randint(1, 12)
-                    day = random.randint(1, 28)
-                else:
-                    year = "2024"
-                    month = random.randint(1, 12)
-                    day = random.randint(1, 28)
-                
-                creation_date = f"{day}/{month}/{year}"
-            except:
-                creation_date = "غير معروف"
+            random.seed(user_id)
+            year = "2023" if user_id > 6000000000 else "2022"
+            month = random.randint(1, 12)
+            day = random.randint(1, 28)
+            creation_date = f"{day}/{month}/{year}"
 
-            # تكوين رسالة المعلومات بالكليشة الجديدة مع تنسيق الاقتباس
-            user_info_message = (
-                f"> •⎚• مـعلومـات المسـتخـدم سـورس إيــريــن\n"
-                f"> ٴ⋆┄─┄─┄─┄─┄─┄─┄─┄─┄─┄⋆\n"
-                f"> ✦ الاســم    ⤎ `{user_name}`\n"
-                f"> ✦ اليـوزر    ⤎ @{username}\n"
-                f"> ✦ الايـدي    ⤎ `{user_id}`\n"
-                f"> ✦ الرتبــه    ⤎ {rank}\n"
-                f"> ✦ الحساب  ⤎ {account_type}\n"
-                f"> ✦ الصـور    ⤎ {num_photos}\n"
-                f"> ✦ الهدايا    ⤎ {gifts}\n"
-                f"> ✦ مقتنيات ⤎ {collectibles}\n"
-                f"> ✦ الرسائل  ⤎ {messages_count}\n"
-                f"> ✦ التفاعل  ⤎ {interaction}\n"
-                f"> ✦ الإنشـاء  ⤎ {creation_date}\n"
-                f"> ✦ البايـو     ⤎ {bio}\n"
-                f"> ٴ⋆┄─┄─┄─┄─┄─┄─┄─┄─┄─┄⋆"
+            # رسالة المعلومات بتنسيق الاقتباس المنسق
+            user_info_message = f"""
+⧉ **مـعلومـات المسـتخـدم | سـورس إيــريــن**
+
+**✦ الاســم:** `{user_name}`
+**✦ اليـوزر:** @{username}
+**✦ الايـدي:** `{user_id}`
+**✦ الرتبــه:** {rank}
+**✦ الحساب:** {account_type}
+**✦ الصـور:** {num_photos}
+**✦ الرسائل:** {messages_count}
+**✦ التفاعل:** {interaction}
+**✦ الإنشـاء:** {creation_date}
+**✦ البايـو:** 
+`{bio}`
+
+**⧉ قنـاة السـورس** @EREN_PYTHON
+"""
+
+            await client.send_file(
+                event.chat_id,
+                user_photo_path,
+                caption=user_info_message,
+                reply_to=event.reply_to_msg_id
             )
-
-            await client.send_file(event.chat_id, user_photo_path, caption=user_info_message)
             await event.delete()
             
-            # حذف الصورة بأمان
+            # حذف الصورة
             try:
                 import os
                 os.remove(user_photo_path)
@@ -770,14 +689,6 @@ async def show_user_info(event):
             await event.edit("**⚠️ لم أتمكن من العثور على معلومات عن هذا المستخدم.**")
     else:
         await event.edit("**⚠️ يرجى الرد على رسالة المستخدم للحصول على معلوماته.**")
-
-async def upload_to_telegraph(image_path):
-    try:
-        response = telegraph.upload_file(image_path)
-        return 'https://telegra.ph' + response[0]
-    except Exception as e:
-        print(f"خطأ أثناء رفع الصورة: {e}")
-        return None
         
 # إضافة أمر .بل
 @client.on(events.NewMessage(pattern=r'^\.بلوك$'))
@@ -4332,6 +4243,7 @@ async def cleanup_stale_games():
             print(f"خطأ في تنظيف الألعاب: {e}")
             await asyncio.sleep(60)            
 
+
 @client.on(events.NewMessage(pattern=r'^\.لصوره$'))
 async def sticker_to_photo(event):
     # تحقق من وجود رد على رسالة تحتوي على ملصق
@@ -4504,6 +4416,8 @@ async def handler(event):
         await event.edit("**يرجى الرد على صورة أو ملصق.**")
 
 
+
+
 @client.on(events.NewMessage(pattern=r'^\.لمتحركه$'))
 async def handler(event):
     # التحقق من وجود رسالة رد تحتوي على فيديو
@@ -4514,265 +4428,838 @@ async def handler(event):
             # إرسال رسالة "جاري التحويل..." والاحتفاظ بها
             processing_message = await event.edit("**جاري التحويل...**")
 
-            # تحميل الفيديو
-            file_path = await reply_message.download_media()
-
-            # تحديد مسار GIF النهائي
-            gif_path = file_path.split('.')[0] + ".gif"
-            
             try:
-                # الحصول على معلومات الفيديو لاستخراج FPS الأصلي
-                probe_cmd = [
-                    'ffprobe', '-v', 'quiet', '-print_format', 'json', 
-                    '-show_streams', file_path
-                ]
-                result = subprocess.run(probe_cmd, capture_output=True, text=True)
-                
-                # استخدام FPS افتراضي إذا فشل في الحصول على معلومات الفيديو
-                original_fps = 30
-                try:
-                    import json
-                    video_info = json.loads(result.stdout)
-                    for stream in video_info['streams']:
-                        if stream['codec_type'] == 'video':
-                            fps_str = stream.get('r_frame_rate', '30/1')
-                            if '/' in fps_str:
-                                num, den = fps_str.split('/')
-                                original_fps = int(float(num) / float(den))
-                            break
-                except:
-                    original_fps = 30
-                
-                # استخدام FPS أعلى للحصول على GIF أكثر سلاسة
-                target_fps = min(original_fps, 25)  # الحد الأقصى 25 fps
-                
-                # تحويل الفيديو إلى GIF مع تحسينات أفضل
-                subprocess.run([
-                    'ffmpeg',
-                    '-i', file_path,
-                    '-vf', f'fps={target_fps},scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse',
-                    '-t', '10',  # زيادة المدة إلى 10 ثوان
-                    '-y',  # الكتابة فوق الملف إذا كان موجوداً
-                    gif_path
-                ], check=True, capture_output=True)
-                
+                # تشغيل التحويل في مهمة منفصلة
+                await convert_video_to_gif_async(event, reply_message, processing_message)
             except Exception as e:
-                await event.edit(f"**حدث خطأ أثناء التحويل:** {e}")
-                return
-
-            # التحقق من حجم الملف
-            file_size = os.path.getsize(gif_path)
-            max_size = 8 * 1024 * 1024  # 8 MB حد أقصى لتيليجرام
-            
-            if file_size > max_size:
-                # إعادة التحويل بجودة أقل إذا كان الملف كبيراً
-                try:
-                    subprocess.run([
-                        'ffmpeg',
-                        '-i', file_path,
-                        '-vf', f'fps={min(target_fps, 15)},scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse',
-                        '-t', '8',
-                        '-y',
-                        gif_path
-                    ], check=True, capture_output=True)
-                except Exception as e:
-                    await event.edit(f"**حدث خطأ في تقليل الحجم:** {e}")
-                    return
-
-            # إرسال GIF
-            await client.send_file(event.chat_id, gif_path, caption="**تم التحويل بنجاح! 🎬**")
-
-            # حذف رسالة "جاري التحويل..." بعد إرسال GIF
-            await processing_message.delete()
-
-            # حذف الرسالة الأصلية
-            await event.delete()
-
-            # حذف الملفات المؤقتة
-            try:
-                os.remove(file_path)
-                os.remove(gif_path)
-            except:
-                pass  # تجاهل الأخطاء في حذف الملفات
+                await processing_message.edit(f"**حدث خطأ:** {e}")
                 
         else:
             await event.edit("**يرجى الرد على فيديو.**")
     else:
-        await event.edit("**يرجى الرد على فيديو.**")   
-                                                                                             
-from telethon.tl.types import User, Channel
+        await event.edit("**يرجى الرد على فيديو.**")
 
-class Config:
-    PM_LOGGER_GROUP_ID = None
-    BOTLOG = False
-    BOTLOG_CHATID = None
-
-class LOG_CHATS:
-    def __init__(self):
-        self.RECENT_USER = None
-        self.NEWPM = None
-        self.COUNT = 0
-
-LOG_CHATS_ = LOG_CHATS()
-
-async def monito_p_m_s(event):
-    if not event.is_private:
-        return
+async def convert_video_to_gif_async(event, reply_message, processing_message):
+    """تحويل الفيديو إلى GIF بشكل غير متزامن"""
     
-    sender = await event.get_sender()
-    if isinstance(sender, User) and not sender.bot:
-        chat = await event.get_chat()
-        fullname = f"{sender.first_name} {sender.last_name}" if sender.last_name else sender.first_name
-        user_name = f"@{sender.username}" if sender.username else "لا يوجـد"
+    # تحميل الفيديو
+    file_path = await reply_message.download_media()
+    gif_path = file_path.split('.')[0] + ".gif"
+    
+    try:
+        # الحصول على معلومات الفيديو
+        original_fps = await get_video_fps_async(file_path)
         
-        if LOG_CHATS_.RECENT_USER != chat.id:
-            LOG_CHATS_.RECENT_USER = chat.id
-            if LOG_CHATS_.NEWPM:
-                LOG_CHATS_.COUNT = 0
+        # تحسين إعدادات التحويل للسرعة
+        target_fps = min(original_fps, 15)  # تقليل FPS للسرعة
+        max_duration = 6  # تقليل المدة القصوى
+        
+        # تحويل بإعدادات محسّنة للسرعة
+        success = await convert_with_timeout(
+            file_path, gif_path, target_fps, max_duration, timeout=45
+        )
+        
+        if not success:
+            # إذا فشل التحويل الأول، جرب بإعدادات أبسط
+            success = await convert_simple_gif(file_path, gif_path, timeout=30)
+        
+        if success:
+            # التحقق من حجم الملف
+            if await check_and_resize_gif(file_path, gif_path):
+                # إرسال GIF
+                await client.send_file(
+                    event.chat_id, 
+                    gif_path, 
+                    caption="**تم التحويل بنجاح! 🎬**"
+                )
+                
+                # حذف رسالة "جاري التحويل..."
+                await processing_message.delete()
+                # حذف الرسالة الأصلية
+                await event.delete()
+            else:
+                await processing_message.edit("**الملف كبير جداً للإرسال**")
+        else:
+            await processing_message.edit("**انتهت مهلة التحويل (45 ثانية)**")
             
-            if Config.PM_LOGGER_GROUP_ID:
-                LOG_CHATS_.NEWPM = await event.client.send_message(
-                    Config.PM_LOGGER_GROUP_ID,
-                    f"**🚹┊المسـتخـدم :** {fullname} .\n"
-                    f"**🎟┊الايـدي :** `{chat.id}`\n"
-                    f"**🌀┊اليـوزر :** {user_name}\n\n"
-                    f"**💌┊قام بـ إرسـال رسائـل جـديـده**"
-                )
+    except Exception as e:
+        await processing_message.edit(f"**خطأ في التحويل:** {str(e)[:100]}")
+    finally:
+        # حذف الملفات المؤقتة
+        cleanup_files(file_path, gif_path)
+
+async def get_video_fps_async(file_path):
+    """الحصول على FPS الفيديو بشكل غير متزامن"""
+    try:
+        cmd = [
+            'ffprobe', '-v', 'quiet', '-print_format', 'json', 
+            '-show_streams', '-select_streams', 'v:0', file_path
+        ]
         
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+        
+        video_info = json.loads(stdout.decode())
+        fps_str = video_info['streams'][0].get('r_frame_rate', '30/1')
+        
+        if '/' in fps_str:
+            num, den = fps_str.split('/')
+            return int(float(num) / float(den))
+        return 30
+        
+    except:
+        return 30
+
+async def convert_with_timeout(file_path, gif_path, fps, duration, timeout=45):
+    """تحويل مع timeout محدد"""
+    try:
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', file_path,
+            '-vf', f'fps={fps},scale=400:-1:flags=fast_bilinear',
+            '-t', str(duration),
+            '-c:v', 'gif',
+            gif_path
+        ]
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        await asyncio.wait_for(process.communicate(), timeout=timeout)
+        return process.returncode == 0
+        
+    except asyncio.TimeoutError:
         try:
-            if event.message and Config.PM_LOGGER_GROUP_ID:
-                await event.client.forward_messages(
-                    Config.PM_LOGGER_GROUP_ID, event.message, silent=True
-                )
-                LOG_CHATS_.COUNT += 1
-        except Exception as e:
-            print(f"Error: {str(e)}")
-
-async def log_tagged_messages(event):
-    if not event.is_group:
-        return
-    
-    hmm = await event.get_chat()
-    full = None
-    
-    try:
-        full = await event.client.get_entity(event.message.from_id)
-    except Exception as e:
-        print(str(e))
-    
-    messaget = event.message.text or "رسالة غير نصية"
-    resalt = "**#التــاكــات**\n\n**¶ معـلومـات المجمـوعـة :**"
-    resalt += f"\n**⌔ الاسـم : ** {hmm.title}"
-    resalt += f"\n**⌔ الايـدي : ** `{hmm.id}`"
-    
-    if full:
-        fullusername = f"@{full.username}" if full.username else "لايوجد"
-        fullid = full.id
-        fullname = f"{full.first_name} {full.last_name}" if full.last_name else full.first_name
-        resalt += "\n\n**¶ معـلومـات المـرسـل :**"
-        resalt += f"\n**⌔ الاسـم : ** {fullname}"
-        resalt += f"\n**⌔ الايـدي : ** `{fullid}`"
-        resalt += f"\n**⌔ اليـوزر : ** {fullusername}"
-    
-    resalt += f"\n\n**⌔ الرســالـه : **{messaget}"
-    resalt += f"\n\n**⌔ رابـط الرسـاله : **رابط الرسالة"
-    
-    if Config.PM_LOGGER_GROUP_ID:
-        await event.client.send_message(
-            Config.PM_LOGGER_GROUP_ID,
-            resalt,
-            parse_mode="html"
-        )
-
-@client.on(events.NewMessage(pattern=r"^\.خزن$"))
-async def log_text(event):
-    if not Config.BOTLOG or not Config.BOTLOG_CHATID:
-        await event.reply("**⌔ عـذراً .. هـذا الامـر يتطلـب تفعيـل فـار التخـزين اولاً**")
-        return
-    
-    if event.reply_to_msg_id:
-        reply_msg = await event.get_reply_message()
-        await reply_msg.forward_to(Config.BOTLOG_CHATID)
-    elif event.pattern_match:
-        user = f"التخــزين / ايـدي الدردشــه : {event.chat_id}\n\n"
-        textx = user + event.pattern_match.group(1)
-        await event.client.send_message(Config.BOTLOG_CHATID, textx)
-    else:
-        await event.reply("**⌔ بالــرد على اي رسـاله لحفظهـا في كـروب التخــزين**")
-        return
-    
-    await event.reply("**⌔ تـم الحفـظ في كـروب التخـزين .. بنجـاح ✓**")
-    await asyncio.sleep(2)
-    await event.delete()
-
-@client.on(events.NewMessage(pattern=r"^\.تفعيل التخزين$"))
-async def set_no_log_p_m(event):
-    await event.reply("**⌔ تـم تفعيـل التخـزين لهـذه الدردشـه .. بنجـاح ✓**")
-    await asyncio.sleep(5)
-    await event.delete()
-
-@client.on(events.NewMessage(pattern=r"^\.تعطيل التخزين$"))
-async def set_no_log_p_m(event):
-    await event.reply("**⌔ تـم تعطيـل التخـزين لهـذه الدردشـه .. بنجـاح ✓**")
-    await asyncio.sleep(5)
-    await event.delete()
-
-@client.on(events.NewMessage(pattern=r"^\.تخزين الخاص (تفعيل|تعطيل)$"))
-async def set_pmlog(event):
-    input_str = event.pattern_match.group(1)
-    if input_str == "تعطيل":
-        await event.reply("**- تـم تعطيـل تخـزين رسـائل الخـاص .. بنجـاح✓**")
-    elif input_str == "تفعيل":
-        await event.reply("**- تـم تفعيـل تخـزين رسـائل الخـاص .. بنجـاح✓**")
-
-@client.on(events.NewMessage(pattern=r"^\.تخزين الكروبات (تفعيل|تعطيل)$"))
-async def set_grplog(event):
-    input_str = event.pattern_match.group(1)
-    if input_str == "تعطيل":
-        await event.reply("**- تـم تعطيـل تخـزين تاكـات الكـروبات .. بنجـاح✓**")
-    elif input_str == "تفعيل":
-        await event.reply("**- تـم تفعيـل تخـزين تاكـات الكـروبات .. بنجـاح✓**")
-
-async def setup_logger_group(client):
-    try:
-        group = await client.create_supergroup("سجلات البوت", "مجموعة لحفظ سجلات البوت")
-        await client.send_file(
-            group.id,
-            "https://files.catbox.moe/uvec13.jpg",
-            caption="مجموعة سجلات البوت"
-        )
-        Config.PM_LOGGER_GROUP_ID = group.id
-        Config.BOTLOG_CHATID = group.id
-        Config.BOTLOG = True
-        return True
-    except Exception as e:
-        print(f"فشل في إنشاء مجموعة السجلات: {e}")
+            process.terminate()
+            await process.wait()
+        except:
+            pass
+        return False
+    except:
         return False
 
-async def start_logging(client):
-    client.add_event_handler(monito_p_m_s, events.NewMessage(incoming=True, func=lambda e: e.is_private))
-    client.add_event_handler(log_tagged_messages, events.NewMessage(incoming=True, func=lambda e: e.mentioned))
-    
-    if not Config.PM_LOGGER_GROUP_ID:
-        await setup_logger_group(client)
+async def convert_simple_gif(file_path, gif_path, timeout=30):
+    """تحويل مبسط كخيار احتياطي"""
+    try:
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', file_path,
+            '-vf', 'fps=10,scale=320:-1',
+            '-t', '4',
+            gif_path
+        ]
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        await asyncio.wait_for(process.communicate(), timeout=timeout)
+        return process.returncode == 0
+        
+    except:
+        return False
 
-@client.on(events.NewMessage(pattern=r"^\.اوامر التخزين$"))
-async def storage_commands(event):
-    help_text = """
-╭━━━┳━━━━╮
-أهـلاً بك فـي قـائمة أوامـر التخـزيـن ⎚
-╰━━━┻━━━━╯
-ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
-1- ☆ .خزن - حفظ الرسالة في مجموعة التخزين ☆
-2- ☆ .تفعيل التخزين - تفعيل التسجيل للدردشة الحالية ☆
-3- ☆ .تعطيل التخزين - تعطيل التسجيل للدردشة الحالية ☆
-4- ☆ .تخزين الخاص تفعيل - تفعيل تسجيل الرسائل الخاصة ☆
-5- ☆ .تخزين الخاص تعطيل - تعطيل تسجيل الرسائل الخاصة ☆
-6- ☆ .تخزين الكروبات تفعيل - تفعيل تسجيل التاجات في المجموعات ☆
-7- ☆ .تخزين الكروبات تعطيل - تعطيل تسجيل التاجات في المجموعات ☆
-ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
-"""
-    await event.reply(help_text)
+async def check_and_resize_gif(file_path, gif_path):
+    """فحص حجم GIF وتصغيره إذا لزم الأمر"""
+    max_size = 8 * 1024 * 1024  # 8 MB
+    
+    if not os.path.exists(gif_path):
+        return False
+        
+    file_size = os.path.getsize(gif_path)
+    
+    if file_size <= max_size:
+        return True
+    
+    # إعادة تحويل بحجم أصغر
+    try:
+        temp_gif = gif_path + ".temp"
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', file_path,
+            '-vf', 'fps=8,scale=240:-1',
+            '-t', '3',
+            temp_gif
+        ]
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        await asyncio.wait_for(process.communicate(), timeout=20)
+        
+        if process.returncode == 0 and os.path.exists(temp_gif):
+            os.replace(temp_gif, gif_path)
+            return os.path.getsize(gif_path) <= max_size
+            
+    except:
+        pass
+    
+    return False
+
+def cleanup_files(*file_paths):
+    """حذف الملفات بأمان"""
+    for file_path in file_paths:
+        try:
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+        except:
+            pass
+
+
+
+def generate_random_email():
+    username = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+    return f"{username}@mailsac.com"
+
+def fetch_inbox(email):
+    inbox_url = f"https://mailsac.com/api/addresses/{email}/messages"
+    headers = {"Mailsac-Key": MAILSAC_API_KEY}
+    response = requests.get(inbox_url, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    return []
+
+def fetch_message(email, message_id):
+    url = f"https://mailsac.com/api/text/{email}/{message_id}"
+    headers = {"Mailsac-Key": MAILSAC_API_KEY}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.text
+    return "❌ فشل في جلب الرسالة."
+
+async def is_developer(user_id):
+    me = await client.get_me()
+    return user_id == me.id or user_id in AUTHORIZED_USERS
+
+async def respond(event, message, **kwargs):
+    try:
+        if event.out:
+            return await event.edit(message, **kwargs)
+        else:
+            return await event.reply(message, **kwargs)
+    except:
+        return await event.reply(message, **kwargs)
+
+@client.on(events.NewMessage(pattern=r'^\.بريد وهمي$'))
+async def create_temp_mail(event):
+    global current_email, seen_ids, monitoring_active, monitoring_task
+    
+    if monitoring_task and not monitoring_task.done():
+        monitoring_task.cancel()
+    
+    seen_ids = set()
+    current_email = generate_random_email()
+    monitoring_active = True
+    
+    is_dev = await is_developer(event.sender_id)
+    
+    response_text = (
+        f"📧 **تم إنشاء بريد وهمي جديد:**\n"
+        f"`{current_email}`\n"
+        f"📬 رابط الصندوق: https://mailsac.com/inbox/{current_email.split('@')[0]}\n"
+        f"🔄 سيتم فحص الرسائل كل 5 ثواني...\n"
+        f"⏹ استخدم `.ايقاف الوهمي` لإيقاف المراقبة"
+    )
+    
+    message = await respond(event, response_text)
+
+    async def monitor_inbox():
+        try:
+            while monitoring_active:
+                messages = fetch_inbox(current_email)
+                new_messages = [msg for msg in messages if msg['_id'] not in seen_ids]
+
+                if new_messages:
+                    for msg in new_messages:
+                        seen_ids.add(msg['_id'])
+                        body = fetch_message(current_email, msg['_id'])
+
+                        sender_data = msg.get('from', [])
+                        if isinstance(sender_data, list) and sender_data:
+                            sender_email = sender_data[0].get('address', 'غير معروف')
+                        elif isinstance(sender_data, str):
+                            sender_email = sender_data
+                        else:
+                            sender_email = 'غير معروف'
+
+                        msg_content = (
+                            f"📬 **رسالة جديدة وصلت!**\n\n"
+                            f"👤 من: `{sender_email}`\n"
+                            f"📌 الموضوع: `{msg.get('subject', 'بدون')}`\n\n"
+                            f"📝 المحتوى:\n{body[:1000]}"
+                        )
+
+                        if is_dev:
+                            await event.reply(msg_content)
+                        else:
+                            current_text = message.text
+                            if msg_content not in current_text:
+                                new_text = f"{current_text}\n\n{msg_content}"
+                                try:
+                                    await message.edit(new_text)
+                                except:
+                                    message = await event.reply(new_text)
+                await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            error_msg = f"⚠️ خطأ أثناء المراقبة: {e}"
+            await respond(event, error_msg)
+
+    monitoring_task = asyncio.create_task(monitor_inbox())
+
+@client.on(events.NewMessage(pattern=r'^\.فحص البريد$'))
+async def check_mail(event):
+    if not current_email:
+        error_msg = "⚠️ لا يوجد بريد حاليًا. استخدم `.بريد وهمي` أولاً."
+        await respond(event, error_msg)
+        return
+
+    messages = fetch_inbox(current_email)
+    response_msg = (
+        f"📬 **فحص البريد المؤقت**\n\n"
+        f"• البريد: `{current_email}`\n"
+        f"• عدد الرسائل المستلمة: `{len(messages)}`\n"
+        f"• [رابط الصندوق](https://mailsac.com/inbox/{current_email.split('@')[0]})"
+    )
+
+    await respond(event, response_msg, link_preview=False)
+
+@client.on(events.NewMessage(pattern=r'^\.ايقاف الوهمي$'))
+async def stop_monitoring(event):
+    global monitoring_active, monitoring_task
+    
+    if not current_email:
+        await respond(event, "⚠️ لا يوجد بريد وهمي نشط حالياً.")
+        return
+    
+    if monitoring_task:
+        monitoring_active = False
+        monitoring_task.cancel()
+        try:
+            await monitoring_task
+        except:
+            pass
+    
+    await respond(event, f"✅ تم إيقاف مراقبة البريد الوهمي: `{current_email}`")
+
+            
+class ChannelMonitoringSystem:
+    def __init__(self, client):
+        self.client = client
+        
+    async def add_channel(self, channel_input):
+        """إضافة قناة للمراقبة"""
+        try:
+            if channel_input.startswith('https://t.me/'):
+                channel_input = channel_input.replace('https://t.me/', '')
+            elif channel_input.startswith('@'):
+                channel_input = channel_input[1:]
+            
+            entity = await self.client.get_entity(channel_input)
+            channel_id = utils.get_peer_id(entity)  # الحصول على ID مع البادئة
+            
+            if len(monitored_channels) >= 3:
+                return False, "تم الوصول للحد الأقصى (3 قنوات)"
+            
+            monitored_channels[channel_id] = {
+                'username': entity.username or str(entity.id),
+                'keywords': [],
+                'name': entity.title,
+                'original_id': entity.id  # حفظ المعرف الأصلي للعرض
+            }
+            
+            return True, f"تم إضافة قناة: {entity.title}"
+            
+        except Exception as e:
+            return False, f"خطأ في إضافة القناة: {str(e)}"
+    
+    async def remove_channel(self, channel_input):
+        """إزالة قناة من المراقبة"""
+        try:
+            if channel_input.startswith('https://t.me/'):
+                channel_input = channel_input.replace('https://t.me/', '')
+            elif channel_input.startswith('@'):
+                channel_input = channel_input[1:]
+            
+            entity = await self.client.get_entity(channel_input)
+            channel_id = utils.get_peer_id(entity)
+            
+            if channel_id in monitored_channels:
+                channel_name = monitored_channels[channel_id]['name']
+                del monitored_channels[channel_id]
+                return True, f"تم حذف قناة: {channel_name}"
+            else:
+                return False, "هذه القناة غير مراقبة"
+                
+        except Exception as e:
+            return False, f"خطأ في حذف القناة: {str(e)}"
+    
+    async def add_keywords(self, channel_input, keywords_string):
+        """إضافة كلمات مفتاحية لقناة"""
+        try:
+            if channel_input.startswith('https://t.me/'):
+                channel_input = channel_input.replace('https://t.me/', '')
+            elif channel_input.startswith('@'):
+                channel_input = channel_input[1:]
+            
+            entity = await self.client.get_entity(channel_input)
+            channel_id = utils.get_peer_id(entity)
+            
+            if channel_id in monitored_channels:
+                keywords = [k.strip() for k in keywords_string.split(',') if k.strip()]
+                monitored_channels[channel_id]['keywords'] = keywords
+                return True, f"تم تحديث كلمات البحث لقناة: {monitored_channels[channel_id]['name']}"
+            else:
+                return False, "هذه القناة غير مراقبة - يجب إضافتها أولاً"
+                
+        except Exception as e:
+            return False, f"خطأ: {str(e)}"
+    
+    async def make_extended_call(self, user_id):
+        """إجراء مكالمة ممتدة"""
+        try:
+            if user_id in current_calls:
+                return False, "مكالمة نشطة بالفعل"
+            
+            call_config = await self.client(GetCallConfigRequest())
+            config_data = call_config.data if hasattr(call_config, 'data') else call_config
+            
+            min_layer = getattr(config_data, 'min_layer', 65)
+            max_layer = getattr(config_data, 'max_layer', 92)
+            udp_p2p = getattr(config_data, 'udp_p2p', True)
+            udp_reflector = getattr(config_data, 'udp_reflector', True)
+            
+            g_a = os.urandom(256)
+            g_a_hash = hashlib.sha256(g_a).digest()
+            
+            call = await self.client(functions.phone.RequestCallRequest(
+                user_id=user_id,
+                random_id=random.randint(-2147483648, 2147483647),
+                g_a_hash=g_a_hash,
+                protocol=types.PhoneCallProtocol(
+                    min_layer=min_layer,
+                    max_layer=max_layer,
+                    udp_p2p=udp_p2p,
+                    udp_reflector=udp_reflector,
+                    library_versions=[]
+                )
+            ))
+            
+            current_calls[user_id] = {
+                'call_id': call.phone_call.id,
+                'access_hash': call.phone_call.access_hash,
+                'start_time': asyncio.get_event_loop().time()
+            }
+            
+            asyncio.create_task(self._auto_end_call(user_id, 30))
+            
+            return True, "تم بدء المكالمة"
+            
+        except UserPrivacyRestrictedError:
+            return False, "المستخدم يمنع المكالمات من غير المعروفين"
+        except Exception as e:
+            return False, f"خطأ في المكالمة: {str(e)}"
+    
+    async def _auto_end_call(self, user_id, duration):
+        """إنهاء المكالمة تلقائياً بعد مدة معينة"""
+        await asyncio.sleep(duration)
+        
+        if user_id in current_calls:
+            try:
+                call_info = current_calls[user_id]
+                await self.client(functions.phone.DiscardCallRequest(
+                    peer=types.InputPhoneCall(
+                        id=call_info['call_id'],
+                        access_hash=call_info['access_hash']
+                    ),
+                    duration=duration,
+                    reason=types.PhoneCallDiscardReasonHangup(),
+                    connection_id=0
+                ))
+                
+                # إرسال رسالة للمستخدم بعد انتهاء المكالمة
+                try:
+                    user_entity = await self.client.get_entity(user_id)
+                    await self.client.send_message(
+                        user_id,
+                         "**تم انتهاء الاتصال بك**",
+                        reply_to=call_info.get('message_id')
+                    )
+                except Exception as e:
+                    pass
+                
+                del current_calls[user_id]
+            except Exception as e:
+                if user_id in current_calls:
+                    del current_calls[user_id]
+    
+    async def check_message_for_keywords(self, message_text, channel_id):
+        """فحص الرسالة للكلمات المفتاحية"""        
+        if not monitoring_active or not target_users or channel_id not in monitored_channels:
+            return False, None
+        
+        keywords = monitored_channels[channel_id]['keywords']
+        
+        if not keywords:
+            return False, None
+        
+        message_lower = message_text.lower()
+        found_keywords = [keyword for keyword in keywords if keyword.lower() in message_lower]
+        
+        if found_keywords:
+            return True, found_keywords
+        
+        return False, None
+
+monitor_system = ChannelMonitoringSystem(client)
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.مراقبة (.+)$'))
+async def add_channel_command(event):
+    channel_input = event.pattern_match.group(1).strip()
+    await event.edit("**⏳ جاري إضافة القناة...**")
+    success, message = await monitor_system.add_channel(channel_input)
+    if success:
+        await event.edit(f"✅ **{message}**\n\n⚠️ **تذكير:** يجب إضافة الكلمات المفتاحية باستخدام:\n`.كلمات {channel_input} كلمة1,كلمة2`")
+    else:
+        await event.edit(f"❌ **{message}**")
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.حذف مراقبة (.+)$'))
+async def remove_channel_command(event):
+    channel_input = event.pattern_match.group(1).strip()
+    success, message = await monitor_system.remove_channel(channel_input)
+    if success:
+        await event.edit(f"✅ **{message}**")
+    else:
+        await event.edit(f"❌ **{message}**")
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.المراقبين$'))
+async def list_channels_command(event):
+    if not monitored_channels:
+        await event.edit("**📭 لا توجد قنوات مراقبة**")
+        return
+    
+    text = "**📋 القنوات المراقبة:**\n\n"
+    
+    for channel_id, info in monitored_channels.items():
+        status = "🟢 نشط" if monitoring_active else "🔴 متوقف"
+        keywords_text = ", ".join(info['keywords']) if info['keywords'] else "❌ لم يتم تحديد كلمات"
+        
+        text += f"**📺 {info['name']}**\n"
+        text += f"└ المعرف: @{info['username']}\n"
+        text += f"└ الحالة: {status}\n"
+        text += f"└ الكلمات: {keywords_text}\n\n"
+    
+    await event.edit(text)
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.كلمات (.+?) (.+)$'))
+async def add_keywords_command(event):
+    channel_input = event.pattern_match.group(1).strip()
+    keywords_input = event.pattern_match.group(2).strip()
+    
+    await event.edit("**⏳ جاري إضافة الكلمات...**")
+    
+    success, message = await monitor_system.add_keywords(channel_input, keywords_input)
+    
+    if success:
+        keywords = [k.strip() for k in keywords_input.split(',') if k.strip()]
+        await event.edit(f"✅ **{message}**\n**الكلمات/الجمل المضافة:** {', '.join(keywords)}")
+    else:
+        await event.edit(f"❌ **{message}**")
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.مستهدف (.+)$'))
+async def set_target_command(event):
+    user_input = event.pattern_match.group(1).strip()
+    
+    if user_input.startswith('@'):
+        user_input = user_input[1:]
+    
+    try:
+        await event.edit("**⏳ جاري تحديد المستهدف...**")
+        
+        if user_input.isdigit():
+            user = await client.get_entity(int(user_input))
+        else:
+            user = await client.get_entity(user_input)
+        
+        if getattr(user, 'bot', False):
+            await event.edit("❌ **لا يمكن استهداف البوتات**")
+            return
+        
+        if user.id in target_users:
+            await event.edit("⚠️ **هذا المستخدم مضاف بالفعل**")
+            return
+            
+        if len(target_users) >= MAX_TARGETS:
+            await event.edit(f"❌ **تم الوصول للحد الأقصى ({MAX_TARGETS} مستهدفين)**")
+            return
+        
+        target_users.append(user.id)
+        user_name = getattr(user, 'first_name', 'المستخدم')
+        await event.edit(f"✅ **تم إضافة المستهدف:** {user_name}\n**المعرف:** {user.id}\n**عدد المستهدفين:** {len(target_users)}/{MAX_TARGETS}")
+        
+    except Exception as e:
+        await event.edit(f"❌ **خطأ في إضافة المستهدف:** {str(e)}")
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.حذف مستهدف (.+)$'))
+async def remove_target_command(event):
+    user_input = event.pattern_match.group(1).strip()
+    
+    if user_input.startswith('@'):
+        user_input = user_input[1:]
+    
+    try:
+        await event.edit("**⏳ جاري حذف المستهدف...**")
+        
+        if user_input.isdigit():
+            user_id = int(user_input)
+        else:
+            user = await client.get_entity(user_input)
+            user_id = user.id
+        
+        if user_id in target_users:
+            target_users.remove(user_id)
+            await event.edit(f"✅ **تم حذف المستهدف بنجاح**\n**عدد المستهدفين:** {len(target_users)}/{MAX_TARGETS}")
+        else:
+            await event.edit("❌ **هذا المستخدم غير موجود في قائمة المستهدفين**")
+            
+    except Exception as e:
+        await event.edit(f"❌ **خطأ في حذف المستهدف:** {str(e)}")
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.ايقاف مراقبة$'))
+async def pause_monitoring_command(event):
+    global monitoring_active
+    if not monitoring_active:
+        await event.edit("⚠️ **المراقبة متوقفة بالفعل**")
+        return
+    
+    monitoring_active = False
+    await event.edit("⏸️ **تم إيقاف المراقبة مؤقتاً**")
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.تشغيل مراقبة$'))
+async def resume_monitoring_command(event):
+    global monitoring_active
+    
+    if not monitored_channels:
+        await event.edit("❌ **لا توجد قنوات مراقبة! استخدم `.مراقبة [قناة]` لإضافة قناة**")
+        return
+    
+    if not target_users:
+        await event.edit("❌ **لم يتم تحديد أي مستهدف! استخدم `.مستهدف [مستخدم]`**")
+        return
+    
+    channels_without_keywords = []
+    for channel_id, info in monitored_channels.items():
+        if not info['keywords']:
+            channels_without_keywords.append(info['name'])
+    
+    if channels_without_keywords:
+        await event.edit(f"❌ **القنوات التالية بحاجة لكلمات مفتاحية:**\n{', '.join(channels_without_keywords)}\n\n**استخدم:** `.كلمات [قناة] [كلمات]`")
+        return
+    
+    if monitoring_active:
+        await event.edit("⚠️ **المراقبة شغالة بالفعل**")
+        return
+        
+    monitoring_active = True
+    await event.edit("▶️ **تم تشغيل المراقبة بنجاح!**\n\n🎯 النظام جاهز للعمل")
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.رن (.+)$'))
+async def manual_ring_command(event):
+    user_input = event.pattern_match.group(1).strip()
+    
+    if user_input.startswith('@'):
+        user_input = user_input[1:]
+    
+    try:
+        if user_input.isdigit():
+            user = await client.get_entity(int(user_input))
+        else:
+            user = await client.get_entity(user_input)
+        
+        await event.edit("**📞 جاري الاتصال...**")
+        
+        success, message = await monitor_system.make_extended_call(user.id)
+        
+        if success:
+            user_name = getattr(user, 'first_name', 'المستخدم')
+            await event.edit(f"✅ **تم الاتصال بـ {user_name}**")
+            
+            # إرسال رسالة للمستخدم
+            try:
+                msg = await client.send_message(
+                    user.id,
+                    "🚀 نزلت هدايا جديدة!\n\n"
+                    "📞 سيتم الاتصال بك الآن لتأكيد طلبك...\n\n"
+                    "⚡ لا تفوت الفرصة واحصل على هديتك المجانية!"
+                )
+                
+                # حفظ معرف الرسالة لربطها بالمكالمة
+                if user.id in current_calls:
+                    current_calls[user.id]['message_id'] = msg.id
+                    
+            except Exception as e:
+                pass
+        else:
+            await event.edit(f"❌ **{message}**")
+            
+    except Exception as e:
+        await event.edit(f"❌ **خطأ: {str(e)}**")
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.حالة$'))
+async def status_command(event):
+    monitoring_status = '🟢 نشطة' if monitoring_active else '🔴 متوقفة'
+    target_status = f'✅ {len(target_users)} مستهدف' if target_users else '❌ غير محدد'
+    
+    status_text = f"""**📊 حالة نظام المراقبة:**
+
+**🔄 المراقبة:** {monitoring_status}
+**👤 المستهدفون:** {target_status}
+**📺 القنوات:** {len(monitored_channels)}/3
+**📞 مكالمات نشطة:** {len(current_calls)}
+
+**📋 القنوات المراقبة:**"""
+
+    if monitored_channels:
+        for info in monitored_channels.values():
+            keywords_count = len(info['keywords'])
+            keywords_status = f"✅ {keywords_count} كلمة" if keywords_count > 0 else "❌ بدون كلمات"
+            keywords_list = "\n└ " + "\n└ ".join(info['keywords']) if info['keywords'] else ""
+            
+            status_text += f"\n• **{info['name']}** ({keywords_status}){keywords_list}"
+    else:
+        status_text += "\n• لا توجد قنوات"
+    
+    if target_users:
+        status_text += "\n\n**🎯 المستهدفون:**"
+        for user_id in target_users:
+            try:
+                user = await client.get_entity(user_id)
+                status_text += f"\n• {getattr(user, 'first_name', 'مستخدم')} ({user.id})"
+            except:
+                status_text += f"\n• مستخدم غير معروف ({user_id})"
+    
+    if not monitoring_active and monitored_channels and target_users:
+        missing_keywords = [info['name'] for info in monitored_channels.values() if not info['keywords']]
+        if missing_keywords:
+            status_text += f"\n\n⚠️ **لتشغيل المراقبة:** أضف كلمات للقنوات: {', '.join(missing_keywords)}"
+        else:
+            status_text += f"\n\n✅ **جاهز للتشغيل!** استخدم `.تشغيل مراقبة`"
+    
+    await event.edit(status_text)
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'^\.شرح المراقبة$'))
+async def help_command(event):
+    help_text = """**📖 شرح أوامر نظام المراقبة:**
+
+**🔧 إعداد المراقبة:**
+• `.مراقبة [قناة]` - إضافة قناة للمراقبة
+• `.حذف مراقبة [قناة]` - حذف قناة من المراقبة
+• `.كلمات [قناة] [كلمات]` - إضافة كلمات/جمل بحث
+• `.مستهدف [مستخدم]` - تحديد من سيتم الاتصال به
+• `.حذف مستهدف [مستخدم]` - حذف مستهدف من القائمة
+
+**⚙️ التحكم:**
+• `.تشغيل مراقبة` - تشغيل المراقبة
+• `.ايقاف مراقبة` - إيقاف المراقبة مؤقتاً
+• `.المراقبين` - عرض القنوات المراقبة
+• `.حالة` - عرض حالة النظام
+
+**📞 الاتصال:**
+• `.رن [مستخدم]` - اتصال يدوي
+• `.شرح المراقبة` - عرض هذا الشرح
+
+**📝 ملاحظات مهمة:**
+• الحد الأقصى: 3 قنوات
+• الحد الأقصى للمستهدفين: 5
+• مدة المكالمة: 30 ثانية
+• يمكن فصل الكلمات/الجمل بالفاصلة (,)
+• يدعم الجمل الكاملة والكلمات المفردة
+• يجب إضافة الكلمات قبل تشغيل المراقبة"""
+
+    await event.edit(help_text)
+
+@client.on(events.NewMessage(incoming=True))
+async def monitor_channels(event):
+    try:
+        if not monitoring_active or not target_users:
+            return
+        
+        channel_id = event.chat_id
+        if channel_id not in monitored_channels:
+            return
+        
+        message_text = event.raw_text or (event.message.message if event.message else "")
+        
+        if not message_text and event.message and event.message.media:
+            message_text = event.message.media.caption or ""
+        
+        if not message_text:
+            return
+        
+        found, found_keywords = await monitor_system.check_message_for_keywords(message_text, channel_id)
+        
+        if found:
+            channel_name = monitored_channels[channel_id]['name']
+            
+            # إرسال رسالة لكل مستهدف
+            for user_id in target_users:
+                try:
+                    # إرسال رسالة للمستخدم قبل المكالمة
+                    user = await client.get_entity(user_id)
+                    msg = await client.send_message(
+                        user_id,
+"**🎉 نزلت هدايا جديدة!**\n"
+"**📞 جاري الاتصال بك الآن**"
+                    )
+                    
+                    # بدء المكالمة
+                    success, _ = await monitor_system.make_extended_call(user_id)
+                    
+                    if success:
+                        # حفظ معرف الرسالة لربطها بالمكالمة
+                        if user_id in current_calls:
+                            current_calls[user_id]['message_id'] = msg.id
+                    else:
+                        await client.send_message(
+                            user_id,
+                            "⚠️ تعذر الاتصال بك حالياً، سيتم المحاولة لاحقاً.",
+                            reply_to=msg.id
+                        )
+                        
+                except Exception as e:
+                    pass
+    
+    except Exception as e:
+        pass
+
+async def main():
+    await client.start()
+
+    
+    try:
+        me = await client.get_me()
+        print(f"👤 تم تسجيل الدخول باسم: {me.first_name}")
+        print(f"🆔 معرف الحساب: {me.id}")
+        if me.username:
+            print(f"📝 اسم المستخدم: @{me.username}")
+        print("=" * 50)
+    except Exception as e:
+        pass
+                                                                                           
 
             
 def run_server():
