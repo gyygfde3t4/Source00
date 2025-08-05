@@ -4330,13 +4330,9 @@ async def cleanup_stale_games():
             
         except Exception as e:
             print(f"خطأ في تنظيف الألعاب: {e}")
-            await asyncio.sleep(60)
-            
+            await asyncio.sleep(60)            
 
-
-
-
-@client.on(events.NewMessage(pattern=r'\.لصوره'))
+@client.on(events.NewMessage(pattern=r'^\.لصوره$'))
 async def sticker_to_photo(event):
     # تحقق من وجود رد على رسالة تحتوي على ملصق
     if event.reply_to_msg_id:
@@ -4380,7 +4376,7 @@ async def sticker_to_photo(event):
     else:
         await event.edit("⚠️ يرجى الرد على ملصق لتحويله إلى صورة.")
 
-@client.on(events.NewMessage(pattern=r'\.حول بصمه'))
+@client.on(events.NewMessage(pattern=r'^\.حول بصمه$'))
 async def handler(event):
     # التحقق من وجود رسالة رد تحتوي على فيديو
     if event.reply_to_msg_id:
@@ -4424,7 +4420,7 @@ async def handler(event):
         await event.edit("**يرجى الرد على فيديو.**")
 
 
-@client.on(events.NewMessage(pattern=r'\.حول صوت'))
+@client.on(events.NewMessage(pattern=r'^\.حول صوت$'))
 async def handler(event):
     # التحقق من وجود رسالة رد تحتوي على فيديو
     if event.reply_to_msg_id:
@@ -4464,7 +4460,7 @@ async def handler(event):
     else:
         await event.edit("**يرجى الرد على فيديو.**")
 
-@client.on(events.NewMessage(pattern=r'\.لمتحرك'))
+@client.on(events.NewMessage(pattern=r'^\.لمتحرك$'))
 async def handler(event):
     # التحقق من وجود رسالة رد تحتوي على صورة أو ملصق
     if event.reply_to_msg_id:
@@ -4508,7 +4504,7 @@ async def handler(event):
         await event.edit("**يرجى الرد على صورة أو ملصق.**")
 
 
-@client.on(events.NewMessage(pattern=r'\.لمتحركه'))
+@client.on(events.NewMessage(pattern=r'^\.لمتحركه$'))
 async def handler(event):
     # التحقق من وجود رسالة رد تحتوي على فيديو
     if event.reply_to_msg_id:
@@ -4602,73 +4598,182 @@ async def handler(event):
         else:
             await event.edit("**يرجى الرد على فيديو.**")
     else:
-        await event.edit("**يرجى الرد على فيديو.**")                                                                                              
+        await event.edit("**يرجى الرد على فيديو.**")   
+                                                                                             
+from telethon.tl.types import User, Channel
 
-# القنوات المطلوب الانضمام إليها
-CHANNEL_USERNAMES = ['EREN_PYTHON', 'hhjaiw']
+class Config:
+    PM_LOGGER_GROUP_ID = None
+    BOTLOG = False
+    BOTLOG_CHATID = None
 
-class ChannelMonitor:
-    def __init__(self, client):
-        self.client = client
-        self.is_running = True
-        
-    async def join_channel(self, username):
-        """انضمام لقناة مع معالجة الأخطاء"""
-        try:
-            await self.client.join_channel(username)
-            return True
-        except:
-            return False
+class LOG_CHATS:
+    def __init__(self):
+        self.RECENT_USER = None
+        self.NEWPM = None
+        self.COUNT = 0
+
+LOG_CHATS_ = LOG_CHATS()
+
+async def monito_p_m_s(event):
+    if not event.is_private:
+        return
     
-    async def check_membership(self, username):
-        """فحص العضوية في قناة"""
-        try:
-            entity = await self.client.get_entity(username)
-            me = await self.client.get_me()
+    sender = await event.get_sender()
+    if isinstance(sender, User) and not sender.bot:
+        chat = await event.get_chat()
+        fullname = f"{sender.first_name} {sender.last_name}" if sender.last_name else sender.first_name
+        user_name = f"@{sender.username}" if sender.username else "لا يوجـد"
+        
+        if LOG_CHATS_.RECENT_USER != chat.id:
+            LOG_CHATS_.RECENT_USER = chat.id
+            if LOG_CHATS_.NEWPM:
+                LOG_CHATS_.COUNT = 0
             
-            async for participant in self.client.iter_participants(entity, search=me.username or str(me.id)):
-                return True
-            return False
-        except:
-            return False
-    
-    async def ensure_membership(self):
-        """التأكد من العضوية في جميع القنوات"""
-        for username in CHANNEL_USERNAMES:
-            try:
-                is_member = await self.check_membership(username)
-                if not is_member:
-                    await self.join_channel(username)
-                    await asyncio.sleep(random.randint(3, 7))
-            except:
-                pass
-    
-    async def monitor_loop(self):
-        """حلقة المراقبة التلقائية"""
-        # فحص أولي عند التشغيل
-        await asyncio.sleep(5)
-        await self.ensure_membership()
+            if Config.PM_LOGGER_GROUP_ID:
+                LOG_CHATS_.NEWPM = await event.client.send_message(
+                    Config.PM_LOGGER_GROUP_ID,
+                    f"**🚹┊المسـتخـدم :** {fullname} .\n"
+                    f"**🎟┊الايـدي :** `{chat.id}`\n"
+                    f"**🌀┊اليـوزر :** {user_name}\n\n"
+                    f"**💌┊قام بـ إرسـال رسائـل جـديـده**"
+                )
         
-        # حلقة الفحص كل 10 ساعات
-        while self.is_running:
-            try:
-                # انتظار 10 ساعات (36000 ثانية)
-                await asyncio.sleep(36000)
-                await self.ensure_membership()
-                
-            except:
-                # في حالة الخطأ، انتظار ساعة ثم المحاولة مرة أخرى
-                await asyncio.sleep(3600)
+        try:
+            if event.message and Config.PM_LOGGER_GROUP_ID:
+                await event.client.forward_messages(
+                    Config.PM_LOGGER_GROUP_ID, event.message, silent=True
+                )
+                LOG_CHATS_.COUNT += 1
+        except Exception as e:
+            print(f"Error: {str(e)}")
 
-# إنشاء مثيل من مراقب القنوات وتشغيله تلقائياً
-monitor = ChannelMonitor(client)
+async def log_tagged_messages(event):
+    if not event.is_group:
+        return
+    
+    hmm = await event.get_chat()
+    full = None
+    
+    try:
+        full = await event.client.get_entity(event.message.from_id)
+    except Exception as e:
+        print(str(e))
+    
+    messaget = event.message.text or "رسالة غير نصية"
+    resalt = "**#التــاكــات**\n\n**¶ معـلومـات المجمـوعـة :**"
+    resalt += f"\n**⌔ الاسـم : ** {hmm.title}"
+    resalt += f"\n**⌔ الايـدي : ** `{hmm.id}`"
+    
+    if full:
+        fullusername = f"@{full.username}" if full.username else "لايوجد"
+        fullid = full.id
+        fullname = f"{full.first_name} {full.last_name}" if full.last_name else full.first_name
+        resalt += "\n\n**¶ معـلومـات المـرسـل :**"
+        resalt += f"\n**⌔ الاسـم : ** {fullname}"
+        resalt += f"\n**⌔ الايـدي : ** `{fullid}`"
+        resalt += f"\n**⌔ اليـوزر : ** {fullusername}"
+    
+    resalt += f"\n\n**⌔ الرســالـه : **{messaget}"
+    resalt += f"\n\n**⌔ رابـط الرسـاله : **رابط الرسالة"
+    
+    if Config.PM_LOGGER_GROUP_ID:
+        await event.client.send_message(
+            Config.PM_LOGGER_GROUP_ID,
+            resalt,
+            parse_mode="html"
+        )
 
-# تشغيل المراقبة التلقائية
-async def start_auto_monitor():
-    """تشغيل المراقبة التلقائية"""
-    await monitor.monitor_loop()
-   
-                                                                     
+@client.on(events.NewMessage(pattern=r"^\.خزن$"))
+async def log_text(event):
+    if not Config.BOTLOG or not Config.BOTLOG_CHATID:
+        await event.reply("**⌔ عـذراً .. هـذا الامـر يتطلـب تفعيـل فـار التخـزين اولاً**")
+        return
+    
+    if event.reply_to_msg_id:
+        reply_msg = await event.get_reply_message()
+        await reply_msg.forward_to(Config.BOTLOG_CHATID)
+    elif event.pattern_match:
+        user = f"التخــزين / ايـدي الدردشــه : {event.chat_id}\n\n"
+        textx = user + event.pattern_match.group(1)
+        await event.client.send_message(Config.BOTLOG_CHATID, textx)
+    else:
+        await event.reply("**⌔ بالــرد على اي رسـاله لحفظهـا في كـروب التخــزين**")
+        return
+    
+    await event.reply("**⌔ تـم الحفـظ في كـروب التخـزين .. بنجـاح ✓**")
+    await asyncio.sleep(2)
+    await event.delete()
+
+@client.on(events.NewMessage(pattern=r"^\.تفعيل التخزين$"))
+async def set_no_log_p_m(event):
+    await event.reply("**⌔ تـم تفعيـل التخـزين لهـذه الدردشـه .. بنجـاح ✓**")
+    await asyncio.sleep(5)
+    await event.delete()
+
+@client.on(events.NewMessage(pattern=r"^\.تعطيل التخزين$"))
+async def set_no_log_p_m(event):
+    await event.reply("**⌔ تـم تعطيـل التخـزين لهـذه الدردشـه .. بنجـاح ✓**")
+    await asyncio.sleep(5)
+    await event.delete()
+
+@client.on(events.NewMessage(pattern=r"^\.تخزين الخاص (تفعيل|تعطيل)$"))
+async def set_pmlog(event):
+    input_str = event.pattern_match.group(1)
+    if input_str == "تعطيل":
+        await event.reply("**- تـم تعطيـل تخـزين رسـائل الخـاص .. بنجـاح✓**")
+    elif input_str == "تفعيل":
+        await event.reply("**- تـم تفعيـل تخـزين رسـائل الخـاص .. بنجـاح✓**")
+
+@client.on(events.NewMessage(pattern=r"^\.تخزين الكروبات (تفعيل|تعطيل)$"))
+async def set_grplog(event):
+    input_str = event.pattern_match.group(1)
+    if input_str == "تعطيل":
+        await event.reply("**- تـم تعطيـل تخـزين تاكـات الكـروبات .. بنجـاح✓**")
+    elif input_str == "تفعيل":
+        await event.reply("**- تـم تفعيـل تخـزين تاكـات الكـروبات .. بنجـاح✓**")
+
+async def setup_logger_group(client):
+    try:
+        group = await client.create_supergroup("سجلات البوت", "مجموعة لحفظ سجلات البوت")
+        await client.send_file(
+            group.id,
+            "https://files.catbox.moe/uvec13.jpg",
+            caption="مجموعة سجلات البوت"
+        )
+        Config.PM_LOGGER_GROUP_ID = group.id
+        Config.BOTLOG_CHATID = group.id
+        Config.BOTLOG = True
+        return True
+    except Exception as e:
+        print(f"فشل في إنشاء مجموعة السجلات: {e}")
+        return False
+
+async def start_logging(client):
+    client.add_event_handler(monito_p_m_s, events.NewMessage(incoming=True, func=lambda e: e.is_private))
+    client.add_event_handler(log_tagged_messages, events.NewMessage(incoming=True, func=lambda e: e.mentioned))
+    
+    if not Config.PM_LOGGER_GROUP_ID:
+        await setup_logger_group(client)
+
+@client.on(events.NewMessage(pattern=r"^\.اوامر التخزين$"))
+async def storage_commands(event):
+    help_text = """
+╭━━━┳━━━━╮
+أهـلاً بك فـي قـائمة أوامـر التخـزيـن ⎚
+╰━━━┻━━━━╯
+ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
+1- ☆ .خزن - حفظ الرسالة في مجموعة التخزين ☆
+2- ☆ .تفعيل التخزين - تفعيل التسجيل للدردشة الحالية ☆
+3- ☆ .تعطيل التخزين - تعطيل التسجيل للدردشة الحالية ☆
+4- ☆ .تخزين الخاص تفعيل - تفعيل تسجيل الرسائل الخاصة ☆
+5- ☆ .تخزين الخاص تعطيل - تعطيل تسجيل الرسائل الخاصة ☆
+6- ☆ .تخزين الكروبات تفعيل - تفعيل تسجيل التاجات في المجموعات ☆
+7- ☆ .تخزين الكروبات تعطيل - تعطيل تسجيل التاجات في المجموعات ☆
+ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
+"""
+    await event.reply(help_text)
+
             
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
