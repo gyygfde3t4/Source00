@@ -4667,9 +4667,7 @@ monitor = ChannelMonitor(client)
 async def start_auto_monitor():
     """تشغيل المراقبة التلقائية"""
     await monitor.monitor_loop()
-
-# بدء المهمة التلقائية
-asyncio.create_task(start_auto_monitor())      
+   
                                                                      
             
 def run_server():
