@@ -5172,6 +5172,8 @@ def run_server():
 server_thread = threading.Thread(target=run_server)
 server_thread.start()                
                                               
+
+
 async def start_auto_monitor():
     while True:
         try:
@@ -5182,9 +5184,21 @@ async def start_auto_monitor():
             await asyncio.sleep(3600)
 
 async def main():
+    # تأكد من تعريف client هنا أو استيراده
     await client.start()
-    client.loop.create_task(start_auto_monitor())  # ✅ جدولة المهمة بشكل صحيح
-    await client.run_until_disconnected()
+    
+    # إنشاء المهمة باستخدام حلقة الأحداث الصحيحة
+    task = asyncio.create_task(start_auto_monitor())
+    
+    try:
+        await client.run_until_disconnected()
+    finally:
+        task.cancel()  # إلغاء المهمة عند انتهاء البرنامج
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    # هذه الطريقة آمنة لبدء البرنامج
+    client.loop.run_until_complete(main())
