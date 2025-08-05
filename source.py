@@ -104,9 +104,16 @@ from telethon.tl.types import (
 )
 
 
-API_ID = 24028902
-API_HASH = 'b103ee23d3f642b59db3cfa8d7769557'
-STRING_SESSION = '1BJWap1wBu2OXhnG3xgAxYV07s4Njvk3yZE1b92aacQC9W4nCYX4lIQLFaeLMMa8OPvMk2bLzE83Kc9drzJTQnv2Q0PdPwE5OTaPSkJ6NBIN5Ix5qZvrOYsYiKrrMVaXHe-Q4mu5xCG20Q_8EL4k68LtiXNQVTUjRGiiv2gXJYTjBQdwR3PIRjpe-NEji5TVKE56WCEWINqZtRc4UrQzjKEMjpPwpJB4nE0u-cc1dMqAO0y7TyUwQZkxu7xy8MfNPUja3rUYGDmb4IQHPbddWdx3YcdEdGOkWnIQnQy3mLzmPkeXfJKc9C2CPbvDUBUaatP78uJlMCvn4Nx7PvQ2jxJjygLy0Nkg='
+import os
+from telethon import TelegramClient
+from telethon.sessions import StringSession
+
+# الحصول على المتغيرات من environment variables
+API_ID = int(os.getenv('API_ID'))  # القيمة الافتراضية 29984076 إذا لم يتم تحديد المتغير
+
+API_HASH = os.getenv('API_HASH')
+
+STRING_SESSION = os.getenv('STRING_SESSION')
 
 # ========== المستخدمون المصرح لهم ==========
 AUTHORIZED_USERS = [
