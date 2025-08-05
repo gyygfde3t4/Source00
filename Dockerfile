@@ -22,19 +22,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # التحقق من ffmpeg والمكتبات الأساسية
 RUN ffmpeg -version && echo "✅ FFmpeg يعمل بشكل صحيح"
 
-# اختبار المكتبات المطلوبة فقط
-RUN python -c "\
-import sys; \
-print('🐍 Python version:', sys.version); \
-libraries = ['telethon', 'PIL', 'requests', 'mutagen', 'pytz']; \
-for lib in libraries: \
-    try: \
-        module = __import__(lib); \
-        version = getattr(module, '__version__', 'غير معروف'); \
-        print(f'✅ {lib}: {version}'); \
-    except Exception as e: \
-        print(f'❌ {lib}: {e}'); \
-print('🎯 جميع المكتبات الأساسية جاهزة!')"
+# اختبار سريع للمكتبات الأساسية
+RUN python -c "import telethon, PIL, requests, mutagen, pytz; print('✅ جميع المكتبات تم تثبيتها بنجاح!')"
 
 # نسخ ملفات البوت
 COPY . .
