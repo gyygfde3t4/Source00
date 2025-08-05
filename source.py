@@ -5509,7 +5509,9 @@ async def monitor_channels(event):
                         
                 except Exception as e:
                     pass
-        
+ 
+    except Exception as e:
+        pass               
 
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
