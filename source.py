@@ -1452,95 +1452,85 @@ async def restore_identity(event):
         await event.edit(f"⚠️ فشل في الاستعادة: {str(e)}")
 
 
-# الأمر الفحص
-
-# ─── تعريف المتغيرات الأساسية ───
-StartTime = time.time()  # وقت بدء التشغيل الفعلي
+# ─── إعدادات البوت ───
+StartTime = time.time()
 EREN_VERSION = "2.0.0"
-ALIVE_PIC = None  # يمكن تغييرها إلى صورة افتراضية
+ALIVE_PIC = None  # ضع هنا رابط الصورة إذا أردت
 
-# ─── الدوال المساعدة ───
+# ─── دالة حساب الوقت ───
 def get_readable_time(seconds: float) -> str:
-    periods = [
-        ('سنة', 31536000),
-        ('شهر', 2592000),
-        ('أسبوع', 604800),
-        ('يوم', 86400),
-        ('ساعة', 3600),
-        ('دقيقة', 60),
-        ('ثانية', 1)
+    intervals = [
+        ('سنوات', 31536000),
+        ('أشهر', 2592000),
+        ('أسابيع', 604800), 
+        ('أيام', 86400),
+        ('ساعات', 3600),
+        ('دقائق', 60),
+        ('ثواني', 1)
     ]
     result = []
-    for period_name, period_seconds in periods:
-        if seconds >= period_seconds:
-            period_value, seconds = divmod(seconds, period_seconds)
-            result.append(f"{int(period_value)} {period_name}")
-    return '، '.join(result) if result else "0 ثانية"
+    for name, count in intervals:
+        value = int(seconds // count)
+        if value:
+            seconds -= value * count
+            result.append(f"{value} {name}")
+    return '، '.join(result) if result else "0 ثواني"
 
-async def check_database_health():
-    """دالة افتراضية للتحقق من صحة قاعدة البيانات"""
-    return True, "✅ جيد"
-
-# ─── حدث أمر الفحص ───
-@client.on(events.NewMessage(pattern=r'^\.فحص$'))
-async def eren_alive(event):
+# ─── أمر الفحص ───
+@client.on(events.NewMessage(pattern=r'^\.(check|فحص)$'))
+async def eren_check(event):
     try:
-        # ─── التحضير الأولي ───
+        # بداية الفحص
         start_time = datetime.now()
-        reply_msg = await event.get_reply_message()
-        reply_to_id = reply_msg.id if reply_msg else None
+        check_msg = await event.edit("**⎆ جاري فحص البوت...**")
+        await asyncio.sleep(2)  # انتظار دراماتيكي 😄
 
-        # ─── جلب معلومات المستخدم ───
+        # جمع المعلومات
         user = await event.get_sender()
         user_name = f"{user.first_name} {user.last_name}" if user.last_name else user.first_name
-        user_mention = f"[{user_name}](tg://user?id={user.id})"
-
-        # ─── حساب الإحصائيات ───
-        uptime = get_readable_time(time.time() - StartTime)
-        end_time = datetime.now()
-        ping_ms = round((end_time - start_time).microseconds / 1000, 2)
+        ping_time = (datetime.now() - start_time).total_seconds() * 1000
         
-        boot_time = datetime.fromtimestamp(psutil.boot_time())
-        alive_since = boot_time.strftime("%Y/%m/%d %H:%M:%S")
-        
-        db_status = await check_database_health()
-
-        # ─── قالب الرسالة ───
-        eren_template = f"""
+        # النتيجة النهائية
+        result = f"""
 ┏━━━━━━━━━━━━━━━━━┓
 ┃  ◉ Sᴏᴜʀᴄᴇ EREN  ┃
 ┣━━━━━━━━━━━━━━━━━┫
-┃ • ᴜsᴇʀ ➪ {user_mention}
+┃ • ᴜsᴇʀ ➪ {user_name}
 ┃ • ᴠᴇʀsɪᴏɴ ➪ {EREN_VERSION}
 ┃ • ᴘʏᴛʜᴏɴ ➪ {python_version()}
 ┃ • ᴛᴇʟᴇᴛʜᴏɴ ➪ {version.__version__}
 ┃ • ᴘʟᴀᴛғᴏʀᴍ ➪ KOYEB
-┃ • ᴘɪɴɢ ➪ {ping_ms} ms
-┃ • ᴜᴘᴛɪᴍᴇ ➪ {uptime}
-┃ • sᴛᴀʀᴛᴇᴅ ➪ {alive_since}
-┃ • ᴅʙ sᴛᴀᴛᴜs ➪ {db_status[1]}
+┃ • ᴘɪɴɢ ➪ {ping_time:.2f} ms
+┃ • ᴜᴘᴛɪᴍᴇ ➪ {get_readable_time(time.time() - StartTime)}
+┃ • sᴛᴀʀᴛᴇᴅ ➪ {datetime.fromtimestamp(StartTime).strftime('%Y/%m/%d %H:%M:%S')}
+┃ • ᴅʙ sᴛᴀᴛᴜs ➪ ✅ جيد
 ┃ • ᴄʜᴀɴɴᴇʟ ➪ [Eʀᴇɴ Yᴀ](https://t.me/ERENYA0)
 ┗━━━━━━━━━━━━━━━━━┛
 """
 
-        # ─── إرسال النتيجة ───
+        # إرسال النتيجة
         if ALIVE_PIC:
-            try:
-                await event.client.send_file(
-                    event.chat_id,
-                    ALIVE_PIC,
-                    caption=eren_template,
-                    reply_to=reply_to_id
-                )
-                await event.delete()
-            except (MediaEmptyError, WebpageCurlFailedError):
-                await event.edit("**⚠️ فشل إرسال الصورة، جارٍ إرسال النص فقط**")
-                await event.edit(eren_template)
+            await event.client.send_file(
+                event.chat_id,
+                ALIVE_PIC,
+                caption=result,
+                reply_to=event.message.id
+            )
+            await check_msg.delete()
         else:
-            await event.edit(eren_template)
+            await check_msg.edit(result)
 
-    except Exception as error:
-        await event.edit(f"**حدث خطأ غير متوقع:**\n`{str(error)}`")
+    except Exception as e:
+        await event.edit(f"**حدث خطأ:**\n`{str(e)}`")
+
+# ─── أمر البينج ───
+@client.on(events.NewMessage(pattern=r'^\.ping$'))
+async def eren_ping(event):
+    start = datetime.now()
+    ping_msg = await event.edit("**🏓 بينج...**")
+    end = datetime.now()
+    ping_time = (end - start).total_seconds() * 1000
+    await ping_msg.edit(f"**🏓 البينج:** `{ping_time:.2f} ms`")
                       
 # متغير لحفظ معرفات الرسائل التلقائية لكل مستخدم
 user_auto_messages = {}
