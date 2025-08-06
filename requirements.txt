@@ -29,3 +29,5 @@ python-dotenv>=1.0.0
 pydub>=0.25.1
 
 gitpython
+
+psutil==5.9.5
