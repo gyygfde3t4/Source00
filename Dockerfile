@@ -25,6 +25,8 @@ RUN ffmpeg -version && echo "✅ FFmpeg يعمل بشكل صحيح"
 # اختبار سريع للمكتبات الأساسية
 RUN python -c "import telethon, PIL, requests, mutagen, pytz; print('✅ جميع المكتبات تم تثبيتها بنجاح!')"
 
+RUN apt-get update && apt-get install -y git
+
 # نسخ ملفات البوت
 COPY . .
 
