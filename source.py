@@ -5682,11 +5682,10 @@ async def stop_game(event):
     del active_games[chat_id]
     await event.reply(f"**🛑 تم إيقاف لعبة {game_type}**")
 
+
 # سيتم تعبئة هذه المتغيرات تلقائياً
 KOYEB_APP_NAME = None
 KOYEB_SERVICE_ID = None
-
-# تأكد من وجود هذه المتغيرات في البيئة
 
 REPO_REMOTE_NAME = "temponame"
 NO_KOYEB_APP_CFGD = "no koyeb application found, but a key given? 😕 "
@@ -5744,10 +5743,19 @@ async def get_koyeb_app_info():
                     app_id = app.get('id')
                     
                     print(f"✅ تم العثور على التطبيق: {KOYEB_APP_NAME}")
+                    print(f"📋 معرف التطبيق: {app_id}")
+                    
+                    # أولاً: محاولة الحصول على معرف الخدمة من بيانات التطبيق مباشرة
+                    if 'services' in app and app['services']:
+                        KOYEB_SERVICE_ID = app['services'][0].get('id')
+                        if KOYEB_SERVICE_ID:
+                            print(f"✅ تم العثور على الخدمة من بيانات التطبيق: {KOYEB_SERVICE_ID}")
+                            return True
                     
                     # الحصول على معلومات الخدمة
+                    print(f"🔍 جاري البحث عن الخدمات للتطبيق ID: {app_id}")
                     async with session.get(
-                        f"{koyeb_api}/apps/{app_id}/services",
+                        f"{koyeb_api}/services?app_id={app_id}",
                         headers=headers
                     ) as svc_response:
                         print(f"📡 رد API للخدمات: {svc_response.status}")
@@ -5764,9 +5772,33 @@ async def get_koyeb_app_info():
                                 print("❌ لا توجد خدمات في هذا التطبيق")
                                 return None
                         else:
-                            error_text = await svc_response.text()
-                            print(f"❌ خطأ في جلب الخدمات: {svc_response.status} - {error_text}")
-                            return None
+                            # محاولة بديلة: جلب جميع الخدمات ثم تصفيتها
+                            print(f"⚠️ فشل في الطريقة الأولى، محاولة طريقة بديلة...")
+                            async with session.get(
+                                f"{koyeb_api}/services",
+                                headers=headers
+                            ) as all_svc_response:
+                                if all_svc_response.status == 200:
+                                    all_services = await all_svc_response.json()
+                                    print(f"📊 تم العثور على {len(all_services.get('services', []))} خدمة إجمالية")
+                                    
+                                    # البحث عن خدمة تخص تطبيقنا
+                                    app_services = [
+                                        svc for svc in all_services.get('services', [])
+                                        if svc.get('app_id') == app_id
+                                    ]
+                                    
+                                    if app_services:
+                                        KOYEB_SERVICE_ID = app_services[0].get('id')
+                                        print(f"✅ تم العثور على الخدمة (الطريقة البديلة): {KOYEB_SERVICE_ID}")
+                                        return True
+                                    else:
+                                        print("❌ لا توجد خدمات لهذا التطبيق")
+                                        return None
+                                else:
+                                    error_text = await all_svc_response.text()
+                                    print(f"❌ فشل في الطريقة البديلة أيضاً: {all_svc_response.status} - {error_text}")
+                                    return None
                 else:
                     print("❌ لا توجد تطبيقات في حسابك على Koyeb")
                     return None
