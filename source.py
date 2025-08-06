@@ -26,6 +26,8 @@ from PIL import Image
 from pydub import AudioSegment
 import hashlib
 import string
+import contextlib
+import sys
 
 # ========== مكتبات HTTP وطلبات الويب ==========
 import requests
@@ -46,6 +48,8 @@ from telethon import events, functions, types, utils
 from telethon import TelegramClient, events, functions, types, Button
 from telethon.sessions import StringSession
 from telethon.tl.types import DocumentAttributeAnimated, DocumentAttributeAudio
+from telethon import events, types
+from telethon.tl.types import InputMediaDice
 
 # ========== Telethon - الأخطاء ==========
 from telethon.errors import (
@@ -82,6 +86,12 @@ from telethon.tl.functions.stories import GetStoriesArchiveRequest
 from telethon import functions, types, events
 from telethon.tl.functions.phone import GetCallConfigRequest
 from telethon.errors import UserPrivacyRestrictedError
+from telethon import events
+from telethon.tl.types import InputMessagesFilterVideo, InputMessagesFilterPhotos
+from asyncio.exceptions import CancelledError
+from git import Repo
+from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
+from telethon.tl.functions.contacts import BlockRequest
 
 # ========== Telethon - الأنواع ==========
 from telethon.tl.types import (
@@ -147,6 +157,11 @@ CMC_API_KEY = os.getenv("CMC_API_KEY")
 
 
 MAILSAC_API_KEY =os.getenv('MAILSAC_API_KEY') 
+
+# -- Constants for Koyeb -- #
+KOYEB_API_TOKEN = os.getenv("KOYEB_API_TOKEN")
+UPSTREAM_REPO_URL = "https://github.com/gyygfde3t4/Source00.git"
+UPSTREAM_REPO_BRANCH = "main"
 
 # تخزين البريد الحالي
 current_email = None
@@ -309,20 +324,21 @@ async def show_games_commands(event):
 **أهــلاً بك فـي قـائمة الألعاب والفكاهية الـخاصة بسـورس إيــريــن ⎚**
 ╰━━━┻━━━━╯
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
-1- ☆ `.تسلية` - **عرض أوامر التسلية** ☆
-2- ☆ `.مسدس` - **رسم مسدس** ☆
-3- ☆ `.كلب` - **رسم كلب** ☆
-4- ☆ `.سبونج بوب` - **رسم شخصية سبونج بوب** ☆
-5- ☆ `.إبرة` - **رسم إبرة** ☆
-6- ☆ `.وحش` - **رسم وحش** ☆
-7- ☆ `.مروحية` - **رسم مروحية** ☆
-8- ☆ `.كت` - **سؤال عشوائي للتسلية** ☆
-9- ☆ `.تخمين رقم` - **لعبة تخمين الرقم** ☆
-10- ☆ `.لغز` - **لعبة الألغاز** ☆
-11- ☆ `.تخمين انمي` - **لعبة تخمين شخصية الأنمي** ☆
-12- ☆ `.قتل` + اسم - **لعبة قتل (فكاهي)** ☆
-13- ☆ `.قاتل` + اسم - **لعبة قتل متقدمة (فكاهي)** ☆
-14- ☆ `.تهكير` - **محاكاة عملية تهكير (فكاهي)** ☆
+1- ☆ `.الالعاب` - **لعبة تفاعلية مع البوت** ☆
+2- ☆ `.تسلية` - **عرض أوامر التسلية** ☆
+3- ☆ `.مسدس` - **رسم مسدس** ☆
+4- ☆ `.كلب` - **رسم كلب** ☆
+5- ☆ `.سبونج بوب` - **رسم شخصية سبونج بوب** ☆
+6- ☆ `.إبرة` - **رسم إبرة** ☆
+7- ☆ `.وحش` - **رسم وحش** ☆
+8- ☆ `.مروحية` - **رسم مروحية** ☆
+9- ☆ `.كت` - **سؤال عشوائي للتسلية** ☆
+10- ☆ `.تخمين رقم` - **لعبة تخمين الرقم** ☆
+11- ☆ `.لغز` - **لعبة الألغاز** ☆
+12- ☆ `.تخمين انمي` - **لعبة تخمين شخصية الأنمي** ☆
+13- ☆ `.قتل` + اسم - **لعبة قتل (فكاهي)** ☆
+14- ☆ `.قاتل` + اسم - **لعبة قتل متقدمة (فكاهي)** ☆
+15- ☆ `.تهكير` - **محاكاة عملية تهكير (فكاهي)** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
@@ -437,9 +453,15 @@ async def show_additional_commands(event):
 6- ☆ `.بريد وهمي` - **إنشاء بريد إلكتروني وهمي** ☆
 7- ☆ `.فحص البريد` - **فحص البريد الوارد للبريد الوهمي** ☆
 8- ☆ `.ايقاف الوهمي` - **إيقاف البريد الوهمي** ☆
+9- ☆ `.افتارات` - **قائمة صور الانمي (أولاد، بنات، ستوري، خيرني)** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.is_private or event.sender_id == (await event.client.get_me()).id:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
+
+
 
 @client.on(events.NewMessage(pattern=r'^\.م12$'))
 async def show_crypto_commands(event):
@@ -582,7 +604,10 @@ async def show_user_info(event):
             user_photo_path = 'user_photo.jpg'
             
             # تحميل صورة البروفايل
-            await client.download_profile_photo(user.id, file=user_photo_path)
+            try:
+                await client.download_profile_photo(user.id, file=user_photo_path)
+            except:
+                user_photo_path = None
             
             # جمع المعلومات الأساسية
             user_id = user.id
@@ -592,7 +617,6 @@ async def show_user_info(event):
             # البايو
             bio = "لا يوجد"
             try:
-                from telethon.tl import functions
                 user_full = await client(functions.users.GetFullUserRequest(user.id))
                 if user_full.full_user.about:
                     bio = user_full.full_user.about
@@ -618,9 +642,6 @@ async def show_user_info(event):
             # حساب عدد الرسائل
             messages_count = 0
             try:
-                from telethon.tl.functions.messages import SearchRequest
-                from telethon.tl.types import InputMessagesFilterEmpty
-                
                 search_result = await client(SearchRequest(
                     peer=event.chat_id,
                     q='',
@@ -645,50 +666,57 @@ async def show_user_info(event):
             interaction = "نشط" if isinstance(messages_count, int) and messages_count > 100 else "ضعيف"
 
             # تاريخ الإنشاء
-            import random
             random.seed(user_id)
             year = "2023" if user_id > 6000000000 else "2022"
             month = random.randint(1, 12)
             day = random.randint(1, 28)
             creation_date = f"{day}/{month}/{year}"
 
-            # رسالة المعلومات بتنسيق الاقتباس المنسق
-            user_info_message = f"""
-⧉ **مـعلومـات المسـتخـدم | سـورس إيــريــن**
+            # رسالة المعلومات بتنسيق Quote الحقيقي
+            user_info_message = f"""<blockquote>⧉ مـعلومـات المسـتخـدم | سـورس إيــريــن
+═════════════════════════════
 
-**✦ الاســم:** `{user_name}`
-**✦ اليـوزر:** @{username}
-**✦ الايـدي:** `{user_id}`
-**✦ الرتبــه:** {rank}
-**✦ الحساب:** {account_type}
-**✦ الصـور:** {num_photos}
-**✦ الرسائل:** {messages_count}
-**✦ التفاعل:** {interaction}
-**✦ الإنشـاء:** {creation_date}
-**✦ البايـو:** 
-`{bio}`
+✦ الاســم: {user_name}
+✦ اليـوزر: @{username}
+✦ الايـدي: {user_id}
+✦ الرتبــه: {rank}
+✦ الحساب: {account_type}
+✦ الصـور: {num_photos}
+✦ الرسائل: {messages_count}
+✦ التفاعل: {interaction}
+✦ الإنشـاء: {creation_date}
+✦ البايـو: {bio}
 
-**⧉ قنـاة السـورس** @EREN_PYTHON
-"""
+⧉ قنـاة السـورس @EREN_PYTHON</blockquote>"""
 
-            await client.send_file(
-                event.chat_id,
-                user_photo_path,
-                caption=user_info_message,
-                reply_to=event.reply_to_msg_id
-            )
+            if user_photo_path:
+                await client.send_file(
+                    event.chat_id,
+                    user_photo_path,
+                    caption=user_info_message,
+                    reply_to=event.reply_to_msg_id,
+                    parse_mode='html'
+                )
+                # حذف الصورة
+                try:
+                    os.remove(user_photo_path)
+                except:
+                    pass
+            else:
+                await client.send_message(
+                    event.chat_id,
+                    user_info_message,
+                    reply_to=event.reply_to_msg_id,
+                    parse_mode='html'
+                )
+            
             await event.delete()
             
-            # حذف الصورة
-            try:
-                import os
-                os.remove(user_photo_path)
-            except:
-                pass
         else:
             await event.edit("**⚠️ لم أتمكن من العثور على معلومات عن هذا المستخدم.**")
     else:
-        await event.edit("**⚠️ يرجى الرد على رسالة المستخدم للحصول على معلوماته.**")
+        await event.edit("**⚠️ يرجى الرد على رسالة المستخدم للحصول على معلوماته.**")	
+
         
 # إضافة أمر .بل
 @client.on(events.NewMessage(pattern=r'^\.بلوك$'))
@@ -5259,8 +5287,673 @@ async def main():
         print("=" * 50)
     except Exception as e:
         pass
-                                                                                           
+ 
+@client.on(events.NewMessage(pattern=r'^\.افتارات$'))
+async def show_avatars_menu(event):
+    avatars_message = """
+╭━━━┳━━━━╮
+**قائمة صور الأنـمـي ⎚**
+╰━━━┻━━━━╯
+ٴ⋆─┄─┄─┄─ 𝐀𝐕𝐀𝐓𝐀𝐑 ─┄─┄─┄─⋆
+1- ☆ `.ولد انمي` - **صورة ولد أنمي عشوائية** ☆
+2- ☆ `.بنت انمي` - **صورة بنت أنمي عشوائية** ☆
+3- ☆ `.خيرني` - **صورة "لو خيروك" عشوائية** ☆
+4- ☆ `.ستوري انمي` - **لعرض ستوري أنمي** ☆
+ٴ⋆─┄─┄─┄─ 𝐀𝐕𝐀𝐓𝐀𝐑 ─┄─┄─┄─⋆
+    """
+    if event.is_private or event.sender_id == (await event.client.get_me()).id:
+        await event.edit(avatars_message)
+    else:
+        await event.reply(avatars_message)                                                                                                                                                                            
+async def edit_or_reply(event, text):
+    """دالة مساعدة للتعديل أو الرد"""
+    if event.reply_to_msg_id:
+        return await event.reply(text)
+    return await event.edit(text)
 
+@client.on(events.NewMessage(pattern=r'^\.ستوري انمي$'))
+async def anime_story(event):
+    try:
+        zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ تحميـل الستـوري ...**")
+        sources = ["@animeforlovers", "@ANIME_editsssss"]
+        stories = []
+        
+        for source in sources:
+            async for msg in client.iter_messages(source, filter=InputMessagesFilterVideo):
+                stories.append(msg)
+        
+        if not stories:
+            return await zzevent.edit("**╮•⎚ لا توجد ستوريات متاحة حالياً**")
+        
+        selected = random.choice(stories)
+        caption = """0:10━❍──────── -1:00
+↻     ⊲  Ⅱ  ⊳     ↺
+VOLUME: ▁▂▃▄▅▆▇ 100%
+╔═.✵.══════════╗
+✵ #Stories  
+✵ #Anime_Edit 
+✵ Channel: @PP2P6
+╚══════════.✵.═╝"""
+        
+        await client.send_file(
+            event.chat_id,
+            file=selected,
+            caption=caption
+        )
+        await zzevent.delete()
+    except Exception as e:
+        await event.reply(f"**حدث خطأ: {str(e)}**")
+
+@client.on(events.NewMessage(pattern=r'^\.خيرني$'))
+async def choice_game(event):
+    try:
+        zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ التحميل ...**")
+        images = []
+        async for msg in client.iter_messages("@SourceSaidi", filter=InputMessagesFilterPhotos):
+            images.append(msg)
+        
+        if not images:
+            return await zzevent.edit("**╮•⎚ لا توجد صور متاحة حالياً**")
+        
+        await client.send_file(
+            event.chat_id,
+            file=random.choice(images),
+            caption="**✦┊لـو خيـروك ➧⁉️🌉◟**"
+        )
+        await zzevent.delete()
+    except Exception as e:
+        await event.reply(f"**حدث خطأ: {str(e)}**")
+
+@client.on(events.NewMessage(pattern=r'^\.ولد انمي$'))
+async def anime_boy(event):
+    try:
+        zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ التحميل ...**")
+        images = []
+        async for msg in client.iter_messages("@sou00l", filter=InputMessagesFilterPhotos):
+            images.append(msg)
+        
+        if not images:
+            return await zzevent.edit("**╮•⎚ لا توجد صور متاحة حالياً**")
+        
+        await client.send_file(
+            event.chat_id,
+            file=random.choice(images),
+            caption="**◞افتـارات آنمي شبـاب ➧🎆🙋🏻‍♂◟**"
+        )
+        await zzevent.delete()
+    except Exception as e:
+        await event.reply(f"**حدث خطأ: {str(e)}**")
+
+@client.on(events.NewMessage(pattern=r'^\.بنت انمي$'))
+async def anime_girl(event):
+    try:
+        zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ التحميل ...**")
+        images = []
+        async for msg in client.iter_messages("@sougir0", filter=InputMessagesFilterPhotos):
+            images.append(msg)
+        
+        if not images:
+            return await zzevent.edit("**╮•⎚ لا توجد صور متاحة حالياً**")
+        
+        await client.send_file(
+            event.chat_id,
+            file=random.choice(images),
+            caption="**◞افتـارات آنمي بنـات ➧🎆🧚🏻‍♀◟**"
+        )
+        await zzevent.delete()
+    except Exception as e:
+        await event.reply(f"**حدث خطأ: {str(e)}**")
+
+# شروط الفوز لكل لعبة
+WIN_CONDITIONS = {
+    "🎯": 6,    # السهم - الفوز عند الحصول على 6 (في المنتصف)
+    "🎲": 6,     # النرد - الفوز عند الحصول على 6
+    "🏀": 5,     # كرة السلة - الفوز عند الحصول على 5
+    "⚽️": 5,    # كرة القدم - الفوز عند الحصول على 5
+    "🎰": 64    # ماكينة الحظ - الفوز عند الحصول على 64 (جاكبوت)
+}
+
+async def edit_or_reply(event, text, **kwargs):
+    """دالة مساعدة للتعديل أو الرد"""
+    try:
+        if hasattr(event, 'edit'):
+            return await event.edit(text, **kwargs)
+        else:
+            return await event.reply(text, **kwargs)
+    except:
+        return await event.reply(text, **kwargs)
+
+@client.on(events.NewMessage(pattern=r'^\.الالعاب$'))
+async def games_menu(event):
+    """عرض قائمة الألعاب"""
+    menu = """
+🎮 **قائمة الألعاب الجماعية**:
+
+1. `.اكس او` - لعبة XO ضد البوت (فردية)
+2. `.سهم [عدد اللاعبين]` - لعبة السهام (🎯)
+3. `.نرد [عدد اللاعبين]` - لعبة النرد (🎲)
+4. `.سله [عدد اللاعبين]` - كرة السلة (🏀)
+5. `.كرة [عدد اللاعبين]` - كرة القدم (⚽️)
+6. `.حظ [عدد اللاعبين]` - ماكينة الحظ (🎰)
+7. `.ايقاف` - إيقاف اللعبة الحالية
+
+📌 مثال: `.سهم 3` - لعبة سهام لـ3 لاعبين
+"""
+    await edit_or_reply(event, menu)
+
+@client.on(events.NewMessage(pattern=r'^\.اكس او$'))
+async def xo_game(event):
+    """لعبة XO مع البوت"""
+    bot_username = "@xobot"
+    try:
+        zzevent = await edit_or_reply(event, "**⚔️ جاري بدء لعبة XO...**")
+        tap = await client.inline_query(bot_username, "play")
+        await tap[0].click(event.chat_id)
+        await zzevent.delete()
+    except Exception as e:
+        await edit_or_reply(event, f"**⚠️ حدث خطأ:** {str(e)}")
+
+@client.on(events.NewMessage(pattern=r'^\.(سهم|نرد|سله|كرة|حظ)(?:\s+(\d+))?$'))
+async def start_game(event):
+    """بدء لعبة جماعية"""
+    game_types = {
+        "سهم": "🎯",
+        "نرد": "🎲", 
+        "سله": "🏀",
+        "كرة": "⚽️",
+        "حظ": "🎰"
+    }
+    game_type = game_types[event.pattern_match.group(1)]
+    win_condition = WIN_CONDITIONS[game_type]
+    
+    chat_id = event.chat_id
+    sender = await event.get_sender()
+    
+    try:
+        player_count = int(event.pattern_match.group(2)) if event.pattern_match.group(2) else 1
+        if player_count < 1 or player_count > 10:
+            raise ValueError
+    except:
+        await edit_or_reply(event, "**⚠️ يرجى إدخال عدد صحيح بين 1 و 10**")
+        return
+
+    if chat_id in active_games:
+        await edit_or_reply(event, "**⏳ هناك لعبة نشطة بالفعل!**")
+        return
+
+    zzevent = await edit_or_reply(event, "**⚡ جاري إعداد اللعبة...**")
+    
+    active_games[chat_id] = {
+        "game_type": game_type,
+        "win_condition": win_condition,
+        "status": "registering",
+        "players": {str(event.sender_id): {"name": sender, "score": 0}},
+        "required_players": player_count,
+        "current_player": 0,
+        "registration_msg": zzevent,
+        "game_messages": [],
+        "chat_id": chat_id
+    }
+
+    players_list = f"1. {sender.first_name}"
+    try:
+        await zzevent.edit(
+            f"{game_type} **بدء لعبة جديدة**\n\n"
+            f"🏆 **شرط الفوز:** الحصول على {win_condition} نقاط\n"
+            f"👤 **اللاعبون** (1/{player_count}):\n{players_list}\n\n"
+            "📝 للانضمام اكتب: `انا`\n"
+            "🛑 للإيقاف اكتب: `.ايقاف`"
+        )
+    except:
+        # إذا فشل التعديل، أرسل رسالة جديدة
+        new_msg = await event.reply(
+            f"{game_type} **بدء لعبة جديدة**\n\n"
+            f"🏆 **شرط الفوز:** الحصول على {win_condition} نقاط\n"
+            f"👤 **اللاعبون** (1/{player_count}):\n{players_list}\n\n"
+            "📝 للانضمام اكتب: `انا`\n"
+            "🛑 للإيقاف اكتب: `.ايقاف`"
+        )
+        active_games[chat_id]["registration_msg"] = new_msg
+
+@client.on(events.NewMessage(pattern=r'^انا$'))
+async def register_player(event):
+    """تسجيل لاعب جديد"""
+    chat_id = event.chat_id
+    if chat_id not in active_games:
+        return
+
+    game = active_games[chat_id]
+    if game["status"] != "registering":
+        return
+
+    player_id = str(event.sender_id)
+    if player_id in game["players"]:
+        await event.reply("**✅ أنت مسجل بالفعل في اللعبة!**")
+        return
+
+    sender = await event.get_sender()
+    game["players"][player_id] = {"name": sender, "score": 0}
+
+    players = "\n".join(
+        f"{idx+1}. {p['name'].first_name}"
+        for idx, p in enumerate(game["players"].values())
+    )
+    
+    try:
+        await game["registration_msg"].edit(
+            f"{game['game_type']} **بدء لعبة جديدة**\n\n"
+            f"🏆 **شرط الفوز:** الحصول على {game['win_condition']} نقاط\n"
+            f"👤 **اللاعبون** ({len(game['players'])}/{game['required_players']}):\n{players}\n\n"
+            "📝 للانضمام اكتب: `انا`\n"
+            "🛑 للإيقاف اكتب: `.ايقاف`"
+        )
+    except:
+        # إذا فشل التعديل، أرسل رسالة جديدة
+        new_msg = await event.reply(
+            f"{game['game_type']} **بدء لعبة جديدة**\n\n"
+            f"🏆 **شرط الفوز:** الحصول على {game['win_condition']} نقاط\n"
+            f"👤 **اللاعبون** ({len(game['players'])}/{game['required_players']}):\n{players}\n\n"
+            "📝 للانضمام اكتب: `انا`\n"
+            "🛑 للإيقاف اكتب: `.ايقاف`"
+        )
+        game["registration_msg"] = new_msg
+
+    if len(game["players"]) >= game["required_players"]:
+        await start_game_round(chat_id)
+
+async def start_game_round(chat_id):
+    """بدء جولة اللعبة"""
+    if chat_id not in active_games:
+        return
+
+    game = active_games[chat_id]
+    game["status"] = "playing"
+    players = list(game["players"].values())
+    current_player = players[game["current_player"]]
+    
+    try:
+        await game["registration_msg"].delete()
+    except:
+        pass
+
+    try:
+        game_msg = await client.send_message(
+            chat_id,
+            f"{game['game_type']} **دور اللاعب:** {current_player['name'].first_name}\n\n"
+            "🎮 اكتب `ارمي` لرمي النرد!\n"
+            f"🏆 **شرط الفوز:** الحصول على {game['win_condition']} نقاط"
+        )
+        game["game_messages"].append(game_msg)
+    except Exception as e:
+        print(f"خطأ في إرسال رسالة اللعبة: {e}")
+
+@client.on(events.NewMessage(pattern=r'^ارمي$'))
+async def play_turn(event):
+    """معالجة محاولة اللاعب"""
+    chat_id = event.chat_id
+    if chat_id not in active_games:
+        return
+
+    game = active_games[chat_id]
+    if game["status"] != "playing":
+        return
+
+    player_id = str(event.sender_id)
+    players = list(game["players"].values())
+    current_player_idx = game["current_player"]
+    current_player_id = list(game["players"].keys())[current_player_idx]
+
+    if player_id != current_player_id:
+        await event.reply("**⏳ ليس دورك الآن!**")
+        return
+
+    try:
+        result = await event.reply(file=InputMediaDice(emoticon=game["game_type"]))
+        await asyncio.sleep(3)
+        dice_value = result.media.value
+        
+        game["players"][player_id]["score"] = dice_value
+        current_player = players[current_player_idx]
+        
+        await event.reply(
+            f"{game['game_type']} **نتيجة {current_player['name'].first_name}:** {dice_value}"
+        )
+        
+        if dice_value == game["win_condition"]:
+            await end_game(chat_id, player_id)
+        else:
+            await next_player_turn(chat_id)
+            
+    except Exception as e:
+        await event.reply(f"**⚠️ حدث خطأ:** {str(e)}")
+
+async def next_player_turn(chat_id):
+    """الانتقال للاعب التالي"""
+    if chat_id not in active_games:
+        return
+
+    game = active_games[chat_id]
+    players = list(game["players"].values())
+    game["current_player"] = (game["current_player"] + 1) % len(players)
+    
+    current_player = players[game["current_player"]]
+    
+    try:
+        game_msg = await client.send_message(
+            chat_id,
+            f"{game['game_type']} **دور اللاعب:** {current_player['name'].first_name}\n\n"
+            "🎮 اكتب `ارمي` لرمي النرد!\n"
+            f"🏆 **شرط الفوز:** الحصول على {game['win_condition']} نقاط"
+        )
+        game["game_messages"].append(game_msg)
+    except Exception as e:
+        print(f"خطأ في إرسال رسالة دور اللاعب: {e}")
+
+async def end_game(chat_id, winner_id):
+    """إنهاء اللعبة بإعلان الفائز"""
+    if chat_id not in active_games:
+        return
+
+    game = active_games[chat_id]
+    winner = game["players"][winner_id]["name"]
+    
+    try:
+        await client.send_message(
+            chat_id,
+            f"🎉 **تهانينا! فاز {winner.first_name} باللعبة!**\n\n"
+            f"🏆 **النتيجة النهائية:** {game['win_condition']} نقاط\n"
+            f"🎮 **نوع اللعبة:** {game['game_type']}\n\n"
+            "💫 للعب مجدداً، اكتب الأمر مرة أخرى"
+        )
+    except Exception as e:
+        print(f"خطأ في إرسال رسالة النهاية: {e}")
+    
+    del active_games[chat_id]
+
+@client.on(events.NewMessage(pattern=r'^\.ايقاف$'))
+async def stop_game(event):
+    """إيقاف اللعبة الحالية"""
+    chat_id = event.chat_id
+    if chat_id not in active_games:
+        await event.reply("**⚠️ لا يوجد لعبة نشطة لإنهائها**")
+        return
+
+    game_type = active_games[chat_id]["game_type"]
+    del active_games[chat_id]
+    await event.reply(f"**🛑 تم إيقاف لعبة {game_type}**")
+
+
+# سيتم تعبئة هذه المتغيرات تلقائياً
+KOYEB_APP_NAME = None
+KOYEB_SERVICE_ID = None
+
+REPO_REMOTE_NAME = "temponame"
+NO_KOYEB_APP_CFGD = "no koyeb application found, but a key given? 😕 "
+RESTARTING_APP = "re-starting koyeb application"
+koyeb_api = "https://app.koyeb.com/v1"
+
+# -- Paths -- #
+requirements_path = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "requirements.txt"
+)
+
+async def get_koyeb_app_info():
+    """Get Koyeb app and service information automatically"""
+    if not KOYEB_API_TOKEN:
+        return None
+    
+    headers = {
+        "Authorization": f"Bearer {KOYEB_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            # الحصول على قائمة التطبيقات
+            async with session.get(
+                f"{koyeb_api}/apps",
+                headers=headers
+            ) as response:
+                if response.status == 200:
+                    apps_data = await response.json()
+                    if apps_data.get('apps'):
+                        # نأخذ أول تطبيق في القائمة (يمكن تعديل هذا حسب الحاجة)
+                        app = apps_data['apps'][0]
+                        global KOYEB_APP_NAME, KOYEB_SERVICE_ID
+                        KOYEB_APP_NAME = app.get('name')
+                        
+                        # الحصول على معلومات الخدمة
+                        async with session.get(
+                            f"{koyeb_api}/apps/{app['id']}/services",
+                            headers=headers
+                        ) as svc_response:
+                            if svc_response.status == 200:
+                                services_data = await svc_response.json()
+                                if services_data.get('services'):
+                                    KOYEB_SERVICE_ID = services_data['services'][0].get('id')
+                                    return True
+                return None
+    except Exception as e:
+        print(f"Error getting Koyeb app info: {e}")
+        return None
+
+# -- Helper Functions -- #
+async def gen_chlog(repo, diff):
+    d_form = "%d/%m/%y"
+    return "".join(
+        f"  • {c.summary} ({c.committed_datetime.strftime(d_form)}) <{c.author}>\n"
+        for c in repo.iter_commits(diff)
+    )
+
+async def update_requirements():
+    reqs = str(requirements_path)
+    try:
+        process = await asyncio.create_subprocess_shell(
+            " ".join([sys.executable, "-m", "pip", "install", "-r", reqs]),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await process.communicate()
+        return process.returncode
+    except Exception as e:
+        return repr(e)
+
+async def get_koyeb_service_info():
+    """Get Koyeb service information"""
+    if not KOYEB_API_TOKEN or not KOYEB_SERVICE_ID:
+        return None
+    
+    headers = {
+        "Authorization": f"Bearer {KOYEB_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{koyeb_api}/services/{KOYEB_SERVICE_ID}",
+                headers=headers
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                return None
+    except Exception as e:
+        print(f"Error getting Koyeb service info: {e}")
+        return None
+
+async def redeploy_koyeb_service():
+    """Redeploy Koyeb service"""
+    if not KOYEB_API_TOKEN or not KOYEB_SERVICE_ID:
+        return False
+    
+    headers = {
+        "Authorization": f"Bearer {KOYEB_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{koyeb_api}/services/{KOYEB_SERVICE_ID}/redeploy",
+                headers=headers
+            ) as response:
+                return response.status in [200, 201, 202]
+    except Exception as e:
+        print(f"Error redeploying Koyeb service: {e}")
+        return False
+
+async def update_bot(event, repo, ups_rem, ac_br):
+    try:
+        ups_rem.pull(ac_br)
+    except GitCommandError:
+        repo.git.reset("--hard", "FETCH_HEAD")
+    await update_requirements()
+    await event.edit(
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+        "**•─────────────────•**\n\n"
+        "**•⎆┊تم التحـديث ⎌ بنجـاح**\n"
+        "**•⎆┊جـارِ إعـادة تشغيـل البـوت ⎋ **\n"
+        "**•⎆┊انتظـࢪ مـن 2 - 1 دقيقـه . . .📟**"
+    )
+    await event.client.disconnect()
+
+async def deploy(event, repo, ups_rem, ac_br, txt):
+    if not KOYEB_API_TOKEN:
+        return await event.edit(
+            "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+            "**•─────────────────•**\n"
+            "** ⪼ لم تقـم بوضـع مربـع فـار KOYEB_API_TOKEN\n"
+            "قم بضبـط المتغيـر أولاً لتحديث البوت ..؟!**"
+        )
+    
+    # جلب معلومات التطبيق والخدمة تلقائياً
+    app_info = await get_koyeb_app_info()
+    if not app_info:
+        await event.edit(f"{txt}\n**- فشل في جلب معلومات تطبيق كويب تلقائياً**")
+        return repo.__del__()
+    
+    service_info = await get_koyeb_service_info()
+    if not service_info:
+        await event.edit(f"{txt}\n**- بيانات اعتماد كويب غير صالحة لتنصيب التحديث**")
+        return repo.__del__()
+    
+    await event.edit(
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+        "**•─────────────────•**\n"
+        "**✾╎جـارِ تنصـيب التحـديث الجـذري ⎌**\n"
+        f"**✾╎التطبيق:** `{KOYEB_APP_NAME}`\n"
+        f"**✾╎الخدمة:** `{KOYEB_SERVICE_ID}`\n"
+        "**✾╎يُرجـى الانتظـار حتى تنتهـي العمليـة ⎋**\n"
+        "**✾╎عـادة ما يستغـرق هـذا التحـديث مـن 5 - 4 دقائـق 📟**"
+    )
+    
+    ups_rem.fetch(ac_br)
+    repo.git.reset("--hard", "FETCH_HEAD")
+    
+    try:
+        origin = repo.remote("origin")
+        await asyncio.sleep(1)
+        origin.push(f"HEAD:{UPSTREAM_REPO_BRANCH}", force=True)
+    except Exception as error:
+        await event.edit(f"{txt}\n**Error log:**\n`{error}`")
+        return repo.__del__()
+    
+    redeploy_success = await redeploy_koyeb_service()
+    if not redeploy_success:
+        return await event.edit("`فشل إعادة النشر!\nحدثت بعض الأخطاء...`")
+    
+    await event.edit(
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+        "**•─────────────────•**\n"
+        "**•⎆┊تم تحـديث البـوت بنجـاح ✅\n"
+        f"**•⎆┊التطبيق:** `{KOYEB_APP_NAME}`\n"
+        f"**•⎆┊الخدمة:** `{KOYEB_SERVICE_ID}`\n"
+        "**•⎆┊جـارِ إعـادة تشغيـل الخدمـة على كويـب 🌐 **"
+    )
+    
+    await asyncio.sleep(10)
+    await event.client.disconnect()
+
+async def progress_bar(event, steps=10):
+    messages = [
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**",
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟷𝟶 ▬▭▭▭▭▭▭▭▭▭",
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟸𝟶 ▬▬▭▭▭▭▭▭▭▭",
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟹𝟶 ▬▬▬▭▭▭▭▭▭▭",
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟺𝟶 ▬▬▬▬▭▭▭▭▭▭",
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟻𝟶 ▬▬▬▬▬▭▭▭▭▭",
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟼𝟶 ▬▬▬▬▬▬▭▭▭▭",
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟽𝟶 ▬▬▬▬▬▬▬▭▭▭",
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟾𝟶 ▬▬▬▬▬▬▬▬▭▭",
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟿𝟶 ▬▬▬▬▬▬▬▬▬▭",
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟷𝟶𝟶 ▬▬▬▬▬▬▬▬▬▬💯"
+    ]
+    
+    for i in range(steps + 1):
+        if i < len(messages):
+            await event.edit(messages[i])
+            await asyncio.sleep(1)
+
+@client.on(events.NewMessage(pattern=r'^\.تحديث البوت$'))
+async def update_command(event):
+    if not KOYEB_API_TOKEN:
+        return await event.edit(
+            "**- يجب تعيين متغير KOYEB_API_TOKEN أولاً ❕❌**"
+        )
+    
+    # جلب معلومات التطبيق والخدمة تلقائياً
+    app_info = await get_koyeb_app_info()
+    if not app_info:
+        return await event.edit(
+            "**- فشل في جلب معلومات التطبيق والخدمة تلقائياً ❌**\n"
+            "**- تأكد من أن الـ API token صالح وأن لديك تطبيق على Koyeb**"
+        )
+    
+    event = await event.edit(
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+        "**•─────────────────•**\n\n"
+        f"**⪼ التطبيق:** `{KOYEB_APP_NAME}`\n"
+        f"**⪼ الخدمة:** `{KOYEB_SERVICE_ID}`\n\n"
+        "**⪼ يتم تنصيب التحديث انتظر 🌐 ،**"
+    )
+    
+    current_dir = os.getcwd()
+    if "/app" in current_dir or "koyeb" in current_dir.lower():
+        os.chdir(current_dir)
+    else:
+        os.chdir("/app" if os.path.exists("/app") else ".")
+    
+    try:
+        txt = (
+            "`لا يمكن المتابعة بسبب حدوث بعض المشاكل`\n\n"
+            "**سجل الأخطاء:**\n"
+        )
+        repo = Repo()
+    except NoSuchPathError as error:
+        await event.edit(f"{txt}\n\n**- المسـار** {error} **غيـر مـوجـود؟!**")
+        return
+    except GitCommandError as error:
+        await event.edit(f"{txt}\n**- خطـأ غيـر متـوقـع؟!**\n{error}")
+        return
+    except InvalidGitRepositoryError:
+        repo = Repo.init()
+        origin = repo.create_remote("upstream", UPSTREAM_REPO_URL)
+        origin.fetch()
+        try:
+            repo.create_head(UPSTREAM_REPO_BRANCH, origin.refs[UPSTREAM_REPO_BRANCH])
+            repo.heads[UPSTREAM_REPO_BRANCH].set_tracking_branch(origin.refs[UPSTREAM_REPO_BRANCH])
+            repo.heads[UPSTREAM_REPO_BRANCH].checkout(True)
+        except:
+            repo.create_head("main", origin.refs.main)
+            repo.heads.main.set_tracking_branch(origin.refs.main)
+            repo.heads.main.checkout(True)
+    
+    await progress_bar(event)
+    
+    ac_br = repo.active_branch.name
+    ups_rem = repo.remote("upstream")
+    ups_rem.fetch(ac_br)
+    await deploy(event, repo, ups_rem, ac_br, txt)
             
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
