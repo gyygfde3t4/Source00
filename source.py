@@ -1452,21 +1452,21 @@ async def restore_identity(event):
         await event.edit(f"⚠️ فشل في الاستعادة: {str(e)}")
 
 
-# ─── إعدادات البوت ───
+# ─── Bot Settings ───
 StartTime = time.time()
 EREN_VERSION = "2.0.0"
-ALIVE_PIC = None  # ضع هنا رابط الصورة إذا أردت
+ALIVE_PIC = None  # Put image URL here if needed
 
-# ─── دالة حساب الوقت ───
+# ─── Time Calculation Function ───
 def get_readable_time(seconds: float) -> str:
     intervals = [
-        ('سنوات', 31536000),
-        ('أشهر', 2592000),
-        ('أسابيع', 604800), 
-        ('أيام', 86400),
-        ('ساعات', 3600),
-        ('دقائق', 60),
-        ('ثواني', 1)
+        ('years', 31536000),
+        ('months', 2592000),
+        ('weeks', 604800),
+        ('days', 86400),
+        ('hours', 3600),
+        ('minutes', 60),
+        ('seconds', 1)
     ]
     result = []
     for name, count in intervals:
@@ -1474,23 +1474,23 @@ def get_readable_time(seconds: float) -> str:
         if value:
             seconds -= value * count
             result.append(f"{value} {name}")
-    return '، '.join(result) if result else "0 ثواني"
+    return ', '.join(result) if result else "0 seconds"
 
-# ─── أمر الفحص ───
+# ─── Check Command ───
 @client.on(events.NewMessage(pattern=r'^\.(check|فحص)$'))
 async def eren_check(event):
     try:
-        # بداية الفحص
+        # Start check
         start_time = datetime.now()
-        check_msg = await event.edit("**⎆ جاري فحص البوت...**")
-        await asyncio.sleep(2)  # انتظار دراماتيكي 😄
+        check_msg = await event.edit("**⎆ Checking bot status...**")
+        await asyncio.sleep(2)  # Dramatic wait 😄
 
-        # جمع المعلومات
+        # Gather information
         user = await event.get_sender()
         user_name = f"{user.first_name} {user.last_name}" if user.last_name else user.first_name
         ping_time = (datetime.now() - start_time).total_seconds() * 1000
         
-        # النتيجة النهائية
+        # Final result
         result = f"""
 ┏━━━━━━━━━━━━━━━━━┓
 ┃  ◉ Sᴏᴜʀᴄᴇ EREN  ┃
@@ -1500,15 +1500,15 @@ async def eren_check(event):
 ┃ • ᴘʏᴛʜᴏɴ ➪ {python_version()}
 ┃ • ᴛᴇʟᴇᴛʜᴏɴ ➪ {version.__version__}
 ┃ • ᴘʟᴀᴛғᴏʀᴍ ➪ KOYEB
-┃ • ᴘɪɴɢ ➪ {ping_time:.2f} ms
+┃ • �ᴘɪɴɢ ➪ {ping_time:.2f} ms
 ┃ • ᴜᴘᴛɪᴍᴇ ➪ {get_readable_time(time.time() - StartTime)}
 ┃ • sᴛᴀʀᴛᴇᴅ ➪ {datetime.fromtimestamp(StartTime).strftime('%Y/%m/%d %H:%M:%S')}
-┃ • ᴅʙ sᴛᴀᴛᴜs ➪ ✅ جيد
+┃ • ᴅʙ sᴛᴀᴛᴜs ➪ ✅ Good
 ┃ • ᴄʜᴀɴɴᴇʟ ➪ [Eʀᴇɴ Yᴀ](https://t.me/ERENYA0)
 ┗━━━━━━━━━━━━━━━━━┛
 """
 
-        # إرسال النتيجة
+        # Send result
         if ALIVE_PIC:
             await event.client.send_file(
                 event.chat_id,
@@ -1521,18 +1521,18 @@ async def eren_check(event):
             await check_msg.edit(result)
 
     except Exception as e:
-        await event.edit(f"**حدث خطأ:**\n`{str(e)}`")
+        await event.edit(f"**An error occurred:**\n`{str(e)}`")
 
-# ─── أمر البينج ───
+# ─── Ping Command ───
 @client.on(events.NewMessage(pattern=r'^\.ping$'))
 async def eren_ping(event):
     start = datetime.now()
-    ping_msg = await event.edit("**🏓 بينج...**")
+    ping_msg = await event.edit("**🏓 Pong...**")
     end = datetime.now()
     ping_time = (end - start).total_seconds() * 1000
-    await ping_msg.edit(f"**🏓 البينج:** `{ping_time:.2f} ms`")
+    await ping_msg.edit(f"**🏓 Ping:** `{ping_time:.2f} ms`")
                       
-# متغير لحفظ معرفات الرسائل التلقائية لكل مستخدم
+# Variable to store auto-message IDs for each user
 user_auto_messages = {}
 
 # تفعيل أمر الحماية
