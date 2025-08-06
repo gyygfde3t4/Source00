@@ -159,9 +159,9 @@ CMC_API_KEY = os.getenv("CMC_API_KEY")
 MAILSAC_API_KEY =os.getenv('MAILSAC_API_KEY') 
 
 # -- Constants for Koyeb -- #
-KOYEB_API_TOKEN = os.getenv("KOYEB_API_TOKEN")
-UPSTREAM_REPO_URL = "https://github.com/gyygfde3t4/Source00.git"
-UPSTREAM_REPO_BRANCH = "main"
+KOYEB_API_TOKEN = os.getenv("KOYEB_API_TOKEN")  # إضافة هذا السطر
+UPSTREAM_REPO_URL = ("https://github.com/gyygfde3t4/Source00.git")  # ضع رابط الريبو الخاص بك
+UPSTREAM_REPO_BRANCH = ("main")  #
 
 # تخزين البريد الحالي
 current_email = None
@@ -5682,10 +5682,11 @@ async def stop_game(event):
     del active_games[chat_id]
     await event.reply(f"**🛑 تم إيقاف لعبة {game_type}**")
 
-
 # سيتم تعبئة هذه المتغيرات تلقائياً
 KOYEB_APP_NAME = None
 KOYEB_SERVICE_ID = None
+
+# تأكد من وجود هذه المتغيرات في البيئة
 
 REPO_REMOTE_NAME = "temponame"
 NO_KOYEB_APP_CFGD = "no koyeb application found, but a key given? 😕 "
@@ -5700,6 +5701,7 @@ requirements_path = os.path.join(
 async def get_koyeb_app_info():
     """Get Koyeb app and service information automatically"""
     if not KOYEB_API_TOKEN:
+        print("❌ KOYEB_API_TOKEN غير موجود")
         return None
     
     headers = {
@@ -5708,33 +5710,75 @@ async def get_koyeb_app_info():
     }
     
     try:
-        async with aiohttp.ClientSession() as session:
+        # إضافة timeout للطلبات
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            print("🔍 جاري البحث عن التطبيقات...")
+            
             # الحصول على قائمة التطبيقات
             async with session.get(
                 f"{koyeb_api}/apps",
                 headers=headers
             ) as response:
-                if response.status == 200:
-                    apps_data = await response.json()
-                    if apps_data.get('apps'):
-                        # نأخذ أول تطبيق في القائمة (يمكن تعديل هذا حسب الحاجة)
-                        app = apps_data['apps'][0]
-                        global KOYEB_APP_NAME, KOYEB_SERVICE_ID
-                        KOYEB_APP_NAME = app.get('name')
+                print(f"📡 رد API للتطبيقات: {response.status}")
+                
+                if response.status == 401:
+                    print("❌ خطأ في المصادقة - تحقق من KOYEB_API_TOKEN")
+                    return None
+                elif response.status == 403:
+                    print("❌ ليس لديك صلاحية للوصول")
+                    return None
+                elif response.status != 200:
+                    error_text = await response.text()
+                    print(f"❌ خطأ في الطلب: {response.status} - {error_text}")
+                    return None
+                
+                apps_data = await response.json()
+                print(f"📊 تم العثور على {len(apps_data.get('apps', []))} تطبيق")
+                
+                if apps_data.get('apps'):
+                    # نأخذ أول تطبيق في القائمة
+                    app = apps_data['apps'][0]
+                    global KOYEB_APP_NAME, KOYEB_SERVICE_ID
+                    KOYEB_APP_NAME = app.get('name')
+                    app_id = app.get('id')
+                    
+                    print(f"✅ تم العثور على التطبيق: {KOYEB_APP_NAME}")
+                    
+                    # الحصول على معلومات الخدمة
+                    async with session.get(
+                        f"{koyeb_api}/apps/{app_id}/services",
+                        headers=headers
+                    ) as svc_response:
+                        print(f"📡 رد API للخدمات: {svc_response.status}")
                         
-                        # الحصول على معلومات الخدمة
-                        async with session.get(
-                            f"{koyeb_api}/apps/{app['id']}/services",
-                            headers=headers
-                        ) as svc_response:
-                            if svc_response.status == 200:
-                                services_data = await svc_response.json()
-                                if services_data.get('services'):
-                                    KOYEB_SERVICE_ID = services_data['services'][0].get('id')
-                                    return True
-                return None
+                        if svc_response.status == 200:
+                            services_data = await svc_response.json()
+                            print(f"📊 تم العثور على {len(services_data.get('services', []))} خدمة")
+                            
+                            if services_data.get('services'):
+                                KOYEB_SERVICE_ID = services_data['services'][0].get('id')
+                                print(f"✅ تم العثور على الخدمة: {KOYEB_SERVICE_ID}")
+                                return True
+                            else:
+                                print("❌ لا توجد خدمات في هذا التطبيق")
+                                return None
+                        else:
+                            error_text = await svc_response.text()
+                            print(f"❌ خطأ في جلب الخدمات: {svc_response.status} - {error_text}")
+                            return None
+                else:
+                    print("❌ لا توجد تطبيقات في حسابك على Koyeb")
+                    return None
+                    
+    except aiohttp.ClientError as e:
+        print(f"❌ خطأ في الاتصال: {e}")
+        return None
+    except asyncio.TimeoutError:
+        print("❌ انتهت مهلة الاتصال")
+        return None
     except Exception as e:
-        print(f"Error getting Koyeb app info: {e}")
+        print(f"❌ خطأ غير متوقع: {e}")
         return None
 
 # -- Helper Functions -- #
@@ -5769,16 +5813,19 @@ async def get_koyeb_service_info():
     }
     
     try:
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(
                 f"{koyeb_api}/services/{KOYEB_SERVICE_ID}",
                 headers=headers
             ) as response:
                 if response.status == 200:
                     return await response.json()
-                return None
+                else:
+                    print(f"❌ خطأ في جلب معلومات الخدمة: {response.status}")
+                    return None
     except Exception as e:
-        print(f"Error getting Koyeb service info: {e}")
+        print(f"❌ خطأ في جلب معلومات الخدمة: {e}")
         return None
 
 async def redeploy_koyeb_service():
@@ -5792,14 +5839,19 @@ async def redeploy_koyeb_service():
     }
     
     try:
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=60)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 f"{koyeb_api}/services/{KOYEB_SERVICE_ID}/redeploy",
                 headers=headers
             ) as response:
-                return response.status in [200, 201, 202]
+                success = response.status in [200, 201, 202]
+                if not success:
+                    error_text = await response.text()
+                    print(f"❌ فشل في إعادة النشر: {response.status} - {error_text}")
+                return success
     except Exception as e:
-        print(f"Error redeploying Koyeb service: {e}")
+        print(f"❌ خطأ في إعادة نشر الخدمة: {e}")
         return False
 
 async def update_bot(event, repo, ups_rem, ac_br):
@@ -5815,26 +5867,32 @@ async def update_bot(event, repo, ups_rem, ac_br):
         "**•⎆┊جـارِ إعـادة تشغيـل البـوت ⎋ **\n"
         "**•⎆┊انتظـࢪ مـن 2 - 1 دقيقـه . . .📟**"
     )
-    await event.client.disconnect()
+    
+    # إضافة تأخير قبل قطع الاتصال
+    await asyncio.sleep(3)
+    try:
+        await event.client.disconnect()
+    except:
+        pass
 
 async def deploy(event, repo, ups_rem, ac_br, txt):
     if not KOYEB_API_TOKEN:
         return await event.edit(
             "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
             "**•─────────────────•**\n"
-            "** ⪼ لم تقـم بوضـع مربـع فـار KOYEB_API_TOKEN\n"
+            "** ⪼ لم تقـم بوضـع متغيـر KOYEB_API_TOKEN\n"
             "قم بضبـط المتغيـر أولاً لتحديث البوت ..؟!**"
         )
     
-    # جلب معلومات التطبيق والخدمة تلقائياً
-    app_info = await get_koyeb_app_info()
-    if not app_info:
-        await event.edit(f"{txt}\n**- فشل في جلب معلومات تطبيق كويب تلقائياً**")
-        return repo.__del__()
+    # التحقق من وجود معلومات التطبيق والخدمة
+    if not KOYEB_APP_NAME or not KOYEB_SERVICE_ID:
+        return await event.edit(
+            f"{txt}\n**❌ معلومات التطبيق أو الخدمة غير متوفرة**"
+        )
     
     service_info = await get_koyeb_service_info()
     if not service_info:
-        await event.edit(f"{txt}\n**- بيانات اعتماد كويب غير صالحة لتنصيب التحديث**")
+        await event.edit(f"{txt}\n**❌ بيانات اعتماد كويب غير صالحة لتنصيب التحديث**")
         return repo.__del__()
     
     await event.edit(
@@ -5842,37 +5900,52 @@ async def deploy(event, repo, ups_rem, ac_br, txt):
         "**•─────────────────•**\n"
         "**✾╎جـارِ تنصـيب التحـديث الجـذري ⎌**\n"
         f"**✾╎التطبيق:** `{KOYEB_APP_NAME}`\n"
-        f"**✾╎الخدمة:** `{KOYEB_SERVICE_ID}`\n"
+        f"**✾╎الخدمة:** `{KOYEB_SERVICE_ID[:20]}...`\n"
         "**✾╎يُرجـى الانتظـار حتى تنتهـي العمليـة ⎋**\n"
         "**✾╎عـادة ما يستغـرق هـذا التحـديث مـن 5 - 4 دقائـق 📟**"
     )
     
-    ups_rem.fetch(ac_br)
-    repo.git.reset("--hard", "FETCH_HEAD")
-    
     try:
-        origin = repo.remote("origin")
+        ups_rem.fetch(ac_br)
+        repo.git.reset("--hard", "FETCH_HEAD")
+        
+        # التحقق من وجود remote origin
+        if "origin" in [remote.name for remote in repo.remotes]:
+            origin = repo.remote("origin")
+        else:
+            # إنشاء origin إذا لم يكن موجوداً
+            origin = repo.create_remote("origin", UPSTREAM_REPO_URL)
+        
         await asyncio.sleep(1)
         origin.push(f"HEAD:{UPSTREAM_REPO_BRANCH}", force=True)
+        
     except Exception as error:
-        await event.edit(f"{txt}\n**Error log:**\n`{error}`")
+        await event.edit(f"{txt}\n**Error log:**\n`{str(error)[:200]}...`")
         return repo.__del__()
     
     redeploy_success = await redeploy_koyeb_service()
     if not redeploy_success:
-        return await event.edit("`فشل إعادة النشر!\nحدثت بعض الأخطاء...`")
+        return await event.edit(
+            "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+            "**•─────────────────•**\n"
+            "**❌ فشل إعادة النشر!**\n"
+            "**حدثت بعض الأخطاء في Koyeb...**"
+        )
     
     await event.edit(
         "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
         "**•─────────────────•**\n"
-        "**•⎆┊تم تحـديث البـوت بنجـاح ✅\n"
+        "**•⎆┊تم تحـديث البـوت بنجـاح ✅**\n"
         f"**•⎆┊التطبيق:** `{KOYEB_APP_NAME}`\n"
-        f"**•⎆┊الخدمة:** `{KOYEB_SERVICE_ID}`\n"
-        "**•⎆┊جـارِ إعـادة تشغيـل الخدمـة على كويـب 🌐 **"
+        f"**•⎆┊الخدمة:** `{KOYEB_SERVICE_ID[:20]}...`\n"
+        "**•⎆┊جـارِ إعـادة تشغيـل الخدمـة على كويـب 🌐**"
     )
     
     await asyncio.sleep(10)
-    await event.client.disconnect()
+    try:
+        await event.client.disconnect()
+    except:
+        pass
 
 async def progress_bar(event, steps=10):
     messages = [
@@ -5889,53 +5962,81 @@ async def progress_bar(event, steps=10):
         "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟷𝟶𝟶 ▬▬▬▬▬▬▬▬▬▬💯"
     ]
     
-    for i in range(steps + 1):
-        if i < len(messages):
-            await event.edit(messages[i])
-            await asyncio.sleep(1)
+    for i in range(min(steps + 1, len(messages))):
+        await event.edit(messages[i])
+        await asyncio.sleep(1)
 
+# تأكد من وجود هذا المتغير في main handler
 @client.on(events.NewMessage(pattern=r'^\.تحديث البوت$'))
 async def update_command(event):
+    print("🚀 بدء عملية التحديث...")
+    
+    # فحص أولي للمتغيرات
     if not KOYEB_API_TOKEN:
         return await event.edit(
-            "**- يجب تعيين متغير KOYEB_API_TOKEN أولاً ❕❌**"
+            "**❌ يجب تعيين متغير KOYEB_API_TOKEN أولاً**\n"
+            "**ضع المتغير في إعدادات البيئة Environment Variables**"
         )
+    
+    # إظهار رسالة التحميل
+    loading_msg = await event.edit(
+        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+        "**•─────────────────•**\n\n"
+        "**🔍 جاري فحص التطبيقات على Koyeb...**"
+    )
     
     # جلب معلومات التطبيق والخدمة تلقائياً
     app_info = await get_koyeb_app_info()
     if not app_info:
-        return await event.edit(
-            "**- فشل في جلب معلومات التطبيق والخدمة تلقائياً ❌**\n"
-            "**- تأكد من أن الـ API token صالح وأن لديك تطبيق على Koyeb**"
+        return await loading_msg.edit(
+            "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+            "**•─────────────────•**\n\n"
+            "**❌ فشل في جلب معلومات التطبيق والخدمة**\n\n"
+            "**الأسباب المحتملة:**\n"
+            "• الـ API Token غير صحيح\n"
+            "• لا يوجد تطبيقات في حسابك على Koyeb\n"
+            "• مشكلة في الاتصال بالإنترنت\n"
+            "• الحساب لا يملك صلاحيات كافية\n\n"
+            "**تحقق من الـ Logs أعلاه للحصول على تفاصيل أكثر**"
         )
     
-    event = await event.edit(
+    await loading_msg.edit(
         "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
         "**•─────────────────•**\n\n"
-        f"**⪼ التطبيق:** `{KOYEB_APP_NAME}`\n"
-        f"**⪼ الخدمة:** `{KOYEB_SERVICE_ID}`\n\n"
-        "**⪼ يتم تنصيب التحديث انتظر 🌐 ،**"
+        f"**✅ التطبيق:** `{KOYEB_APP_NAME}`\n"
+        f"**✅ الخدمة:** `{KOYEB_SERVICE_ID[:20]}...`\n\n"
+        "**🔧 جاري تحضير التحديث...**"
     )
     
+    # تحديد المجلد الحالي
     current_dir = os.getcwd()
+    print(f"📁 المجلد الحالي: {current_dir}")
+    
+    # محاولة الانتقال للمجلد المناسب
     if "/app" in current_dir or "koyeb" in current_dir.lower():
         os.chdir(current_dir)
     else:
-        os.chdir("/app" if os.path.exists("/app") else ".")
+        if os.path.exists("/app"):
+            os.chdir("/app")
+        elif os.path.exists("./"):
+            os.chdir("./")
     
     try:
         txt = (
-            "`لا يمكن المتابعة بسبب حدوث بعض المشاكل`\n\n"
+            "`❌ لا يمكن المتابعة بسبب حدوث بعض المشاكل`\n\n"
             "**سجل الأخطاء:**\n"
         )
         repo = Repo()
+        print("✅ تم العثور على Git repository")
+        
     except NoSuchPathError as error:
-        await event.edit(f"{txt}\n\n**- المسـار** {error} **غيـر مـوجـود؟!**")
+        await loading_msg.edit(f"{txt}\n\n**❌ المسـار** {error} **غيـر مـوجـود**")
         return
     except GitCommandError as error:
-        await event.edit(f"{txt}\n**- خطـأ غيـر متـوقـع؟!**\n{error}")
+        await loading_msg.edit(f"{txt}\n**❌ خطـأ في Git:**\n`{str(error)[:500]}...`")
         return
     except InvalidGitRepositoryError:
+        print("🔧 إنشاء Git repository جديد...")
         repo = Repo.init()
         origin = repo.create_remote("upstream", UPSTREAM_REPO_URL)
         origin.fetch()
@@ -5948,13 +6049,26 @@ async def update_command(event):
             repo.heads.main.set_tracking_branch(origin.refs.main)
             repo.heads.main.checkout(True)
     
-    await progress_bar(event)
+    # تشغيل شريط التقدم
+    await progress_bar(loading_msg)
     
+    # بدء عملية النشر
     ac_br = repo.active_branch.name
-    ups_rem = repo.remote("upstream")
-    ups_rem.fetch(ac_br)
-    await deploy(event, repo, ups_rem, ac_br, txt)
-            
+    
+    # التحقق من وجود upstream remote
+    if "upstream" in [remote.name for remote in repo.remotes]:
+        ups_rem = repo.remote("upstream")
+    else:
+        ups_rem = repo.create_remote("upstream", UPSTREAM_REPO_URL)
+    
+    try:
+        ups_rem.fetch(ac_br)
+        print("✅ تم جلب التحديثات من upstream")
+    except Exception as e:
+        print(f"⚠️ خطأ في جلب التحديثات: {e}")
+    
+    await deploy(loading_msg, repo, ups_rem, ac_br, txt)
+
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
     with socketserver.TCPServer(("", 8000), handler) as httpd:
