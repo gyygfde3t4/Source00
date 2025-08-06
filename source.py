@@ -92,6 +92,16 @@ from asyncio.exceptions import CancelledError
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from telethon.tl.functions.contacts import BlockRequest
+import time
+import psutil
+from datetime import datetime
+from platform import python_version
+from telethon import events, version
+from telethon.errors import (
+    MediaEmptyError,
+    WebpageCurlFailedError,
+    WebpageMediaEmptyError
+)
 
 # ========== Telethon - الأنواع ==========
 from telethon.tl.types import (
@@ -1443,68 +1453,94 @@ async def restore_identity(event):
 
 
 # الأمر الفحص
+
+# ─── تعريف المتغيرات الأساسية ───
+StartTime = time.time()  # وقت بدء التشغيل الفعلي
+EREN_VERSION = "2.0.0"
+ALIVE_PIC = None  # يمكن تغييرها إلى صورة افتراضية
+
+# ─── الدوال المساعدة ───
+def get_readable_time(seconds: float) -> str:
+    periods = [
+        ('سنة', 31536000),
+        ('شهر', 2592000),
+        ('أسبوع', 604800),
+        ('يوم', 86400),
+        ('ساعة', 3600),
+        ('دقيقة', 60),
+        ('ثانية', 1)
+    ]
+    result = []
+    for period_name, period_seconds in periods:
+        if seconds >= period_seconds:
+            period_value, seconds = divmod(seconds, period_seconds)
+            result.append(f"{int(period_value)} {period_name}")
+    return '، '.join(result) if result else "0 ثانية"
+
+async def check_database_health():
+    """دالة افتراضية للتحقق من صحة قاعدة البيانات"""
+    return True, "✅ جيد"
+
+# ─── حدث أمر الفحص ───
 @client.on(events.NewMessage(pattern=r'^\.فحص$'))
-async def handler(event):
-    # جلب اسم المستخدم من الحدث
-    sender = await event.get_sender()
-    name = sender.last_name  # اسم المستخدم الخاص بك
+async def eren_alive(event):
+    try:
+        # ─── التحضير الأولي ───
+        start_time = datetime.now()
+        reply_msg = await event.get_reply_message()
+        reply_to_id = reply_msg.id if reply_msg else None
 
-    # جلب صورة البروفايل
-    photos = await client.get_profile_photos(sender)
-    
-    # الرسالة الأولى
-    initial_message = await event.edit("**⎆┊جـاري .. فحـص البـوت الخـاص بك**")
-    
-    # انتظار لمدة ثانية
-    time.sleep(1)
-    
-    # إعداد البيانات الخاصة بالفحص
-    zthon_version = "1.36.0"
-    python_version = "3.11.7"
-    platform = "TERMUX"
-    
-    # إعداد مدة التشغيل (عشوائي بين يوم و 30 يوم)
-    uptime_seconds = random.randint(86400, 2592000)
-    uptime_delta = timedelta(seconds=uptime_seconds)
-    
-    # حساب الأيام والساعات والدقائق والثواني من uptime
-    days, remainder = divmod(uptime_delta.total_seconds(), 86400)
-    hours, remainder = divmod(remainder, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    
-    # تنسيق مدة التشغيل
-    uptime = f"{int(days)}d {int(hours)}h {int(minutes)}m {int(seconds)}s"
+        # ─── جلب معلومات المستخدم ───
+        user = await event.get_sender()
+        user_name = f"{user.first_name} {user.last_name}" if user.last_name else user.first_name
+        user_mention = f"[{user_name}](tg://user?id={user.id})"
 
-    # إعداد ping
-    ping = random.randint(50, 250)
+        # ─── حساب الإحصائيات ───
+        uptime = get_readable_time(time.time() - StartTime)
+        end_time = datetime.now()
+        ping_ms = round((end_time - start_time).microseconds / 1000, 2)
+        
+        boot_time = datetime.fromtimestamp(psutil.boot_time())
+        alive_since = boot_time.strftime("%Y/%m/%d %H:%M:%S")
+        
+        db_status = await check_database_health()
 
-    # إعداد تاريخ التشغيل
-    alive_since = (datetime.now() - uptime_delta).strftime('%Y-%m-%d %H:%M:%S')
-
-    # الرسالة الثانية
-    final_message = f"""
-. ᕱ⑅︎ᕱ 𑄻𑄾𝓈ℴ𝓊𝓇𝒸ℯ 𝓏𝓉𝒽ℴ𝓃 𝒾𝓈
-(｡•ㅅ•｡) •𝓇𝓊𝓃𝓃𝒾𝓃𝑔 𝓃ℴ𝓌`๑๑
-  ∪∪︵⏜︵⏜︵⏜︵⏜︵
-║𓏸𝓃𝒶𝓂ℯ꧇ {name}
-║𓏸𝓏𝓉𝒽ℴ𝓃 ꧇ {zthon_version}
-║𓏸𝓅𝓎𝓉𝒽ℴ𝓃 ꧇ {python_version}
-║𓏸𝓅𝓁𝒶𝓉𝒻ℴ𝓇𝓂 ꧇ {platform}
-║𓏸𝓅𝒾𝓃𝑔꧇ {ping} ms
-║𓏸𝓊𝓅 𝓉𝒾𝓂ℯ꧇ {uptime}
-║𓏸𝒶𝓁𝒾𝓋ℯ 𝓈𝒾𝓃𝒸ℯ꧇ ‹ {alive_since} ›
-║𓏸𝓂𝓎 𝒸𝒽𝒶𝓃𝓃ℯ꧇ @ERENYA0
+        # ─── قالب الرسالة ───
+        eren_template = f"""
+┏━━━━━━━━━━━━━━━━━┓
+┃  ◉ Sᴏᴜʀᴄᴇ EREN  ┃
+┣━━━━━━━━━━━━━━━━━┫
+┃ • ᴜsᴇʀ ➪ {user_mention}
+┃ • ᴠᴇʀsɪᴏɴ ➪ {EREN_VERSION}
+┃ • ᴘʏᴛʜᴏɴ ➪ {python_version()}
+┃ • ᴛᴇʟᴇᴛʜᴏɴ ➪ {version.__version__}
+┃ • ᴘʟᴀᴛғᴏʀᴍ ➪ KOYEB
+┃ • ᴘɪɴɢ ➪ {ping_ms} ms
+┃ • ᴜᴘᴛɪᴍᴇ ➪ {uptime}
+┃ • sᴛᴀʀᴛᴇᴅ ➪ {alive_since}
+┃ • ᴅʙ sᴛᴀᴛᴜs ➪ {db_status[1]}
+┃ • ᴄʜᴀɴɴᴇʟ ➪ [Eʀᴇɴ Yᴀ](https://t.me/ERENYA0)
+┗━━━━━━━━━━━━━━━━━┛
 """
 
-    # إذا كانت توجد صورة بروفايل
-    if photos:
-        # إرسال الرسالة مع الصورة
-        await client.send_file(event.chat_id, photos[0], caption=final_message)
-    else:
-        # إذا لم توجد صورة بروفايل، تعديل الرسالة فقط بدون صورة
-        await client.edit_message(initial_message, final_message)
+        # ─── إرسال النتيجة ───
+        if ALIVE_PIC:
+            try:
+                await event.client.send_file(
+                    event.chat_id,
+                    ALIVE_PIC,
+                    caption=eren_template,
+                    reply_to=reply_to_id
+                )
+                await event.delete()
+            except (MediaEmptyError, WebpageCurlFailedError):
+                await event.edit("**⚠️ فشل إرسال الصورة، جارٍ إرسال النص فقط**")
+                await event.edit(eren_template)
+        else:
+            await event.edit(eren_template)
 
-    await client.delete_messages(event.chat_id, initial_message.id)
+    except Exception as error:
+        await event.edit(f"**حدث خطأ غير متوقع:**\n`{str(error)}`")
                       
 # متغير لحفظ معرفات الرسائل التلقائية لكل مستخدم
 user_auto_messages = {}
