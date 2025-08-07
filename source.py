@@ -6272,258 +6272,139 @@ async def update_command(event):
     # تنفيذ التحديث
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
-
 @client.on(events.NewMessage(pattern=r'\.بحث (.+)'))
 async def download_and_send_audio(event):
     query = event.pattern_match.group(1)
     await event.edit("**╮ جـارِ البحث ؏ـن المقطـٓع الصٓوتـي... 🎧♥️╰**")
 
     try:
-        # التأكد من وجود ملف الكوكيز
-        cookie_file = 'cookies.txt'
-        if not os.path.exists(cookie_file):
-            await event.edit("**⚠️ خطأ**: ملف الكوكيز غير موجود!")
-            return
-
-        # إعدادات yt-dlp محسنة مع الكوكيز
+        # إعدادات yt-dlp محسنة (مشابهة لـ yout.py مع تحسينات)
         ydl_opts = {
-            'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'format': 'bestaudio/best',
+            'outtmpl': 'downloads/%(id)s.%(ext)s',
             'noplaylist': True,
             'quiet': True,
             'no_warnings': True,
-            'cookiefile': cookie_file,
             'extract_flat': False,
             'ignoreerrors': False,
-            
-            # إعدادات محسنة لتجاوز اكتشاف البوت
             'extractor_args': {
                 'youtube': {
                     'skip': ['translated_subs', 'automatic_captions'],
                     'player_client': ['android', 'web'],
                 }
             },
-            
-            # تحديد User-Agent محدث
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'ar,en-US;q=0.7,en;q=0.3',
-                'Accept-Encoding': 'gzip, deflate',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
             },
-            
-            # إضافة تأخير لتجنب اكتشاف البوت
-            'sleep_interval': 1,
-            'max_sleep_interval': 3,
         }
 
-        # إنشاء مجلد التحميل إذا لم يكن موجوداً
+        # إضافة الكوكيز إذا كان الملف موجوداً
+        cookie_file = 'cookies.txt'
+        if os.path.exists(cookie_file):
+            ydl_opts['cookiefile'] = cookie_file
+
         os.makedirs('downloads', exist_ok=True)
 
-        # تأخير عشوائي قبل البدء
-        await asyncio.sleep(random.uniform(2, 4))
-
-        # البحث عن الفيديو وتنزيله
         with YoutubeDL(ydl_opts) as ydl:
             try:
-                # البحث أولاً
-                search_info = ydl.extract_info(
-                    f"ytsearch1:{query}", 
-                    download=False
-                )
+                # البحث عن الفيديو
+                search_info = ydl.extract_info(f"ytsearch1:{query}", download=False)
                 
-                # التحقق من وجود النتائج بشكل مفصل
-                if not search_info:
-                    await event.edit("**⚠️ فشل في البحث - لا توجد معلومات**")
-                    return
-                    
-                if 'entries' not in search_info:
-                    await event.edit("**⚠️ فشل في البحث - لا توجد entries**")
-                    return
-                    
-                if not search_info['entries']:
+                if not search_info or 'entries' not in search_info or not search_info['entries']:
                     await event.edit("**⚠️ لم يتم العثور على نتائج للبحث**")
                     return
-                
-                video_info = search_info['entries'][0]
-                
-                # التحقق من أن video_info ليس None
-                if video_info is None:
-                    await event.edit("**⚠️ فشل في الحصول على معلومات الفيديو**")
-                    return
 
-                # استخراج المعلومات مع قيم افتراضية آمنة
-                video_title = video_info.get('title', f'Unknown Title - {query}')
+                video_info = search_info['entries'][0]
+                video_url = video_info.get('webpage_url')
+                video_id = video_info.get('id')
+                video_title = video_info.get('title', query)
                 artist = video_info.get('uploader', 'Unknown Artist')
-                video_url = video_info.get('webpage_url') or video_info.get('url')
-                video_id = video_info.get('id', f'unknown_{int(time.time())}')
-                
-                # التحقق من وجود URL
+                thumbnail = video_info.get('thumbnail')
+
                 if not video_url:
                     await event.edit("**⚠️ لم يتم العثور على رابط الفيديو**")
                     return
 
                 await event.edit("**╮ جـارِ تحميـل المقطـٓع الصٓوتـي... 🎧♥️╰**")
 
-                # تأخير إضافي قبل التحميل
-                await asyncio.sleep(random.uniform(2, 4))
+                # تحميل الصورة المصغرة
+                thumb_path = None
+                if thumbnail:
+                    try:
+                        thumb_path = f"downloads/{video_id}_thumb.jpg"
+                        async with httpx.AsyncClient() as client:
+                            r = await client.get(thumbnail)
+                            with open(thumb_path, 'wb') as f:
+                                f.write(r.content)
+                    except Exception as thumb_error:
+                        print(f"⚠️ خطأ في تحميل الصورة المصغرة: {thumb_error}")
 
-                # تحديث إعدادات التحميل مع الرابط المباشر
-                ydl_opts_download = ydl_opts.copy()
-                ydl_opts_download['outtmpl'] = f'downloads/{video_id}.%(ext)s'
-                
+                # تحميل الصوت
+                audio_path = f"downloads/{video_id}.mp3"
+                ydl_opts_download = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': audio_path,
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }],
+                }
+
                 with YoutubeDL(ydl_opts_download) as ydl_download:
                     ydl_download.download([video_url])
 
+                # إضافة البيانات الوصفية
+                if os.path.exists(audio_path):
+                    try:
+                        audio_file = EasyID3(audio_path)
+                    except ID3NoHeaderError:
+                        audio_file = EasyID3()
+                    
+                    audio_file['title'] = video_title
+                    audio_file['artist'] = artist
+                    audio_file.save()
+
+                # إرسال الملف الصوتي مع الصورة المصغرة
+                upload_message = await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                
+                caption = f"**⌔╎البحث :** `{artist} - {video_title}`"
+                
+                await client.send_file(
+                    event.chat_id,
+                    audio_path,
+                    caption=caption,
+                    thumb=thumb_path if thumb_path and os.path.exists(thumb_path) else None,
+                    attributes=[
+                        DocumentAttributeAudio(
+                            duration=0,
+                            voice=False,
+                            title=video_title,
+                            performer=artist
+                        )
+                    ],
+                    supports_streaming=True
+                )
+                
+                await upload_message.delete()
+
             except Exception as download_error:
                 error_msg = str(download_error)
-                
-                # رسائل خطأ محددة لمساعدة المستخدم
-                if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+                if "Sign in to confirm" in error_msg:
                     await event.edit("**⚠️ YouTube يطلب التحقق. حدث الكوكيز أو جرب لاحقاً**")
-                elif "Video unavailable" in error_msg:
-                    await event.edit("**⚠️ الفيديو غير متوفر أو محذوف**")
-                elif "Private video" in error_msg:
-                    await event.edit("**⚠️ الفيديو خاص ولا يمكن تحميله**")
                 else:
-                    await event.edit(f"**⚠️ خطأ في التحميل**: {str(download_error)}")
-                return
-
-        # البحث عن الملف المحمل
-        downloaded_files = []
-        downloads_dir = 'downloads'
-        
-        # التحقق من وجود مجلد التحميل
-        if not os.path.exists(downloads_dir):
-            await event.edit("**⚠️ مجلد التحميل غير موجود**")
-            return
-            
-        for file in os.listdir(downloads_dir):
-            if video_id in file:
-                downloaded_files.append(os.path.join(downloads_dir, file))
-        
-        if not downloaded_files:
-            await event.edit("**⚠️ فشل في تحميل الملف الصوتي**")
-            return
-
-        download_path = downloaded_files[0]
-        
-        # إنشاء اسم آمن للملف
-        safe_title = ''.join(c for c in video_title if c.isalnum() or c in (' ', '-', '_')).strip()
-        safe_title = safe_title[:50] if len(safe_title) > 50 else safe_title
-        if not safe_title:  # إذا كان الاسم فارغاً بعد التنظيف
-            safe_title = f'audio_{video_id}'
-        audio_path = f"downloads/{safe_title}.mp3"
-
-        # تحويل إلى MP3
-        try:
-            audio = AudioSegment.from_file(download_path)
-            
-            # تحديد جودة الصوت بناءً على المدة
-            duration_minutes = len(audio) / (1000 * 60)
-            bitrate = "64k" if duration_minutes > 10 else "128k"
-            
-            # تصدير بصيغة MP3
-            audio.export(
-                audio_path, 
-                format="mp3", 
-                bitrate=bitrate,
-                parameters=["-q:a", "2"]  # جودة عالية
-            )
-        except Exception as conversion_error:
-            await event.edit(f"**⚠️ خطأ في التحويل**: {str(conversion_error)}")
-            # في حالة فشل التحويل، استخدم الملف الأصلي
-            audio_path = download_path
-            duration_minutes = 0
-
-        # إضافة البيانات الوصفية (فقط للملفات MP3)
-        if audio_path.endswith('.mp3'):
-            try:
-                try:
-                    audio_file = EasyID3(audio_path)
-                except ID3NoHeaderError:
-                    audio_file = EasyID3()
-                
-                audio_file['title'] = video_title
-                audio_file['artist'] = artist
-                audio_file.save(audio_path)
-            except Exception as metadata_error:
-                print(f"تحذير: فشل في إضافة البيانات الوصفية: {metadata_error}")
-
-        upload_message = await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
-
-        # التحقق من حجم الملف
-        file_size = os.path.getsize(audio_path)
-        if file_size > 50 * 1024 * 1024:  # 50MB
-            await upload_message.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 50MB)**")
-            return
-
-        # إرسال الملف الصوتي
-        try:
-            caption = f"**⌔╎البحث :** `{artist} - {video_title}`"
-            if duration_minutes > 0:
-                caption += f"\n**⌔╎المدة :** `{duration_minutes:.1f} دقيقة`"
-                
-            await client.send_file(
-                event.chat_id, 
-                audio_path, 
-                caption=caption, 
-                supports_streaming=True
-            )
-            
-            # حذف رسالة "جاري الرفع"
-            await upload_message.delete()
-            
-        except Exception as send_error:
-            await upload_message.edit(f"**⚠️ خطأ في الإرسال**: {str(send_error)}")
+                    await event.edit(f"**⚠️ خطأ في التحميل**: {error_msg[:1000]}")
 
     except Exception as e:
-        await event.edit(f"**⚠️ حدث خطأ عام**: {str(e)}")
+        await event.edit(f"**⚠️ حدث خطأ عام**: {str(e)[:1000]}")
     
     finally:
         # تنظيف الملفات المؤقتة
-        try:
-            if 'download_path' in locals() and os.path.exists(download_path):
-                os.remove(download_path)
-            if 'audio_path' in locals() and os.path.exists(audio_path) and audio_path != download_path:
-                os.remove(audio_path)
-        except Exception as cleanup_error:
-            print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
-
-# دالة مساعدة للتحقق من صحة ملف الكوكيز
-def validate_cookies_file():
-    """التحقق من صحة ملف الكوكيز"""
-    cookie_file = 'cookies.txt'
-    
-    if not os.path.exists(cookie_file):
-        print("⚠️ ملف الكوكيز غير موجود!")
-        return False
-    
-    try:
-        with open(cookie_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-            
-        # التحقق من أن الملف غير فارغ
-        if not content.strip():
-            print("⚠️ ملف الكوكيز فارغ!")
-            return False
-            
-        # التحقق من وجود كوكيز YouTube
-        youtube_cookies = ['youtube.com']
-        
-        if not any(cookie in content for cookie in youtube_cookies):
-            print("⚠️ تحذير: لا توجد كوكيز YouTube في الملف")
-            return True
-            
-        print("✅ ملف الكوكيز صالح")
-        return True
-        
-    except Exception as e:
-        print(f"⚠️ خطأ في قراءة ملف الكوكيز: {e}")
-        return
+        for file in ['downloads/' + f for f in os.listdir('downloads') if video_id in f]:
+            try:
+                os.remove(file)
+            except:
+                pass
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
