@@ -6200,7 +6200,9 @@ async def update_command(event):
     
     # تنفيذ التحديث
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
-    
+
+
+        
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
     with socketserver.TCPServer(("", 8000), handler) as httpd:
@@ -6210,6 +6212,17 @@ def run_server():
 server_thread = threading.Thread(target=run_server)
 server_thread.start()                
                                               
+print("""
+$$$$$$$$\ $$$$$$$\  $$$$$$$$\ $$\   $$\ 
+$$  _|$$  $$\ $$  ___|$$$\  $$ |
+$$ |      $$ |  $$ |$$ |      $$$$\ $$ |
+$$$$$\    $$$$$$$  |$$$$$\    $$ $$\$$ |
+$$  |   $$  $$< $$  __|   $$ \$$$$ |
+$$ |      $$ |  $$ |$$ |      $$ |\$$$ |
+$$$$$$$$\ $$ |  $$ |$$$$$$$$\ $$ | \$$ |
+\__|\|  \|\__|\|  \|
+تـم تـنـصـيـب ســورس ايـريـن بنـجـاح✔️
+""")
 
 async def main():
     await start_client()
