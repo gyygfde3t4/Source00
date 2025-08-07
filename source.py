@@ -6278,7 +6278,7 @@ async def download_and_send_audio(event):
     await event.edit("**╮ جـارِ البحث ؏ـن المقطـٓع الصٓوتـي... 🎧♥️╰**")
 
     try:
-        # إعدادات yt-dlp محسنة (مشابهة لـ yout.py مع تحسينات)
+        # إعدادات yt-dlp محسنة مع دعم الكوكيز
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -6295,20 +6295,28 @@ async def download_and_send_audio(event):
             },
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
             },
+            'sleep_interval': 1,
+            'max_sleep_interval': 3,
         }
 
         # إضافة الكوكيز إذا كان الملف موجوداً
         cookie_file = 'cookies.txt'
         if os.path.exists(cookie_file):
             ydl_opts['cookiefile'] = cookie_file
+            ydl_opts['cookiesfrombrowser'] = ('chrome',)  # دعم متصفحات إضافية
 
         os.makedirs('downloads', exist_ok=True)
 
         with YoutubeDL(ydl_opts) as ydl:
             try:
-                # البحث عن الفيديو
-                search_info = ydl.extract_info(f"ytsearch1:{query}", download=False)
+                # البحث عن الفيديو مع التحقق من الأخطاء
+                search_info = await asyncio.to_thread(
+                    ydl.extract_info,
+                    f"ytsearch1:{query}",
+                    download=False
+                )
                 
                 if not search_info or 'entries' not in search_info or not search_info['entries']:
                     await event.edit("**⚠️ لم يتم العثور على نتائج للبحث**")
@@ -6320,6 +6328,7 @@ async def download_and_send_audio(event):
                 video_title = video_info.get('title', query)
                 artist = video_info.get('uploader', 'Unknown Artist')
                 thumbnail = video_info.get('thumbnail')
+                duration = video_info.get('duration', 0)
 
                 if not video_url:
                     await event.edit("**⚠️ لم يتم العثور على رابط الفيديو**")
@@ -6327,19 +6336,20 @@ async def download_and_send_audio(event):
 
                 await event.edit("**╮ جـارِ تحميـل المقطـٓع الصٓوتـي... 🎧♥️╰**")
 
-                # تحميل الصورة المصغرة
+                # تحميل الصورة المصغرة بشكل غير متزامن
                 thumb_path = None
                 if thumbnail:
                     try:
                         thumb_path = f"downloads/{video_id}_thumb.jpg"
                         async with httpx.AsyncClient() as client:
                             r = await client.get(thumbnail)
-                            with open(thumb_path, 'wb') as f:
-                                f.write(r.content)
+                            if r.status_code == 200:
+                                with open(thumb_path, 'wb') as f:
+                                    f.write(r.content)
                     except Exception as thumb_error:
                         print(f"⚠️ خطأ في تحميل الصورة المصغرة: {thumb_error}")
 
-                # تحميل الصوت
+                # تحميل الصوت مع إعدادات متقدمة
                 audio_path = f"downloads/{video_id}.mp3"
                 ydl_opts_download = {
                     'format': 'bestaudio/best',
@@ -6349,12 +6359,21 @@ async def download_and_send_audio(event):
                         'preferredcodec': 'mp3',
                         'preferredquality': '192',
                     }],
+                    'external_downloader': 'aria2c',  # لتسريع التحميل
+                    'external_downloader_args': ['-x16', '-s16', '-j16', '-k1M'],
                 }
 
-                with YoutubeDL(ydl_opts_download) as ydl_download:
-                    ydl_download.download([video_url])
+                # دمج إعدادات الكوكيز إذا كانت موجودة
+                if 'cookiefile' in ydl_opts:
+                    ydl_opts_download['cookiefile'] = ydl_opts['cookiefile']
 
-                # إضافة البيانات الوصفية
+                # التحميل في thread منفصل لتجنب التجميد
+                await asyncio.to_thread(
+                    ydl.download,
+                    [video_url]
+                )
+
+                # إضافة البيانات الوصفية إذا كان الملف موجوداً
                 if os.path.exists(audio_path):
                     try:
                         audio_file = EasyID3(audio_path)
@@ -6365,10 +6384,29 @@ async def download_and_send_audio(event):
                     audio_file['artist'] = artist
                     audio_file.save()
 
+                    # إضافة صورة الغلاف إذا كانت موجودة
+                    if thumb_path and os.path.exists(thumb_path):
+                        try:
+                            audio = ID3(audio_path)
+                            with open(thumb_path, 'rb') as f:
+                                audio.add(APIC(
+                                    encoding=3,
+                                    mime='image/jpeg',
+                                    type=3,  # 3 for cover image
+                                    desc='Cover',
+                                    data=f.read()
+                                ))
+                            audio.save()
+                        except Exception as cover_error:
+                            print(f"⚠️ خطأ في إضافة صورة الغلاف: {cover_error}")
+
                 # إرسال الملف الصوتي مع الصورة المصغرة
                 upload_message = await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
                 
                 caption = f"**⌔╎البحث :** `{artist} - {video_title}`"
+                if duration > 0:
+                    minutes, seconds = divmod(duration, 60)
+                    caption += f"\n**⌔╎المدة :** `{minutes}:{seconds:02d}`"
                 
                 await client.send_file(
                     event.chat_id,
@@ -6377,7 +6415,7 @@ async def download_and_send_audio(event):
                     thumb=thumb_path if thumb_path and os.path.exists(thumb_path) else None,
                     attributes=[
                         DocumentAttributeAudio(
-                            duration=0,
+                            duration=duration,
                             voice=False,
                             title=video_title,
                             performer=artist
@@ -6390,8 +6428,10 @@ async def download_and_send_audio(event):
 
             except Exception as download_error:
                 error_msg = str(download_error)
-                if "Sign in to confirm" in error_msg:
-                    await event.edit("**⚠️ YouTube يطلب التحقق. حدث الكوكيز أو جرب لاحقاً**")
+                if "Sign in to confirm" in error_msg or "cookies" in error_msg.lower():
+                    await event.edit("**⚠️ YouTube يطلب التحقق. الرجاء تحديث ملف cookies.txt أو المحاولة لاحقاً**")
+                elif "This video may be inappropriate" in error_msg:
+                    await event.edit("**⚠️ الفيديو يحتاج إلى تسجيل الدخول لتأكيد العمر**")
                 else:
                     await event.edit(f"**⚠️ خطأ في التحميل**: {error_msg[:1000]}")
 
@@ -6400,7 +6440,8 @@ async def download_and_send_audio(event):
     
     finally:
         # تنظيف الملفات المؤقتة
-        for file in ['downloads/' + f for f in os.listdir('downloads') if video_id in f]:
+        temp_files = glob.glob(f'downloads/{video_id}*') if 'video_id' in locals() else []
+        for file in temp_files:
             try:
                 os.remove(file)
             except:
