@@ -3988,7 +3988,7 @@ async def start_anime_game(event):
         }
 
         if player_count == 1:
-            await start_game(event.chat_id)
+            await start_anime_game_session(event.chat_id)
 
 @client.on(events.NewMessage(pattern='^انا$'))
 async def register_player(event):
@@ -4070,10 +4070,10 @@ async def register_player(event):
                 
             await asyncio.sleep(2)
             
-            await start_game(event.chat_id)
+            await start_anime_game_session(event.chat_id)
 
-async def start_game(chat_id):
-    """بدء اللعبة - تم إصلاح المعامل ليكون chat_id بدلاً من event"""
+async def start_anime_game_session(chat_id):
+    """بدء لعبة تخمين الأنمي - تم إصلاح المعامل ليكون chat_id بدلاً من event"""
     try:
         if chat_id not in anime_games:
             return
