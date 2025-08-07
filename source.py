@@ -6299,13 +6299,14 @@ async def download_and_send_audio(event):
             },
         }
 
-        # حل مشكلة الكوكيز
+        # التحقق من ملف الكوكيز
         cookie_file = 'cookies.txt'
         if os.path.exists(cookie_file):
             ydl_opts['cookiefile'] = cookie_file
         else:
-            print("⚠️ تنبيه: سيتم التشغيل بدون كوكيز")
+            print("⚠️ تنبيه: التشغيل بدون كوكيز")
 
+        # إنشاء مجلد التحميل إذا لم يكن موجوداً
         os.makedirs('downloads', exist_ok=True)
 
         with YoutubeDL(ydl_opts) as ydl:
@@ -6335,7 +6336,7 @@ async def download_and_send_audio(event):
 
                 await event.edit("**╮ جـارِ تحميـل المقطـٓع الصٓوتـي... 🎧♥️╰**")
 
-                # تحميل الصورة المصغرة باستخدام requests بدلاً من httpx
+                # تحميل الصورة المصغرة
                 thumb_path = None
                 if thumbnail:
                     try:
@@ -6347,50 +6348,71 @@ async def download_and_send_audio(event):
                     except Exception as thumb_error:
                         print(f"⚠️ خطأ في تحميل الصورة المصغرة: {thumb_error}")
 
-                # تحميل الصوت
-                audio_path = f"downloads/{video_id}.mp3"
-                ydl_opts_download = ydl_opts.copy()
-                ydl_opts_download.update({
+                # تحميل الصوت مع ضمان المسار الصحيح
+                audio_filename = f"{video_id}.mp3"
+                audio_path = os.path.join('downloads', audio_filename)
+                
+                ydl_opts_download = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': audio_path.replace('.mp3', '.%(ext)s'),
                     'postprocessors': [{
                         'key': 'FFmpegExtractAudio',
                         'preferredcodec': 'mp3',
                         'preferredquality': '192',
                     }],
-                })
+                }
 
-                await asyncio.to_thread(
-                    ydl.download,
-                    [video_url]
-                )
+                if 'cookiefile' in ydl_opts:
+                    ydl_opts_download['cookiefile'] = ydl_opts['cookiefile']
+
+                # التنزيل الفعلي
+                await asyncio.to_thread(ydl.download, [video_url])
+
+                # التحقق من وجود الملف بعد التحميل
+                if not os.path.exists(audio_path):
+                    # محاولة العثور على الملف بأي امتداد
+                    downloaded_files = [f for f in os.listdir('downloads') if f.startswith(video_id)]
+                    if downloaded_files:
+                        audio_path = os.path.join('downloads', downloaded_files[0])
+                        # تحويل إلى mp3 إذا لزم الأمر
+                        if not audio_path.endswith('.mp3'):
+                            new_path = audio_path.rsplit('.', 1)[0] + '.mp3'
+                            os.rename(audio_path, new_path)
+                            audio_path = new_path
+
+                if not os.path.exists(audio_path):
+                    raise Exception("فشل إنشاء ملف الصوت")
 
                 # إضافة البيانات الوصفية
-                if os.path.exists(audio_path):
+                try:
+                    audio_file = EasyID3(audio_path)
+                except ID3NoHeaderError:
+                    audio_file = EasyID3()
+                
+                audio_file['title'] = video_title
+                audio_file['artist'] = artist
+                audio_file.save()
+
+                # إضافة صورة الغلاف إذا كانت موجودة
+                if thumb_path and os.path.exists(thumb_path):
                     try:
-                        audio_file = EasyID3(audio_path)
-                    except ID3NoHeaderError:
-                        audio_file = EasyID3()
-                    
-                    audio_file['title'] = video_title
-                    audio_file['artist'] = artist
-                    audio_file.save()
+                        audio = ID3(audio_path)
+                        with open(thumb_path, 'rb') as f:
+                            audio.add(APIC(
+                                encoding=3,
+                                mime='image/jpeg',
+                                type=3,
+                                desc='Cover',
+                                data=f.read()
+                            ))
+                        audio.save()
+                    except Exception as cover_error:
+                        print(f"⚠️ خطأ في إضافة صورة الغلاف: {cover_error}")
 
-                    # إضافة صورة الغلاف
-                    if thumb_path and os.path.exists(thumb_path):
-                        try:
-                            audio = ID3(audio_path)
-                            with open(thumb_path, 'rb') as f:
-                                audio.add(APIC(
-                                    encoding=3,
-                                    mime='image/jpeg',
-                                    type=3,
-                                    desc='Cover',
-                                    data=f.read()
-                                ))
-                            audio.save()
-                        except Exception as cover_error:
-                            print(f"⚠️ خطأ في إضافة صورة الغلاف: {cover_error}")
+                # إرسال الملف مع التحقق النهائي
+                if not os.path.exists(audio_path):
+                    raise Exception("ملف الصوت النهائي غير موجود")
 
-                # إرسال الملف باستخدام telethon الصحيح
                 upload_message = await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
                 
                 caption = f"**⌔╎البحث :** `{artist} - {video_title}`"
@@ -6398,7 +6420,6 @@ async def download_and_send_audio(event):
                     minutes, seconds = divmod(duration, 60)
                     caption += f"\n**⌔╎المدة :** `{minutes}:{seconds:02d}`"
                 
-                # استخدام كائن client الخاص بـ telethon مباشرة
                 await event.client.send_file(
                     event.chat_id,
                     audio_path,
@@ -6412,7 +6433,9 @@ async def download_and_send_audio(event):
                             performer=artist
                         )
                     ],
-                    supports_streaming=True
+                    supports_streaming=True,
+                    progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
+                        update_progress(upload_message, d, t)
                 )
                 
                 await upload_message.delete()
@@ -6437,6 +6460,10 @@ async def download_and_send_audio(event):
                 os.remove(file)
             except:
                 pass
+
+async def update_progress(message, current, total):
+    percent = (current / total) * 100
+    await message.edit(f"**╮ ❐ جـارِ الـرفع: {percent:.1f}% ...𓅫╰**")
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
