@@ -6299,14 +6299,12 @@ async def download_and_send_audio(event):
             },
         }
 
-        # حل مشكلة الكوكيز - الطريقة الأكثر موثوقية
+        # حل مشكلة الكوكيز
         cookie_file = 'cookies.txt'
         if os.path.exists(cookie_file):
             ydl_opts['cookiefile'] = cookie_file
         else:
-            # إذا لم يوجد ملف كوكيز، نستخدم بدائل أخرى
-            ydl_opts['cookiefile'] = None
-            print("⚠️ تنبيه: ملف الكوكيز غير موجود، سيتم المحاولة بدون كوكيز")
+            print("⚠️ تنبيه: سيتم التشغيل بدون كوكيز")
 
         os.makedirs('downloads', exist_ok=True)
 
@@ -6337,34 +6335,28 @@ async def download_and_send_audio(event):
 
                 await event.edit("**╮ جـارِ تحميـل المقطـٓع الصٓوتـي... 🎧♥️╰**")
 
-                # تحميل الصورة المصغرة
+                # تحميل الصورة المصغرة باستخدام requests بدلاً من httpx
                 thumb_path = None
                 if thumbnail:
                     try:
                         thumb_path = f"downloads/{video_id}_thumb.jpg"
-                        async with httpx.AsyncClient() as client:
-                            r = await client.get(thumbnail)
-                            if r.status_code == 200:
-                                with open(thumb_path, 'wb') as f:
-                                    f.write(r.content)
+                        response = requests.get(thumbnail, timeout=10)
+                        if response.status_code == 200:
+                            with open(thumb_path, 'wb') as f:
+                                f.write(response.content)
                     except Exception as thumb_error:
                         print(f"⚠️ خطأ في تحميل الصورة المصغرة: {thumb_error}")
 
                 # تحميل الصوت
                 audio_path = f"downloads/{video_id}.mp3"
-                ydl_opts_download = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': audio_path,
+                ydl_opts_download = ydl_opts.copy()
+                ydl_opts_download.update({
                     'postprocessors': [{
                         'key': 'FFmpegExtractAudio',
                         'preferredcodec': 'mp3',
                         'preferredquality': '192',
                     }],
-                }
-
-                # نسخ إعدادات الكوكيز إذا كانت موجودة
-                if 'cookiefile' in ydl_opts:
-                    ydl_opts_download['cookiefile'] = ydl_opts['cookiefile']
+                })
 
                 await asyncio.to_thread(
                     ydl.download,
@@ -6382,7 +6374,7 @@ async def download_and_send_audio(event):
                     audio_file['artist'] = artist
                     audio_file.save()
 
-                    # إضافة صورة الغلاف للملف الصوتي
+                    # إضافة صورة الغلاف
                     if thumb_path and os.path.exists(thumb_path):
                         try:
                             audio = ID3(audio_path)
@@ -6398,7 +6390,7 @@ async def download_and_send_audio(event):
                         except Exception as cover_error:
                             print(f"⚠️ خطأ في إضافة صورة الغلاف: {cover_error}")
 
-                # إرسال الملف
+                # إرسال الملف باستخدام telethon الصحيح
                 upload_message = await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
                 
                 caption = f"**⌔╎البحث :** `{artist} - {video_title}`"
@@ -6406,7 +6398,8 @@ async def download_and_send_audio(event):
                     minutes, seconds = divmod(duration, 60)
                     caption += f"\n**⌔╎المدة :** `{minutes}:{seconds:02d}`"
                 
-                await client.send_file(
+                # استخدام كائن client الخاص بـ telethon مباشرة
+                await event.client.send_file(
                     event.chat_id,
                     audio_path,
                     caption=caption,
@@ -6427,14 +6420,14 @@ async def download_and_send_audio(event):
             except Exception as download_error:
                 error_msg = str(download_error)
                 if "Sign in to confirm" in error_msg:
-                    await event.edit("**⚠️ يرجى إضافة ملف cookies.txt صالح أو المحاولة لاحقاً**")
-                elif "cookies" in error_msg.lower():
-                    await event.edit("**⚠️ مشكلة في ملف الكوكيز، تأكد من صحته**")
+                    await event.edit("**⚠️ يلزم وجود ملف cookies.txt صالح**")
+                elif "unavailable" in error_msg.lower():
+                    await event.edit("**⚠️ المحتوى غير متاح أو محظور**")
                 else:
-                    await event.edit(f"**⚠️ خطأ في التحميل**: {error_msg[:1000]}")
+                    await event.edit(f"**⚠️ خطأ في التحميل**: {error_msg[:500]}")
 
     except Exception as e:
-        await event.edit(f"**⚠️ حدث خطأ عام**: {str(e)[:1000]}")
+        await event.edit(f"**⚠️ حدث خطأ عام**: {str(e)[:500]}")
     
     finally:
         # تنظيف الملفات المؤقتة
