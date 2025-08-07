@@ -1,0 +1,37 @@
+# Netscape HTTP Cookie File
+# http://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file!  Do not edit.
+
+.tiktok.com	TRUE	/	TRUE	1783888458	_ttp	2yeQFvAWW9hyU4dln3Nc19eYHV8
+.tiktok.com	TRUE	/	TRUE	0	tt_csrf_token	DJ0x9YNm-Tak9yz93bqOiFlny6S8Q15b-JGw
+.tiktok.com	TRUE	/	TRUE	1770156153	tt_chain_token	S/+YtaK5ah2VfAU+HnOoOw==
+.www.tiktok.com	TRUE	/	TRUE	1780524042	delay_guest_mode_vid	5
+.tiktok.com	TRUE	/	TRUE	1759788058	passport_csrf_token	0077fe111d9716a129cfa9973b1c0bbe
+.tiktok.com	TRUE	/	TRUE	1759788058	passport_csrf_token_default	0077fe111d9716a129cfa9973b1c0bbe
+.www.tiktok.com	TRUE	/	TRUE	1780524158	tiktok_webapp_theme_source	light
+.www.tiktok.com	TRUE	/	TRUE	1780524158	tiktok_webapp_theme	light
+.tiktok.com	TRUE	/	TRUE	0	s_v_web_id	verify_me1xytrc_WxPvMrjv_dudz_4gX5_APaI_9TjtwF2UPk9N
+.tiktok.com	TRUE	/	TRUE	1759788140	multi_sids	7535966796457755653%3A069640cdfd07acbc1245c7e9ad607397
+.tiktok.com	TRUE	/	TRUE	1759788140	cmpl_token	AgQQAPMsF-RO0rirz3hOMh088vS4x2iK_4enYN2g_g
+.tiktok.com	TRUE	/	FALSE	1757196140	passport_auth_status	39f8a91b4eab9823f71a5d095dcc0bca%2C
+.tiktok.com	TRUE	/	TRUE	1757196140	passport_auth_status_ss	39f8a91b4eab9823f71a5d095dcc0bca%2C
+.tiktok.com	TRUE	/	TRUE	1785708140	sid_guard	069640cdfd07acbc1245c7e9ad607397%7C1754604139%7C15552000%7CTue%2C+03-Feb-2026+22%3A02%3A19+GMT
+.tiktok.com	TRUE	/	TRUE	1770156140	uid_tt	5c8aed0e0cdb36f7b78016ef49ba48ac8da6825e1783c3dc4c6ab8f433a2dd63
+.tiktok.com	TRUE	/	TRUE	1770156140	uid_tt_ss	5c8aed0e0cdb36f7b78016ef49ba48ac8da6825e1783c3dc4c6ab8f433a2dd63
+.tiktok.com	TRUE	/	TRUE	1770156140	sid_tt	069640cdfd07acbc1245c7e9ad607397
+.tiktok.com	TRUE	/	TRUE	1770156140	sessionid	069640cdfd07acbc1245c7e9ad607397
+.tiktok.com	TRUE	/	TRUE	1770156140	sessionid_ss	069640cdfd07acbc1245c7e9ad607397
+.tiktok.com	TRUE	/	TRUE	1770156140	sid_ucp_v1	1.0.0-KGJmNWM3YjIxNzkzMTc2YzU3NDJhZDk4ZGMyNGI3N2VkM2IwNzBlMzEKGQiFiIOw_LvIymgQ68TUxAYYsws4CEASSAQQAxoDbXkyIiAwNjk2NDBjZGZkMDdhY2JjMTI0NWM3ZTlhZDYwNzM5Nw
+.tiktok.com	TRUE	/	TRUE	1770156140	ssid_ucp_v1	1.0.0-KGJmNWM3YjIxNzkzMTc2YzU3NDJhZDk4ZGMyNGI3N2VkM2IwNzBlMzEKGQiFiIOw_LvIymgQ68TUxAYYsws4CEASSAQQAxoDbXkyIiAwNjk2NDBjZGZkMDdhY2JjMTI0NWM3ZTlhZDYwNzM5Nw
+.tiktok.com	TRUE	/	FALSE	1770156139	store-idc	alisg
+.tiktok.com	TRUE	/	FALSE	1770156139	store-country-code	eg
+.tiktok.com	TRUE	/	FALSE	1770156139	store-country-code-src	uid
+.tiktok.com	TRUE	/	FALSE	1770156139	tt-target-idc	alisg
+.tiktok.com	TRUE	/	FALSE	1786140152	tt-target-idc-sign	QHi_3vJ3MG5EfEPoRF8djMI5ph4TwvC0t-Mn5u5we_9SIo7gk12DxbtJUpYogsev_xuliDLFf2othfwgLzZ-CZKnBhl_F4b-nB9267m_9QeSUUuYHCrdhZCdRBU0gcIo3e3Jmu3XQjOGbwKf7M2hq7Vu0QzX6TD2lfVpda0QGsrRi_K6D3MxPWTRiOE1fBexxITyPe_QyLhKj8NdfCz0cXdzKPTpMo5OdhO9qB6PMZVdohDmorYw-dzSRfJKM-99lE8UhjCAHSpj_8iTdHge9xGxUmE3oTitYLVXsKMRETwn9RgT_IX0huGuvzadowHw2UVobyNgAI2pQo41pbW6eHHHT4C8fUK4o6Bj-POoJB_gce-Il1L-BRJHUZ9DIQxwL9fiEbzyQKwkScXD_cVvJ0eG9sLw48HiiJrOTRa7jZ63RwhobGPkZmUT2FK4osvInscBk3MiNQfuelG-aoWabHoP-JgVgiVgTIFmyW5dR5enhELi6f2hM2KelvbGZcAj
+www.tiktok.com	FALSE	/	FALSE	1762380139	last_login_method	google
+.tiktok.com	TRUE	/	TRUE	1786140159	ttwid	1%7CbtLsHU5A5ze5OZ2L1Y5BY5izd6Vt0nzkmcz-a4lLb8w%7C1754604158%7C3987f58053242d5f01ffb45f7ad4f6109093b2de6101b8bf83d81e3bb3cc4919
+www.tiktok.com	FALSE	/	FALSE	1762380191	msToken	N0ezdBrcpHV_MYio2hVVhH-MMWZpFUvhm_6VFqv6Vw5zytvUCamx4Puhcwupp6AKW4qZupVK-PvWrDJGsbVtx5Cob2M1S3v__eoAPAxdraDsRkYTsAVzO33sbT21s5X3dpfwJ0-cEcjEGIUHcF2MRvva
+.tiktok.com	TRUE	/	FALSE	1770156139	store-country-sign	MEIEDDpHl5DpNo5ogJyakwQgUu0PsogGhAsFE9uUAk-mMxQ4dQv7lwutpudKqO8mGK0EEOYMNowE9ymdNwRC7TbZLUI
+.tiktok.com	TRUE	/	TRUE	1755468194	msToken	sh5_nTzfJBvjm8OHunL3JciVPO2dc-XpsFYDDJCrk7KDQaO083ZWZu8Xm3bZL7eCZpEYYXPqNcGb1_pA3M-v_yp8J4aLISroqc0ptfEV4Dc4QZW7aNENdF3SlRuh-ZiRohNb4KaXckiVC45LD-VxGH2_
+.www.tiktok.com	TRUE	/	TRUE	1755036194	perf_feed_cache	{%22expireTimestamp%22:1754776800000%2C%22itemIds%22:[%227534286160344960264%22%2C%227533360559287176456%22]}
+.tiktok.com	TRUE	/	FALSE	1786140210	odin_tt	8d55f4676a59036e9158bfe6c9f8ee140f96d70fc8438332a472d5f88c3a6cf26703b068886539f247cbb8efae883bc26b639f3327d0e340c112c14ab22f99324fd545b852ed512e12b3aa2c216beb8f
