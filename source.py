@@ -42,6 +42,7 @@ from PIL import Image, ImageDraw, ImageFont
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
 import yt_dlp as youtube_dl
+import youtube_dl as yt_dlp
 from yt_dlp import YoutubeDL
 from googletrans import Translator
 from deep_translator import GoogleTranslator
