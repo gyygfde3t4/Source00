@@ -6593,7 +6593,432 @@ def humanbytes(size):
             return f"{size:.2f}{unit}"
         size /= 1024
     return f"{size:.2f}PB"      
-             
+
+@client.on(events.NewMessage(pattern=r'\.انستا(?: |$)(.*)'))
+async def download_and_send_instagram(event):
+    # التحقق مما إذا كان هناك رابط في الرسالة أو الرد على رسالة تحتوي على رابط
+    reply = await event.get_reply_message()
+    input_url = event.pattern_match.group(1).strip()
+
+    if reply and not input_url:  # إذا كان الرد على رسالة تحتوي على رابط
+        input_url = reply.message.strip()
+
+    if not input_url:  # إذا لم يكن هناك رابط في الرسالة أو الرد
+        await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط إنستـجرام .انستا + رابط او بالـرد ع رابـط 📹╰**")
+        return
+
+    await event.edit("**╮ جـارِ تحميـل الفيـديـو مـن إنستـجرام... 📹♥️╰**")
+
+    try:
+        # التحقق من وجود ملف الكوكيز
+        cookie_file = 'cks.txt'
+        if not os.path.exists(cookie_file):
+            await event.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
+            return
+
+        # إعدادات yt-dlp محسنة مع الكوكيز
+        ydl_opts = {
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'noplaylist': True,
+            'quiet': True,
+            'no_warnings': True,
+            'cookiefile': cookie_file,
+            'extract_flat': False,
+            'ignoreerrors': False,
+            
+            # إعدادات محسنة لتجاوز اكتشاف البوت
+            'extractor_args': {
+                'instagram': {
+                    'skip': ['translated_subs', 'automatic_captions'],
+                }
+            },
+            
+            # تحديد User-Agent محدث
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'ar,en-US;q=0.7,en;q=0.3',
+                'Accept-Encoding': 'gzip, deflate',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            },
+            
+            # إضافة تأخير لتجنب اكتشاف البوت
+            'sleep_interval': 1,
+            'max_sleep_interval': 3,
+        }
+
+        # إنشاء مجلد التحميل إذا لم يكن موجوداً
+        os.makedirs('downloads', exist_ok=True)
+
+        # تأخير عشوائي قبل البدء
+        await asyncio.sleep(random.uniform(2, 4))
+
+        # تنزيل الفيديو
+        with YoutubeDL(ydl_opts) as ydl:
+            try:
+                info = ydl.extract_info(input_url, download=True)
+                video_title = info.get('title', 'فيـديـو إنستـجرام بـدون عـنوان')
+                video_file = ydl.prepare_filename(info)
+                
+                # التحقق من أن الملف تم تنزيله
+                if not os.path.exists(video_file):
+                    await event.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
+                    return
+
+                await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+
+                # التحقق من حجم الملف
+                file_size = os.path.getsize(video_file)
+                if file_size > 2000 * 1024 * 1024:  # 2GB
+                    await event.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
+                    os.remove(video_file)
+                    return
+
+                # إرسال الفيديو
+                await client.send_file(
+                    event.chat_id,
+                    video_file,
+                    caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
+                    supports_streaming=True,
+                    progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
+                        progress(d, t, event, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                    )
+                )
+
+                await event.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
+
+            except Exception as download_error:
+                error_msg = str(download_error)
+                
+                # رسائل خطأ محددة لمساعدة المستخدم
+                if "Login Required" in error_msg or "private" in error_msg.lower():
+                    await event.edit("**⚠️ المنشور خاص أو يتطلب تسجيل الدخول**")
+                elif "Video unavailable" in error_msg:
+                    await event.edit("**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**")
+                elif "too large" in error_msg.lower():
+                    await event.edit("**⚠️ الفيـديـو كبيـر جـداً للإرسـال**")
+                elif "rate limit" in error_msg.lower():
+                    await event.edit("**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**")
+                else:
+                    await event.edit(f"**⚠️ خطـأ في التحـميل**: {str(download_error)}")
+                return
+
+    except Exception as e:
+        await event.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)}")
+    
+    finally:
+        # تنظيف الملفات المؤقتة
+        try:
+            if 'video_file' in locals() and os.path.exists(video_file):
+                os.remove(video_file)
+        except Exception as cleanup_error:
+            print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
+
+async def progress(current, total, event, text):
+    """دالة لعرض شريط التقدم"""
+    progress = f"{current * 100 / total:.1f}%"
+    await event.edit(f"{text}\n\n**╮ ❐ جـارِ الـرفع:** `{progress}`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
+
+def humanbytes(size):
+    """تحويل الحجم إلى صيغة مقروءة"""
+    if not size:
+        return "0B"
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024:
+            return f"{size:.2f}{unit}"
+        size /= 1024
+    return f"{size:.2f}PB"
+
+@client.on(events.NewMessage(pattern=r'\.تيك(?: |$)(.*)'))
+async def download_and_send_tiktok(event):
+    # التحقق مما إذا كان هناك رابط في الرسالة أو الرد على رسالة تحتوي على رابط
+    reply = await event.get_reply_message()
+    input_url = event.pattern_match.group(1).strip()
+
+    if reply and not input_url:  # إذا كان الرد على رسالة تحتوي على رابط
+        input_url = reply.message.strip()
+
+    if not input_url:  # إذا لم يكن هناك رابط في الرسالة أو الرد
+        await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط تيـك تـوك .تيك + رابط او بالـرد ع رابـط 📹╰**")
+        return
+
+    await event.edit("**╮ جـارِ تحميـل الفيـديـو مـن تيـك تـوك... 📹♥️╰**")
+
+    try:
+        # التحقق من وجود ملف الكوكيز
+        cookie_file = 'tekcook.txt'
+        if not os.path.exists(cookie_file):
+            await event.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
+            return
+
+        # إعدادات yt-dlp محسنة مع الكوكيز
+        ydl_opts = {
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'noplaylist': True,
+            'quiet': True,
+            'no_warnings': True,
+            'cookiefile': cookie_file,
+            'extract_flat': False,
+            'ignoreerrors': False,
+            'socket_timeout': 60,
+            
+            # إعدادات خاصة بتيك توك
+            'extractor_args': {
+                'tiktok': {
+                    'skip': ['watermark'],  # تخطي علامة الماء إن أمكن
+                }
+            },
+            
+            # تحديد User-Agent محدث
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Referer': 'https://www.tiktok.com/',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'ar,en-US;q=0.7,en;q=0.3',
+                'Accept-Encoding': 'gzip, deflate',
+            },
+            
+            # معالج ما بعد التحميل لضمان التوافق
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            
+            # إضافة تأخير لتجنب اكتشاف البوت
+            'sleep_interval': 2,
+            'max_sleep_interval': 5,
+        }
+
+        # إنشاء مجلد التحميل إذا لم يكن موجوداً
+        os.makedirs('downloads', exist_ok=True)
+
+        # تأخير عشوائي قبل البدء
+        await asyncio.sleep(random.uniform(1, 3))
+
+        # تنزيل الفيديو
+        with YoutubeDL(ydl_opts) as ydl:
+            try:
+                info = ydl.extract_info(input_url, download=True)
+                video_title = info.get('title', 'فيـديـو تيـك تـوك بـدون عـنوان')
+                video_file = ydl.prepare_filename(info)
+                
+                # تأكيد تحويل الصيغة إلى mp4 إن لزم
+                if not video_file.endswith('.mp4'):
+                    new_path = os.path.splitext(video_file)[0] + '.mp4'
+                    os.rename(video_file, new_path)
+                    video_file = new_path
+                
+                # التحقق من أن الملف تم تنزيله
+                if not os.path.exists(video_file):
+                    await event.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
+                    return
+
+                await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+
+                # التحقق من حجم الملف
+                file_size = os.path.getsize(video_file)
+                if file_size > 2000 * 1024 * 1024:  # 2GB
+                    await event.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
+                    os.remove(video_file)
+                    return
+
+                # إرسال الفيديو
+                await client.send_file(
+                    event.chat_id,
+                    video_file,
+                    caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
+                    supports_streaming=True,
+                    progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
+                        progress(d, t, event, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                    )
+                )
+
+                await event.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
+
+            except Exception as download_error:
+                error_msg = str(download_error)
+                
+                # رسائل خطأ محددة لمساعدة المستخدم
+                if "Private video" in error_msg or "private" in error_msg.lower():
+                    await event.edit("**⚠️ الفيـديـو خـاص ولا يمكـن تحميـله**")
+                elif "Video unavailable" in error_msg:
+                    await event.edit("**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**")
+                elif "too large" in error_msg.lower():
+                    await event.edit("**⚠️ الفيـديـو كبيـر جـداً للإرسـال**")
+                elif "rate limit" in error_msg.lower() or "Too many" in error_msg:
+                    await event.edit("**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**")
+                elif "copyright" in error_msg.lower():
+                    await event.edit("**⚠️ الفيـديـو محمـي بحقـوق النشـر**")
+                else:
+                    await event.edit(f"**⚠️ خطـأ في التحـميل**: {str(download_error)}")
+                return
+
+    except Exception as e:
+        await event.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)}")
+    
+    finally:
+        # تنظيف الملفات المؤقتة
+        try:
+            if 'video_file' in locals() and os.path.exists(video_file):
+                os.remove(video_file)
+        except Exception as cleanup_error:
+            print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
+
+async def progress(current, total, event, text):
+    """دالة لعرض شريط التقدم"""
+    progress = f"{current * 100 / total:.1f}%"
+    await event.edit(f"{text}\n\n**╮ ❐ جـارِ الـرفع:** `{progress}`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
+
+def humanbytes(size):
+    """تحويل الحجم إلى صيغة مقروءة"""
+    if not size:
+        return "0B"
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024:
+            return f"{size:.2f}{unit}"
+        size /= 1024
+    return f"{size:.2f}PB"                        
+
+@client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
+async def download_and_send_pinterest(event):
+    # التحقق من وجود رابط
+    reply = await event.get_reply_message()
+    input_url = event.pattern_match.group(1).strip()
+    
+    if reply and not input_url:
+        input_url = reply.message.strip()
+    
+    if not input_url:
+        await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط بنترست .بنترست + رابط او بالـرد ع رابـط 📌╰**")
+        return
+
+    await event.edit("**╮ جـارِ تحميـل المحتـوى مـن بنترسـت... 📌♥️╰**")
+
+    try:
+        # التحقق من وجود ملف الكوكيز
+        cookie_file = 'pincook.txt'
+        if not os.path.exists(cookie_file):
+            await event.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
+            return
+
+        # إعدادات yt-dlp المحسنة
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'cookiefile': cookie_file,
+            'extract_flat': False,
+            'force_generic_extractor': True,
+            'sleep_interval': 2,
+            'max_sleep_interval': 5,
+            'headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Referer': 'https://www.pinterest.com/',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'ar,en-US;q=0.7,en;q=0.3',
+            },
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+        }
+
+        # إنشاء مجلد التحميل إذا لم يكن موجوداً
+        os.makedirs('downloads', exist_ok=True)
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(input_url, download=False)
+            
+            # تحديد نوع المحتوى (فيديو أو صورة)
+            is_video = any(fmt.get('vcodec') != 'none' for fmt in info.get('formats', []))
+            ext = 'mp4' if is_video else 'jpg'
+            
+            # تعديل إعدادات التحميل حسب النوع
+            if is_video:
+                ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+                ydl_opts['postprocessors'] = [{
+                    'key': 'FFmpegVideoConvertor',
+                    'preferedformat': 'mp4',
+                }]
+            else:
+                ydl_opts['format'] = 'best'
+            
+            # بدء التحميل
+            info = ydl.extract_info(input_url, download=True)
+            filename = ydl.prepare_filename(info)
+            
+            # تصحيح امتداد الملف للصور
+            if not is_video and not filename.endswith(('.jpg', '.jpeg', '.png')):
+                new_filename = f"{os.path.splitext(filename)[0]}.jpg"
+                os.rename(filename, new_filename)
+                filename = new_filename
+
+            await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+
+            # التحقق من حجم الملف
+            file_size = os.path.getsize(filename)
+            if file_size > 10 * 1024 * 1024:  # 10MB للصور / 2GB للفيديو
+                await event.edit("**⚠️ الملف كبير جداً للإرسال**")
+                os.remove(filename)
+                return
+
+            # إرسال المحتوى
+            if is_video:
+                await event.client.send_file(
+                    event.chat_id,
+                    filename,
+                    caption=f"**📹╎عـنوان الفيـديـو:** `{info.get('title', 'فيديو بنترست')}`",
+                    supports_streaming=True,
+                    progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
+                        progress(d, t, event, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                    )
+                )
+            else:
+                await event.client.send_file(
+                    event.chat_id,
+                    filename,
+                    caption=f"**🖼️╎صـورة مـن بنترست**",
+                    progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
+                        progress(d, t, event, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                    )
+                )
+
+            await event.edit(f"**╮ ❐ تم إرسـال المحتـوى بنجـاح ✅**\n**╰ ❐ النـوع:** {'فيديو' if is_video else 'صورة'}")
+
+    except Exception as e:
+        error_msg = str(e)
+        if "Private content" in error_msg:
+            await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل الدخول**")
+        elif "Image not found" in error_msg or "Video unavailable" in error_msg:
+            await event.edit("**⚠️ المحتوى غير متوفر أو محذوف**")
+        elif "Unsupported URL" in error_msg:
+            await event.edit("**⚠️ الرابط غير مدعوم أو غير صحيح**")
+        else:
+            await event.edit(f"**⚠️ حـدث خـطأ في التحـميل**: {str(e)}")
+    
+    finally:
+        # تنظيف الملفات المؤقتة
+        try:
+            if 'filename' in locals() and os.path.exists(filename):
+                os.remove(filename)
+        except Exception as cleanup_error:
+            print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
+
+async def progress(current, total, event, text):
+    """دالة لعرض شريط التقدم"""
+    progress = f"{current * 100 / total:.1f}%"
+    await event.edit(f"{text}\n\n**╮ ❐ جـارِ الـرفع:** `{progress}`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
+
+def humanbytes(size):
+    """تحويل الحجم إلى صيغة مقروءة"""
+    if not size:
+        return "0B"
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024:
+            return f"{size:.2f}{unit}"
+        size /= 1024
+    return f"{size:.2f}PB"
+                          
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
     with socketserver.TCPServer(("", 8000), handler) as httpd:
