@@ -1,33 +1,32 @@
 # ========== مكتبات طلبات HTTP ==========
-requests>=2.31.0
-httpx>=0.24.0
-aiohttp>=3.8.0
+requests
+httpx
+aiohttp
 
 # ========== مكتبة Telegram ==========
-telethon>=1.36.0
-
+telethon
 # ========== معالجة الصور ==========
-Pillow>=10.0.0
+Pillow
 
 # ========== معالجة الصوت ==========
-mutagen>=1.47.0
+mutagen
 
 # ========== تحميل الفيديو والصوت ==========
-yt-dlp>=2023.7.6
+yt-dlp
 
 # ========== الترجمة ==========
-googletrans>=4.0.0
-deep-translator>=1.11.4
+googletrans
+deep-translator
 
 # ========== التوقيت والمناطق الزمنية ==========
-pytz>=2023.3
+pytz
 
 # ========== متغيرات البيئة ==========
-python-dotenv>=1.0.0
+python-dotenv
 
 # ========== مكتبة لمعالجة الصوت (بديل MoviePy) ==========
-pydub>=0.25.1
+pydub
 
 gitpython
 
-psutil==5.9.5
+psutil
