@@ -6278,15 +6278,13 @@ async def download_and_send_audio(event):
     await event.edit("**╮ جـارِ البحث ؏ـن المقطـٓع الصٓوتـي... 🎧♥️╰**")
 
     try:
-        # إعدادات yt-dlp محسنة
+        # إعدادات yt-dlp
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
             'noplaylist': True,
             'quiet': True,
             'no_warnings': True,
-            'extract_flat': False,
-            'ignoreerrors': False,
             'extractor_args': {
                 'youtube': {
                     'skip': ['translated_subs', 'automatic_captions'],
@@ -6295,175 +6293,106 @@ async def download_and_send_audio(event):
             },
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
             },
         }
 
-        # التحقق من ملف الكوكيز
-        cookie_file = 'cookies.txt'
-        if os.path.exists(cookie_file):
-            ydl_opts['cookiefile'] = cookie_file
-        else:
-            print("⚠️ تنبيه: التشغيل بدون كوكيز")
+        # إعداد الكوكيز إذا وجد
+        if os.path.exists('cookies.txt'):
+            ydl_opts['cookiefile'] = 'cookies.txt'
 
-        # إنشاء مجلد التحميل إذا لم يكن موجوداً
         os.makedirs('downloads', exist_ok=True)
 
         with YoutubeDL(ydl_opts) as ydl:
             try:
                 # البحث عن الفيديو
-                search_info = await asyncio.to_thread(
-                    ydl.extract_info,
-                    f"ytsearch1:{query}",
-                    download=False
-                )
+                info = await asyncio.to_thread(ydl.extract_info, f"ytsearch1:{query}", download=False)
                 
-                if not search_info or 'entries' not in search_info or not search_info['entries']:
-                    await event.edit("**⚠️ لم يتم العثور على نتائج للبحث**")
+                if not info or 'entries' not in info or not info['entries']:
+                    await event.edit("**⚠️ لم يتم العثور على نتائج**")
                     return
 
-                video_info = search_info['entries'][0]
-                video_url = video_info.get('webpage_url')
-                video_id = video_info.get('id')
-                video_title = video_info.get('title', query)
-                artist = video_info.get('uploader', 'Unknown Artist')
-                thumbnail = video_info.get('thumbnail')
-                duration = video_info.get('duration', 0)
+                video = info['entries'][0]
+                video_url = video.get('webpage_url')
+                video_id = video.get('id')
+                title = video.get('title', query)
+                artist = video.get('uploader', 'Unknown Artist')
+                thumb = video.get('thumbnail')
+                duration = video.get('duration', 0)
 
                 if not video_url:
-                    await event.edit("**⚠️ لم يتم العثور على رابط الفيديو**")
+                    await event.edit("**⚠️ لا يوجد رابط للفيديو**")
                     return
 
-                await event.edit("**╮ جـارِ تحميـل المقطـٓع الصٓوتـي... 🎧♥️╰**")
+                await event.edit("**╮ جـارِ التحميل... 🎧♥️╰**")
 
                 # تحميل الصورة المصغرة
                 thumb_path = None
-                if thumbnail:
+                if thumb:
                     try:
                         thumb_path = f"downloads/{video_id}_thumb.jpg"
-                        response = requests.get(thumbnail, timeout=10)
-                        if response.status_code == 200:
-                            with open(thumb_path, 'wb') as f:
-                                f.write(response.content)
-                    except Exception as thumb_error:
-                        print(f"⚠️ خطأ في تحميل الصورة المصغرة: {thumb_error}")
+                        async with httpx.AsyncClient() as client:
+                            r = await client.get(thumb)
+                            if r.status_code == 200:
+                                with open(thumb_path, 'wb') as f:
+                                    f.write(r.content)
+                    except Exception:
+                        pass
 
-                # تحميل الصوت مع ضمان المسار الصحيح
-                audio_filename = f"{video_id}.mp3"
-                audio_path = os.path.join('downloads', audio_filename)
-                
-                ydl_opts_download = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': audio_path.replace('.mp3', '.%(ext)s'),
-                    'postprocessors': [{
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                        'preferredquality': '192',
-                    }],
-                }
+                # تحميل الصوت
+                audio_path = f"downloads/{video_id}.mp3"
+                ydl_opts['postprocessors'] = [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }]
 
-                if 'cookiefile' in ydl_opts:
-                    ydl_opts_download['cookiefile'] = ydl_opts['cookiefile']
-
-                # التنزيل الفعلي
                 await asyncio.to_thread(ydl.download, [video_url])
 
-                # التحقق من وجود الملف بعد التحميل
-                if not os.path.exists(audio_path):
-                    # محاولة العثور على الملف بأي امتداد
-                    downloaded_files = [f for f in os.listdir('downloads') if f.startswith(video_id)]
-                    if downloaded_files:
-                        audio_path = os.path.join('downloads', downloaded_files[0])
-                        # تحويل إلى mp3 إذا لزم الأمر
-                        if not audio_path.endswith('.mp3'):
-                            new_path = audio_path.rsplit('.', 1)[0] + '.mp3'
-                            os.rename(audio_path, new_path)
-                            audio_path = new_path
-
-                if not os.path.exists(audio_path):
-                    raise Exception("فشل إنشاء ملف الصوت")
-
                 # إضافة البيانات الوصفية
-                try:
-                    audio_file = EasyID3(audio_path)
-                except ID3NoHeaderError:
-                    audio_file = EasyID3()
-                
-                audio_file['title'] = video_title
-                audio_file['artist'] = artist
-                audio_file.save()
-
-                # إضافة صورة الغلاف إذا كانت موجودة
-                if thumb_path and os.path.exists(thumb_path):
+                if os.path.exists(audio_path):
                     try:
-                        audio = ID3(audio_path)
-                        with open(thumb_path, 'rb') as f:
-                            audio.add(APIC(
-                                encoding=3,
-                                mime='image/jpeg',
-                                type=3,
-                                desc='Cover',
-                                data=f.read()
-                            ))
-                        audio.save()
-                    except Exception as cover_error:
-                        print(f"⚠️ خطأ في إضافة صورة الغلاف: {cover_error}")
+                        audio = EasyID3(audio_path)
+                    except ID3NoHeaderError:
+                        audio = EasyID3()
+                    
+                    audio['title'] = title
+                    audio['artist'] = artist
+                    audio.save()
 
-                # إرسال الملف مع التحقق النهائي
-                if not os.path.exists(audio_path):
-                    raise Exception("ملف الصوت النهائي غير موجود")
-
-                upload_message = await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
-                
-                caption = f"**⌔╎البحث :** `{artist} - {video_title}`"
-                if duration > 0:
-                    minutes, seconds = divmod(duration, 60)
-                    caption += f"\n**⌔╎المدة :** `{minutes}:{seconds:02d}`"
+                # إرسال الملف
+                await event.edit("**╮ ❐ جـارِ الرفع...𓅫╰**")
                 
                 await event.client.send_file(
                     event.chat_id,
                     audio_path,
-                    caption=caption,
+                    caption=f"**⌔╎البحث:** `{artist} - {title}`",
                     thumb=thumb_path if thumb_path and os.path.exists(thumb_path) else None,
                     attributes=[
                         DocumentAttributeAudio(
                             duration=duration,
                             voice=False,
-                            title=video_title,
+                            title=title,
                             performer=artist
                         )
                     ],
-                    supports_streaming=True,
-                    progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
-                        update_progress(upload_message, d, t)
+                    supports_streaming=True
                 )
                 
-                await upload_message.delete()
+                await event.delete()
 
-            except Exception as download_error:
-                error_msg = str(download_error)
-                if "Sign in to confirm" in error_msg:
-                    await event.edit("**⚠️ يلزم وجود ملف cookies.txt صالح**")
-                elif "unavailable" in error_msg.lower():
-                    await event.edit("**⚠️ المحتوى غير متاح أو محظور**")
-                else:
-                    await event.edit(f"**⚠️ خطأ في التحميل**: {error_msg[:500]}")
+            except Exception as e:
+                await event.edit(f"**⚠️ خطأ:** {str(e)[:500]}")
 
     except Exception as e:
-        await event.edit(f"**⚠️ حدث خطأ عام**: {str(e)[:500]}")
+        await event.edit(f"**⚠️ خطأ عام:** {str(e)[:500]}")
     
     finally:
-        # تنظيف الملفات المؤقتة
-        temp_files = glob.glob(f'downloads/{video_id}*') if 'video_id' in locals() else []
-        for file in temp_files:
+        # تنظيف الملفات
+        for f in glob.glob(f'downloads/{video_id}*'):
             try:
-                os.remove(file)
+                os.remove(f)
             except:
                 pass
-
-async def update_progress(message, current, total):
-    percent = (current / total) * 100
-    await message.edit(f"**╮ ❐ جـارِ الـرفع: {percent:.1f}% ...𓅫╰**")
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
