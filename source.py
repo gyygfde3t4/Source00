@@ -121,6 +121,7 @@ from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 import psutil
 from platform import python_version
 from telethon import version
+from telethon.tl.types import InputMessagesFilterPhotos, InputMessagesFilterVideo
 
 # الحصول على المتغيرات من environment variables
 API_ID = int(os.getenv('API_ID'))  # القيمة الافتراضية 29984076 إذا لم يتم تحديد المتغير
@@ -177,7 +178,11 @@ protection_enabled = False  #حالة الحماية
 is_auto_saving = False  # حالة الحفظ التلقائي
 
 # ========== إعدادات عامة ==========
-MAX_WARNINGS = 7  # الحد الأقصى لعدد التحذيرات قبل اتخاذ إجراء
+protection_enabled = True
+MAX_WARNINGS = 7
+warned_users = {}
+accepted_users = {}
+user_auto_messages = {}
 
 # ========== قوائم الرقابة والإشراف ==========
 accepted_users     = {}      # المستخدمون الذين تم قبولهم
@@ -1593,129 +1598,136 @@ async def eren_ping(event):
     ping_time = (end - start).total_seconds() * 1000
     await ping_msg.edit(f"**🏓 Ping:** `{ping_time:.2f} ms`")
                       
-# Variable to store auto-message IDs for each user
-user_auto_messages = {}
 
-# تفعيل أمر الحماية
+async def edit_or_reply(event, text):
+    """دالة مساعدة للتعديل أو الرد"""
+    if event.is_reply:
+        return await event.reply(text)
+    return await event.edit(text)
+
+# ============ نظام الحماية ============
+
 @client.on(events.NewMessage(pattern=r'^\.الحمايه تفعيل$'))
 async def enable_protection(event):
+    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+        return
     global protection_enabled
     protection_enabled = True
-    await event.edit("**⎉╎تـم تفعيـل امـر حمايـه الخـاص .. بنجـاح 🔕☑️...**")
+    await edit_or_reply(event, "**⎉╎تـم تفعيـل امـر حمايـه الخـاص .. بنجـاح 🔕☑️...**")
 
-# تعطيل أمر الحماية
 @client.on(events.NewMessage(pattern=r'^\.الحمايه تعطيل$'))
 async def disable_protection(event):
+    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+        return
     global protection_enabled
     protection_enabled = False
-    await event.edit("**⎉╎تـم تعطيـل أمـر حمايـة الخـاص .. بنجـاح 🔔☑️...**")
+    await edit_or_reply(event, "**⎉╎تـم تعطيـل أمـر حمايـة الخـاص .. بنجـاح 🔔☑️...**")
 
-# الرد التلقائي مع تحذير المستخدم
 @client.on(events.NewMessage(incoming=True))
 async def auto_reply(event):
     global protection_enabled, user_auto_messages
-    if not protection_enabled:
-        return  # لا يتم تنفيذ أي شيء إذا كانت الحماية معطلة
-
-    # تأكد أن الرسالة واردة من محادثة خاصة فقط
-    if not event.is_private:
-        return  # تجاهل الرسائل من القنوات أو المجموعات
+    if not protection_enabled or not event.is_private:
+        return
 
     sender = await event.get_sender()
     user_id = sender.id
     user_name = sender.first_name
 
-    if user_id not in accepted_users and not sender.bot:  # يعمل فقط في الخاص
-        # حذف الرسالة التلقائية السابقة إذا كانت موجودة
+    if user_id not in accepted_users and not sender.bot:
+        # حذف الرسالة السابقة إن وجدت
         if user_id in user_auto_messages:
             try:
                 await client.delete_messages(event.chat_id, user_auto_messages[user_id])
             except:
-                pass  # تجاهل الأخطاء في حالة عدم وجود الرسالة
+                pass
 
-        if user_id in warned_users:
-            warned_users[user_id] += 1
-        else:
-            warned_users[user_id] = 1
+        # زيادة عدد التحذيرات
+        warned_users[user_id] = warned_users.get(user_id, 0) + 1
 
-        # الرد بالتحذير وحفظ معرف الرسالة
+        # إرسال التحذير
         reply_message = await event.respond(f"""
 **ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - الـرد التلقـائي 〽️**
 •─────────────────•
 ❞** مرحبـاً** {user_name} ❝
 **⤶ قد اكـون مشغـول او غيـر موجـود حـاليـاً ؟!**
-**⤶ ❨ لديـك هنا {warned_users[user_id]} مـن 7 تحذيـرات ⚠️❩**
+**⤶ ❨ لديـك هنا {warned_users[user_id]} مـن {MAX_WARNINGS} تحذيـرات ⚠️❩**
 **⤶ لا تقـم بـ إزعاجـي والا سـوف يتم حظـرك تلقـائياً . . .**
 **⤶ فقط قل سبب مجيئك وانتظـر الـرد ⏳**
         """)
         
-        # حفظ معرف الرسالة التلقائية
         user_auto_messages[user_id] = reply_message.id
 
-        # إذا وصل للتحذير السابع، يتم حظره
+        # الحظر عند الوصول للحد الأقصى
         if warned_users[user_id] >= MAX_WARNINGS:
             await event.respond("**❌ تم حظرك تلقائياً بسبب تكرار الإزعاج.**")
             await client(BlockRequest(user_id))
-            # حذف معرف الرسالة من القاموس بعد الحظر
             if user_id in user_auto_messages:
                 del user_auto_messages[user_id]
 
-# قبول المستخدم
 @client.on(events.NewMessage(pattern=r'^\.قبول$'))
 async def accept_user(event):
+    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+        return
+        
     reply = await event.get_reply_message()
-    if reply:
-        user = await client.get_entity(reply.sender_id)
-        accepted_users[user.id] = {'name': user.first_name, 'reason': "لم يذكر"}
-        
-        # حذف الرسالة التلقائية إذا كانت موجودة
-        if user.id in user_auto_messages:
-            try:
-                await client.delete_messages(event.chat_id, user_auto_messages[user.id])
-                del user_auto_messages[user.id]
-            except:
-                pass
-        
-        await event.edit(f"""
+    if not reply:
+        return await edit_or_reply(event, "**⎉╎يجب الرد على رسالة المستخدم لقبوله**")
+    
+    user = await client.get_entity(reply.sender_id)
+    accepted_users[user.id] = {'name': user.first_name, 'reason': "لم يذكر"}
+    
+    if user.id in user_auto_messages:
+        try:
+            await client.delete_messages(event.chat_id, user_auto_messages[user.id])
+            del user_auto_messages[user.id]
+        except:
+            pass
+    
+    await edit_or_reply(event, f"""
 **⎉╎المستخـدم**  {user.first_name}
 **⎉╎تـم السـمـاح لـه بـإرسـال الـرسـائـل 💬✓ **
 **⎉╎ الـسـبـب ❔  : ⎉╎لـم يـذكـر 🤷🏻‍♂**
-        """)
+    """)
 
-# رفض المستخدم
 @client.on(events.NewMessage(pattern=r'^\.رفض$'))
 async def reject_user(event):
+    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+        return
+        
     reply = await event.get_reply_message()
-    if reply:
-        user = await client.get_entity(reply.sender_id)
-        await client(BlockRequest(user.id))  # حظر المستخدم
-        
-        # حذف الرسالة التلقائية إذا كانت موجودة
-        if user.id in user_auto_messages:
-            try:
-                await client.delete_messages(event.chat_id, user_auto_messages[user.id])
-                del user_auto_messages[user.id]
-            except:
-                pass
-        
-        await event.edit(f"""
+    if not reply:
+        return await edit_or_reply(event, "**⎉╎يجب الرد على رسالة المستخدم لرفضه**")
+    
+    user = await client.get_entity(reply.sender_id)
+    await client(BlockRequest(user.id))
+    
+    if user.id in user_auto_messages:
+        try:
+            await client.delete_messages(event.chat_id, user_auto_messages[user.id])
+            del user_auto_messages[user.id]
+        except:
+            pass
+    
+    await edit_or_reply(event, f"""
 **⎉╎المستخـدم ** {user.first_name}
 **⎉╎تـم رفـضـه مـن أرسـال الـرسـائـل ⚠️**
 **⎉╎ الـسـبـب ❔  : ⎉╎ لـم يـذكـر 💭**
-        """)
+    """)
 
-# عرض قائمة المقبولين
 @client.on(events.NewMessage(pattern=r'^\.المقبولين$'))
 async def show_accepted(event):
-    if accepted_users:
-        message = "- قائمـة المسمـوح لهـم ( المقبـوليـن ) :\n\n"
-        for user_id, info in accepted_users.items():
-            user = await client.get_entity(user_id)
-            message += f"• 👤 **الاسـم :** {info['name']}\n- **الايـدي :** {user_id}\n- المعـرف : @{user.username}\n- **السـبب :** {info['reason']}\n\n"
-        await event.edit(message)
-    else:
-        await event.edit("**لا يوجد مستخدمين مقبولين حالياً.**")
-
+    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+        return
+        
+    if not accepted_users:
+        return await edit_or_reply(event, "**لا يوجد مستخدمين مقبولين حالياً.**")
+    
+    message = "⎉╎ قائمـة المسمـوح لهـم ( المقبـوليـن ) :\n\n"
+    for user_id, info in accepted_users.items():
+        user = await client.get_entity(user_id)
+        message += f"• 👤 **الاسـم :** {info['name']}\n⎉╎ **الايـدي :** {user_id}\n⎉╎ **المعـرف :** @{user.username}\n⎉╎ **السـبب :** {info['reason']}\n\n"
+    
+    await edit_or_reply(event, message)
 
 # متغيرات تجميع في بوت دعمكم
 is_collecting = False
@@ -2730,6 +2742,9 @@ async def generate_ai_image(event):
 
 @client.on(events.NewMessage(pattern=r'^\.معرفة الانمي$'))
 async def anime_search(event):
+    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+        return
+
     if not event.is_reply:
         await event.respond("⚠️ يرجى الرد على صورة من الأنمي")
         return
@@ -2788,7 +2803,6 @@ async def anime_search(event):
     f"│   ├─ **الحلقة:** `{episode}`\n"
     f"│   ├─ **الوقت:** `{time_str}`\n"
     f"│   └─ **مطابقة المشهد:** `{similarity}`\n"
-
         )
 
         video_url = best.get("video")
@@ -3352,8 +3366,13 @@ async def handle_number_guess(event):
     )
     game["game_messages"].append(reply_msg)
 
+
 @client.on(events.NewMessage(pattern=r'^\.انهاء تخمين$'))
 async def end_number_game(event):
+    # التحقق من أن المرسل هو المستخدم الأصلي فقط
+    if not event.out:
+        return
+    
     chat_id = event.chat_id
     if chat_id not in number_games:
         await event.edit("⚠️ لا يوجد لعبة نشطة لإنهائها")
@@ -3801,8 +3820,12 @@ async def stop_riddle_game(event):
     await event.reply(message)
     del riddle_games[chat_id]
 
+
 @client.on(events.NewMessage(pattern=r'^\.انمي$'))
 async def anime_command(event):
+    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+        return
+    
     try:
         # جلب شخصية عشوائية
         character = get_random_anime_character()
@@ -3812,10 +3835,10 @@ async def anime_command(event):
             event.chat_id,
             character["image"],
             caption=f"🎌 **معلومات شخصية الأنمي**\n\n"
-                    f"🏷 **الاسم الإنجليزي:** {character['name']}\n"
-                    f"🌐 **الاسم الياباني:** {character.get('name_kanji', 'غير متوفر')}\n"
-                    f"📺 **الأنمي:** {character.get('anime', 'غير معروف')}\n\n"
-                    f"❓ هل تعرف هذه الشخصية؟"
+                   f"🏷 **الاسم الإنجليزي:** {character['name']}\n"
+                   f"🌐 **الاسم الياباني:** {character.get('name_kanji', 'غير متوفر')}\n"
+                   f"📺 **الأنمي:** {character.get('anime', 'غير معروف')}\n\n"
+                   f"❓ هل تعرف هذه الشخصية؟"
         )
         
     except Exception as e:
@@ -4325,9 +4348,12 @@ async def handle_guesses(event):
         finally:
             # إلغاء حالة المعالجة
             game["processing_guess"] = False
-
 @client.on(events.NewMessage(pattern=r'^\.انهاء تخمين$'))
 async def end_game(event):
+    # التحقق من أن المرسل هو المستخدم الأصلي فقط
+    if not event.out:
+        return
+    
     if event.chat_id not in anime_games:
         await event.reply("⚠️ لا توجد لعبة نشطة لإنهائها")
         return
@@ -5427,15 +5453,20 @@ async def show_avatars_menu(event):
     if event.is_private or event.sender_id == (await event.client.get_me()).id:
         await event.edit(avatars_message)
     else:
-        await event.reply(avatars_message)                                                                                                                                                                            
+        await event.reply(avatars_message)                                                                                                              
+
+
+
 async def edit_or_reply(event, text):
     """دالة مساعدة للتعديل أو الرد"""
-    if event.reply_to_msg_id:
+    if event.is_reply:
         return await event.reply(text)
     return await event.edit(text)
 
 @client.on(events.NewMessage(pattern=r'^\.ستوري انمي$'))
 async def anime_story(event):
+    if not event.out:  # يستجيب فقط إذا كان المرسل هو المستخدم الأصلي
+        return
     try:
         zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ تحميـل الستـوري ...**")
         sources = ["@animeforlovers", "@ANIME_editsssss"]
@@ -5469,6 +5500,8 @@ VOLUME: ▁▂▃▄▅▆▇ 100%
 
 @client.on(events.NewMessage(pattern=r'^\.خيرني$'))
 async def choice_game(event):
+    if not event.out:  # يستجيب فقط إذا كان المرسل هو المستخدم الأصلي
+        return
     try:
         zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ التحميل ...**")
         images = []
@@ -5489,6 +5522,8 @@ async def choice_game(event):
 
 @client.on(events.NewMessage(pattern=r'^\.ولد انمي$'))
 async def anime_boy(event):
+    if not event.out:  # يستجيب فقط إذا كان المرسل هو المستخدم الأصلي
+        return
     try:
         zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ التحميل ...**")
         images = []
@@ -5509,6 +5544,8 @@ async def anime_boy(event):
 
 @client.on(events.NewMessage(pattern=r'^\.بنت انمي$'))
 async def anime_girl(event):
+    if not event.out:  # يستجيب فقط إذا كان المرسل هو المستخدم الأصلي
+        return
     try:
         zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ التحميل ...**")
         images = []
@@ -5526,6 +5563,7 @@ async def anime_girl(event):
         await zzevent.delete()
     except Exception as e:
         await event.reply(f"**حدث خطأ: {str(e)}**")
+                                                             
 
 # شروط الفوز لكل لعبة
 WIN_CONDITIONS = {
