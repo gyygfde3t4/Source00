@@ -44,6 +44,9 @@ from yt_dlp import YoutubeDL
 from googletrans import Translator
 from deep_translator import GoogleTranslator
 from telethon import events, functions, types, utils
+from yt_dlp import YoutubeDL
+from pydub import AudioSegment
+from mutagen.easyid3 import EasyID3
 # ========== Telethon - استيراد رئيسي ==========
 from telethon import TelegramClient, events, functions, types, Button
 from telethon.sessions import StringSession
@@ -6201,6 +6204,68 @@ async def update_command(event):
     # تنفيذ التحديث
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
+
+@client.on(events.NewMessage(pattern=r'\.بحث (.+)'))
+async def download_and_send_audio(event):
+    query = event.pattern_match.group(1)
+    await event.edit("**╮ جـارِ البحث ؏ـن المقطـٓع الصٓوتـي... 🎧♥️╰**")
+
+    try:
+        # إعدادات yt-dlp مع الكوكيز
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': 'downloaded_video.%(ext)s',
+            'noplaylist': True,
+            'quiet': True,
+            'cookiefile': 'cookies.txt',  # إضافة ملف الكوكيز
+            'extract_flat': False,
+        }
+
+        # البحث عن الفيديو وتنزيله
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch:{query}", download=True)
+            video_title = info['entries'][0]['title']
+            artist = info['entries'][0]['uploader']
+            await event.edit("**╮ جـارِ تحميـل المقطـٓع الصٓوتـي... 🎧♥️╰**")
+
+        # تحويل الفيديو إلى ملف صوتي
+        download_path = "downloaded_video.webm"
+        safe_title = ''.join(e for e in video_title if e.isalnum() or e == ' ')
+        audio_path = f"{safe_title}.mp3"
+
+        video_clip = AudioSegment.from_file(download_path)
+
+        # تحديد معدل البت بناءً على حجم الملف
+        file_size = len(video_clip)
+        bitrate = "64k" if file_size > 300000 else "192k"
+
+        video_clip.export(audio_path, format="mp3", bitrate=bitrate)
+
+        # إضافة البيانات الوصفية
+        audio_file = EasyID3(audio_path)
+        audio_file['title'] = video_title
+        audio_file['artist'] = artist
+        audio_file.save()
+
+        upload_message = await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+
+        # إرسال الملف الصوتي
+        await client.send_file(
+            event.chat_id, 
+            audio_path, 
+            caption=f"**⌔╎البحث :** `{artist} - {video_title}`", 
+            supports_streaming=True
+        )
+        
+        # حذف رسالة "جاري الرفع"
+        await upload_message.delete()
+
+        # تنظيف الملفات المؤقتة
+        os.remove(download_path)
+        os.remove(audio_path)
+
+    except Exception as e:
+        await event.edit(f"**⚠️ حدث خطأ**: {str(e)}")
 
         
 def run_server():
