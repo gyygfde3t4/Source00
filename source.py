@@ -28,6 +28,7 @@ import hashlib
 import string
 import contextlib
 import sys
+from mutagen.id3 import ID3NoHeaderError
 
 # ========== مكتبات HTTP وطلبات الويب ==========
 import requests
@@ -302,16 +303,16 @@ async def show_timed_commands(event):
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
 1- ☆ `.الاسم التلقائي` - **تفعيل التوقيت التلقائي للاسم** ☆
 2- ☆ `.ايقاف الاسم التلقائي` - **إيقاف التوقيت التلقائي للاسم** ☆
-3- ☆ `.وقتيه1` - **زخرفة الأرقام بالنمط 𝟘𝟙𝟚𝟛** ☆
-4- ☆ `.وقتيه2` - **زخرفة الأرقام بالنمط ⓪➀➁➂** ☆
-5- ☆ `.وقتيه3` - **زخرفة الأرقام بالنمط ⓿➊➋➌** ☆
-6- ☆ `.التوقيت` - **عرض قائمة التوقيتات المتاحة** ☆
-7- ☆ `.وقت مصر` - **تفعيل توقيت مصر** ☆
-8- ☆ `.وقت سوريا` - **تفعيل توقيت سوريا** ☆
+3- ☆ `.مكان الاسم اول` - **عرض الوقت في الاسم الأول** ☆
+4- ☆ `.مكان الاسم اخير` - **عرض الوقت في الاسم الأخير** ☆
+5- ☆ `.وقتيه1` - **زخرفة الأرقام بالنمط 𝟘𝟙𝟚𝟛** ☆
+6- ☆ `.وقتيه2` - **زخرفة الأرقام بالنمط ⓪➀➁➂** ☆
+7- ☆ `.وقتيه3` - **زخرفة الأرقام بالنمط ⓿➊➋➌** ☆
+8- ☆ `.التوقيت` - **عرض قائمة التوقيتات المتاحة** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
-
+    
 @client.on(events.NewMessage(pattern=r'^\.م3$'))
 async def show_search_commands(event):
     commands_message = """
@@ -507,6 +508,8 @@ async def show_daamkom_commands(event):
     """
     await event.edit(commands_message)
     
+
+
 # تحويل الأرقام إلى الزخارف المختلفة
 def to_smart_numbers(number_str, style):
     styles = {
@@ -538,13 +541,24 @@ def get_local_time(timezone_str, style='normal'):
 timed_update_running = False
 current_timezone = 'Africa/Cairo'
 current_style = 'normal'
+name_position = 'first'  # Default to first name
 
 # تحديث الاسم بناءً على الوقت والزخرفة المختارة
 async def update_name(timezone_str, style='normal'):
     me = await client.get_me()
     current_time = get_local_time(timezone_str, style)
-    new_name = current_time
-    await client(UpdateProfileRequest(first_name=new_name))
+    
+    if name_position == 'first':
+        new_first_name = current_time
+        new_last_name = me.last_name or ""
+    else:
+        new_first_name = me.first_name or ""
+        new_last_name = current_time
+    
+    await client(UpdateProfileRequest(
+        first_name=new_first_name,
+        last_name=new_last_name
+    ))
 
 # الأمر لتفعيل الاسم التلقائي
 @client.on(events.NewMessage(pattern=r'^\.الاسم التلقائي$'))
@@ -556,7 +570,7 @@ async def start_timed_update(event):
         timed_update_running = True
         await event.edit("**• جـارِ تفعيـل الاسـم الوقتـي ⅏. . .**")
         await asyncio.sleep(2)
-        await event.edit("**⎉╎تـم بـدء الاسـم الوقتـي🝛 .. بنجـاح ✓**")
+        await event.edit(f"**⎉╎تـم بـدء الاسـم الوقتـي 🝛 .. بنجـاح ✓**\n**⎉╎المكان:** {'الاسم الأول' if name_position == 'first' else 'الاسم الأخير'}")
         await asyncio.sleep(5)
         await event.delete()
 
@@ -581,7 +595,7 @@ async def activate_style(event, style, style_name):
             await event.edit(f"**✾╎تم تغييـر زغـرفة الاسـم الوقتـي .. بنجـاح✓** \n **✾╎نـوع الزخـرفـه: ** {style_name}")
         else:
             await event.edit(f"**✾╎تم تغييـر زغـرفة الاسـم الوقتـي .. بنجـاح✓** \n **✾╎نـوع الزخـرفـه:** {style_name}\n✾╎الان ارسـل ↶ `.الاسم التلقائي`")
-           
+
 @client.on(events.NewMessage(pattern=r'^\.وقتيه1$'))
 async def activate_style1(event):
     await activate_style(event, 'style1', '𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡')
@@ -593,6 +607,36 @@ async def activate_style2(event):
 @client.on(events.NewMessage(pattern=r'^\.وقتيه3$'))
 async def activate_style3(event):
     await activate_style(event, 'style3', '⓿➊➋➌➍➎➏➐➑➒')
+
+# أمر لتحديد مكان الاسم (أول أو آخر)
+@client.on(events.NewMessage(pattern=r'^\.مكان الاسم (اول|اخير)$'))
+async def set_name_position(event):
+    global name_position
+    global timed_update_running
+    
+    choice = event.pattern_match.group(1)
+    if choice == 'اول':
+        name_position = 'first'
+    else:
+        name_position = 'last'
+    
+    if timed_update_running:
+        await event.edit(f"**✾╎تم تغيير مكان الاسم الوقتـي إلى {'الاسم الأول' if name_position == 'first' else 'الاسم الأخير'} .. بنجـاح✓**")
+        # Update immediately to reflect the change
+        await update_name(current_timezone, current_style)
+    else:
+        await event.edit(f"**✾╎تم تعيين مكان الاسم الوقتـي إلى {'الاسم الأول' if name_position == 'first' else 'الاسم الأخير'}**\n✾╎الان ارسـل ↶ `.الاسم التلقائي`")
+
+# أمر لإيقاف الاسم التلقائي
+@client.on(events.NewMessage(pattern=r'^\.ايقاف الاسم التلقائي$'))
+async def stop_timed_update(event):
+    global timed_update_running
+    
+    if timed_update_running:
+        timed_update_running = False
+        await event.edit("**⎉╎تـم إيقـاف الاسـم الوقتـي .. بنجـاح ✓**")
+    else:
+        await event.edit("**⚠️ الاسم التلقائي غير مفعل حالياً.**")
 
 # الأمر لإيقاف الاسم التلقائي
 @client.on(events.NewMessage(pattern=r'^\.ايقاف الاسم التلقائي$'))
@@ -1493,6 +1537,17 @@ async def eren_check(event):
         user_name = f"{user.first_name} {user.last_name}" if user.last_name else user.first_name
         ping_time = (datetime.now() - start_time).total_seconds() * 1000
         
+        # Get user profile photo
+        user_photo = None
+        try:
+            user_photo = await event.client.download_profile_photo(
+                user.id,
+                file=f"downloads/{user.id}.jpg",
+                download_big=True
+            )
+        except Exception as photo_error:
+            print(f"⚠️ Error downloading user photo: {photo_error}")
+
         # Final result
         result = f"""
 ┏━━━━━━━━━━━━━━━━━┓
@@ -1503,7 +1558,7 @@ async def eren_check(event):
 ┃ • ᴘʏᴛʜᴏɴ ➪ {python_version()}
 ┃ • ᴛᴇʟᴇᴛʜᴏɴ ➪ {version.__version__}
 ┃ • ᴘʟᴀᴛғᴏʀᴍ ➪ KOYEB
-┃ • �ᴘɪɴɢ ➪ {ping_time:.2f} ms
+┃ • ᴘɪɴɢ ➪ {ping_time:.2f} ms
 ┃ • ᴜᴘᴛɪᴍᴇ ➪ {get_readable_time(time.time() - StartTime)}
 ┃ • sᴛᴀʀᴛᴇᴅ ➪ {datetime.fromtimestamp(StartTime).strftime('%Y/%m/%d %H:%M:%S')}
 ┃ • ᴅʙ sᴛᴀᴛᴜs ➪ ✅ Good
@@ -1511,8 +1566,21 @@ async def eren_check(event):
 ┗━━━━━━━━━━━━━━━━━┛
 """
 
-        # Send result
-        if ALIVE_PIC:
+        # Send result with user photo
+        if user_photo and os.path.exists(user_photo):
+            await event.client.send_file(
+                event.chat_id,
+                user_photo,
+                caption=result,
+                reply_to=event.message.id
+            )
+            await check_msg.delete()
+            # Clean up downloaded photo
+            try:
+                os.remove(user_photo)
+            except:
+                pass
+        elif ALIVE_PIC:
             await event.client.send_file(
                 event.chat_id,
                 ALIVE_PIC,
@@ -6205,10 +6273,6 @@ async def update_command(event):
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
 
-
-
-from mutagen.id3 import ID3NoHeaderError
-
 @client.on(events.NewMessage(pattern=r'\.بحث (.+)'))
 async def download_and_send_audio(event):
     query = event.pattern_match.group(1)
@@ -6459,8 +6523,147 @@ def validate_cookies_file():
         
     except Exception as e:
         print(f"⚠️ خطأ في قراءة ملف الكوكيز: {e}")
-        return False
-        
+        return
+
+@client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
+async def download_and_send_video(event):
+    # التحقق مما إذا كان هناك رابط في الرسالة أو الرد على رسالة تحتوي على رابط
+    reply = await event.get_reply_message()
+    input_url = event.pattern_match.group(1).strip()
+
+    if reply and not input_url:  # إذا كان الرد على رسالة تحتوي على رابط
+        input_url = reply.message.strip()
+
+    if not input_url:  # إذا لم يكن هناك رابط في الرسالة أو الرد
+        await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط الفيـديـو .يوت + رابط او بالـرد ع رابـط 📹╰**")
+        return
+
+    await event.edit("**╮ جـارِ تحميـل الفيـديـو مـن يـوتيـوب... 📹♥️╰**")
+
+    try:
+        # التحقق من وجود ملف الكوكيز
+        cookie_file = 'cookies.txt'
+        if not os.path.exists(cookie_file):
+            await event.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
+            return
+
+        # إعدادات yt-dlp محسنة مع الكوكيز
+        ydl_opts = {
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'noplaylist': True,
+            'quiet': True,
+            'no_warnings': True,
+            'cookiefile': cookie_file,
+            'extract_flat': False,
+            'ignoreerrors': False,
+            
+            # إعدادات محسنة لتجاوز اكتشاف البوت
+            'extractor_args': {
+                'youtube': {
+                    'skip': ['translated_subs', 'automatic_captions'],
+                    'player_client': ['android', 'web'],
+                }
+            },
+            
+            # تحديد User-Agent محدث
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'ar,en-US;q=0.7,en;q=0.3',
+                'Accept-Encoding': 'gzip, deflate',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            },
+            
+            # إضافة تأخير لتجنب اكتشاف البوت
+            'sleep_interval': 1,
+            'max_sleep_interval': 3,
+        }
+
+        # إنشاء مجلد التحميل إذا لم يكن موجوداً
+        os.makedirs('downloads', exist_ok=True)
+
+        # تأخير عشوائي قبل البدء
+        await asyncio.sleep(random.uniform(2, 4))
+
+        # تنزيل الفيديو
+        with YoutubeDL(ydl_opts) as ydl:
+            try:
+                info = ydl.extract_info(input_url, download=True)
+                video_title = info.get('title', 'فيـديـو بـدون عـنوان')
+                video_file = ydl.prepare_filename(info)
+                
+                # التحقق من أن الملف تم تنزيله
+                if not os.path.exists(video_file):
+                    await event.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
+                    return
+
+                await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+
+                # التحقق من حجم الملف
+                file_size = os.path.getsize(video_file)
+                if file_size > 2000 * 1024 * 1024:  # 2GB
+                    await event.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
+                    os.remove(video_file)
+                    return
+
+                # إرسال الفيديو
+                await client.send_file(
+                    event.chat_id,
+                    video_file,
+                    caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
+                    supports_streaming=True,
+                    progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
+                        progress(d, t, event, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                    )
+                )
+
+                await event.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
+
+            except Exception as download_error:
+                error_msg = str(download_error)
+                
+                # رسائل خطأ محددة لمساعدة المستخدم
+                if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+                    await event.edit("**⚠️ YouTube يطلب التحقق. حدث الكوكيز أو جرب لاحقاً**")
+                elif "Video unavailable" in error_msg:
+                    await event.edit("**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**")
+                elif "Private video" in error_msg:
+                    await event.edit("**⚠️ الفيـديـو خـاص ولا يمكـن تحميـله**")
+                elif "too large" in error_msg.lower():
+                    await event.edit("**⚠️ الفيـديـو كبيـر جـداً للإرسـال**")
+                else:
+                    await event.edit(f"**⚠️ خطـأ في التحـميل**: {str(download_error)}")
+                return
+
+    except Exception as e:
+        await event.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)}")
+    
+    finally:
+        # تنظيف الملفات المؤقتة
+        try:
+            if 'video_file' in locals() and os.path.exists(video_file):
+                os.remove(video_file)
+        except Exception as cleanup_error:
+            print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
+
+async def progress(current, total, event, text):
+    """دالة لعرض شريط التقدم"""
+    progress = f"{current * 100 / total:.1f}%"
+    await event.edit(f"{text}\n\n**╮ ❐ جـارِ الـرفع:** `{progress}`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
+
+def humanbytes(size):
+    """تحويل الحجم إلى صيغة مقروءة"""
+    if not size:
+        return "0B"
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024:
+            return f"{size:.2f}{unit}"
+        size /= 1024
+    return f"{size:.2f}PB"      
+             
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
     with socketserver.TCPServer(("", 8000), handler) as httpd:
