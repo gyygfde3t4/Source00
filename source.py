@@ -6272,34 +6272,39 @@ async def update_command(event):
     # تنفيذ التحديث
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
+
+import glob
+from mutagen.easyid3 import EasyID3
+from mutagen.id3 import ID3, APIC
+from telethon.tl.types import DocumentAttributeAudio
+
 @client.on(events.NewMessage(pattern=r'\.بحث (.+)'))
 async def download_and_send_audio(event):
     query = event.pattern_match.group(1)
     await event.edit("**╮ جـارِ البحث ؏ـن المقطـٓع الصٓوتـي... 🎧♥️╰**")
 
     try:
-        # إعدادات yt-dlp
+        # إعدادات yt-dlp الأساسية
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
-            'noplaylist': True,
             'quiet': True,
             'no_warnings': True,
-            'extractor_args': {
-                'youtube': {
-                    'skip': ['translated_subs', 'automatic_captions'],
-                    'player_client': ['android', 'web'],
-                }
-            },
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            },
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            }
         }
 
-        # إعداد الكوكيز إذا وجد
+        # التحقق من وجود ملف الكوكيز
         if os.path.exists('cookies.txt'):
             ydl_opts['cookiefile'] = 'cookies.txt'
 
+        # إنشاء مجلد التحميل إذا لم يكن موجوداً
         os.makedirs('downloads', exist_ok=True)
 
         with YoutubeDL(ydl_opts) as ydl:
@@ -6307,17 +6312,17 @@ async def download_and_send_audio(event):
                 # البحث عن الفيديو
                 info = await asyncio.to_thread(ydl.extract_info, f"ytsearch1:{query}", download=False)
                 
-                if not info or 'entries' not in info or not info['entries']:
+                if not info or not info.get('entries'):
                     await event.edit("**⚠️ لم يتم العثور على نتائج**")
                     return
 
                 video = info['entries'][0]
-                video_url = video.get('webpage_url')
                 video_id = video.get('id')
-                title = video.get('title', query)
+                video_url = video.get('webpage_url')
+                title = video.get('title', 'Unknown Title')
                 artist = video.get('uploader', 'Unknown Artist')
-                thumb = video.get('thumbnail')
                 duration = video.get('duration', 0)
+                thumbnail = video.get('thumbnail')
 
                 if not video_url:
                     await event.edit("**⚠️ لا يوجد رابط للفيديو**")
@@ -6327,37 +6332,56 @@ async def download_and_send_audio(event):
 
                 # تحميل الصورة المصغرة
                 thumb_path = None
-                if thumb:
+                if thumbnail:
                     try:
-                        thumb_path = f"downloads/{video_id}_thumb.jpg"
+                        thumb_path = f'downloads/{video_id}_thumb.jpg'
                         async with httpx.AsyncClient() as client:
-                            r = await client.get(thumb)
-                            if r.status_code == 200:
+                            response = await client.get(thumbnail)
+                            if response.status_code == 200:
                                 with open(thumb_path, 'wb') as f:
-                                    f.write(r.content)
+                                    f.write(response.content)
                     except Exception:
                         pass
 
-                # تحميل الصوت
-                audio_path = f"downloads/{video_id}.mp3"
-                ydl_opts['postprocessors'] = [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }]
-
+                # تحميل الملف الصوتي
+                audio_path = f'downloads/{video_id}.mp3'
                 await asyncio.to_thread(ydl.download, [video_url])
 
+                # التحقق من وجود الملف
+                if not os.path.exists(audio_path):
+                    # البحث عن الملف بأي امتداد
+                    existing_files = glob.glob(f'downloads/{video_id}.*')
+                    if existing_files:
+                        audio_path = existing_files[0]
+
+                if not os.path.exists(audio_path):
+                    raise Exception("فشل في إنشاء ملف الصوت")
+
                 # إضافة البيانات الوصفية
-                if os.path.exists(audio_path):
+                try:
+                    audio = EasyID3(audio_path)
+                except ID3NoHeaderError:
+                    audio = EasyID3()
+                
+                audio['title'] = title
+                audio['artist'] = artist
+                audio.save()
+
+                # إضافة صورة الغلاف إذا كانت موجودة
+                if thumb_path and os.path.exists(thumb_path):
                     try:
-                        audio = EasyID3(audio_path)
-                    except ID3NoHeaderError:
-                        audio = EasyID3()
-                    
-                    audio['title'] = title
-                    audio['artist'] = artist
-                    audio.save()
+                        audio = ID3(audio_path)
+                        with open(thumb_path, 'rb') as f:
+                            audio.add(APIC(
+                                encoding=3,
+                                mime='image/jpeg',
+                                type=3,
+                                desc='Cover',
+                                data=f.read()
+                            ))
+                        audio.save()
+                    except Exception:
+                        pass
 
                 # إرسال الملف
                 await event.edit("**╮ ❐ جـارِ الرفع...𓅫╰**")
@@ -6382,17 +6406,19 @@ async def download_and_send_audio(event):
 
             except Exception as e:
                 await event.edit(f"**⚠️ خطأ:** {str(e)[:500]}")
+                return
 
     except Exception as e:
         await event.edit(f"**⚠️ خطأ عام:** {str(e)[:500]}")
     
     finally:
-        # تنظيف الملفات
-        for f in glob.glob(f'downloads/{video_id}*'):
-            try:
-                os.remove(f)
-            except:
-                pass
+        # تنظيف الملفات المؤقتة
+        if 'video_id' in locals():
+            for f in glob.glob(f'downloads/{video_id}*'):
+                try:
+                    os.remove(f)
+                except:
+                    pass
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
