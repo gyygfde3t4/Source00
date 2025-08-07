@@ -6230,7 +6230,7 @@ async def download_and_send_audio(event):
             'no_warnings': True,
             'cookiefile': cookie_file,
             'extract_flat': False,
-            'ignoreerrors': True,
+            'ignoreerrors': False,  # تغيير إلى False لرؤية الأخطاء
             # إعدادات إضافية لتجنب مشاكل YouTube
             'extractor_args': {
                 'youtube': {
@@ -6255,20 +6255,42 @@ async def download_and_send_audio(event):
                     download=False
                 )
                 
-                if not search_info or 'entries' not in search_info or not search_info['entries']:
+                # التحقق من وجود النتائج بشكل أكثر تفصيلاً
+                if not search_info:
+                    await event.edit("**⚠️ فشل في البحث - لا توجد معلومات**")
+                    return
+                    
+                if 'entries' not in search_info:
+                    await event.edit("**⚠️ فشل في البحث - لا توجد entries**")
+                    return
+                    
+                if not search_info['entries']:
                     await event.edit("**⚠️ لم يتم العثور على نتائج للبحث**")
                     return
-
+                
                 video_info = search_info['entries'][0]
-                video_title = video_info.get('title', 'Unknown Title')
+                
+                # التحقق من أن video_info ليس None
+                if video_info is None:
+                    await event.edit("**⚠️ فشل في الحصول على معلومات الفيديو**")
+                    return
+
+                # استخراج المعلومات مع قيم افتراضية آمنة
+                video_title = video_info.get('title', f'Unknown Title - {query}')
                 artist = video_info.get('uploader', 'Unknown Artist')
-                video_url = video_info.get('webpage_url', video_info.get('url'))
+                video_url = video_info.get('webpage_url') or video_info.get('url')
+                video_id = video_info.get('id', f'unknown_{int(time.time())}')
+                
+                # التحقق من وجود URL
+                if not video_url:
+                    await event.edit("**⚠️ لم يتم العثور على رابط الفيديو**")
+                    return
 
                 await event.edit("**╮ جـارِ تحميـل المقطـٓع الصٓوتـي... 🎧♥️╰**")
 
                 # تحديث إعدادات التحميل مع الرابط المباشر
                 ydl_opts_download = ydl_opts.copy()
-                ydl_opts_download['outtmpl'] = f'downloads/{video_info["id"]}.%(ext)s'
+                ydl_opts_download['outtmpl'] = f'downloads/{video_id}.%(ext)s'
                 
                 with YoutubeDL(ydl_opts_download) as ydl_download:
                     ydl_download.download([video_url])
@@ -6279,9 +6301,16 @@ async def download_and_send_audio(event):
 
         # البحث عن الملف المحمل
         downloaded_files = []
-        for file in os.listdir('downloads'):
-            if video_info["id"] in file:
-                downloaded_files.append(os.path.join('downloads', file))
+        downloads_dir = 'downloads'
+        
+        # التحقق من وجود مجلد التحميل
+        if not os.path.exists(downloads_dir):
+            await event.edit("**⚠️ مجلد التحميل غير موجود**")
+            return
+            
+        for file in os.listdir(downloads_dir):
+            if video_id in file:
+                downloaded_files.append(os.path.join(downloads_dir, file))
         
         if not downloaded_files:
             await event.edit("**⚠️ فشل في تحميل الملف الصوتي**")
@@ -6292,10 +6321,13 @@ async def download_and_send_audio(event):
         # إنشاء اسم آمن للملف
         safe_title = ''.join(c for c in video_title if c.isalnum() or c in (' ', '-', '_')).strip()
         safe_title = safe_title[:50] if len(safe_title) > 50 else safe_title
+        if not safe_title:  # إذا كان الاسم فارغاً بعد التنظيف
+            safe_title = f'audio_{video_id}'
         audio_path = f"downloads/{safe_title}.mp3"
 
         # تحويل إلى MP3
         try:
+            from pydub import AudioSegment
             audio = AudioSegment.from_file(download_path)
             
             # تحديد جودة الصوت بناءً على المدة
@@ -6311,20 +6343,26 @@ async def download_and_send_audio(event):
             )
         except Exception as conversion_error:
             await event.edit(f"**⚠️ خطأ في التحويل**: {str(conversion_error)}")
-            return
+            # في حالة فشل التحويل، استخدم الملف الأصلي
+            audio_path = download_path
+            duration_minutes = 0  # لا نعرف المدة
 
-        # إضافة البيانات الوصفية
-        try:
+        # إضافة البيانات الوصفية (فقط للملفات MP3)
+        if audio_path.endswith('.mp3'):
             try:
-                audio_file = EasyID3(audio_path)
-            except ID3NoHeaderError:
-                audio_file = EasyID3()
-            
-            audio_file['title'] = video_title
-            audio_file['artist'] = artist
-            audio_file.save(audio_path)
-        except Exception as metadata_error:
-            print(f"تحذير: فشل في إضافة البيانات الوصفية: {metadata_error}")
+                from mutagen.id3 import ID3NoHeaderError
+                from mutagen.easyid3 import EasyID3
+                
+                try:
+                    audio_file = EasyID3(audio_path)
+                except ID3NoHeaderError:
+                    audio_file = EasyID3()
+                
+                audio_file['title'] = video_title
+                audio_file['artist'] = artist
+                audio_file.save(audio_path)
+            except Exception as metadata_error:
+                print(f"تحذير: فشل في إضافة البيانات الوصفية: {metadata_error}")
 
         upload_message = await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
 
@@ -6336,14 +6374,16 @@ async def download_and_send_audio(event):
 
         # إرسال الملف الصوتي
         try:
+            caption = f"**⌔╎البحث :** `{artist} - {video_title}`"
+            if duration_minutes > 0:
+                caption += f"\n**⌔╎المدة :** `{duration_minutes:.1f} دقيقة`"
+                
             await client.send_file(
                 event.chat_id, 
                 audio_path, 
-                caption=f"**⌔╎البحث :** `{artist} - {video_title}`\n**⌔╎المدة :** `{duration_minutes:.1f} دقيقة`", 
+                caption=caption, 
                 supports_streaming=True,
-                attributes=[
-                    # إضافة معلومات الملف الصوتي
-                ]
+                voice_note=False  # إرسال كملف صوتي وليس رسالة صوتية
             )
             
             # حذف رسالة "جاري الرفع"
@@ -6360,7 +6400,7 @@ async def download_and_send_audio(event):
         try:
             if 'download_path' in locals() and os.path.exists(download_path):
                 os.remove(download_path)
-            if 'audio_path' in locals() and os.path.exists(audio_path):
+            if 'audio_path' in locals() and os.path.exists(audio_path) and audio_path != download_path:
                 os.remove(audio_path)
         except Exception as cleanup_error:
             print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
@@ -6378,23 +6418,48 @@ def validate_cookies_file():
         with open(cookie_file, 'r', encoding='utf-8') as f:
             content = f.read()
             
-        # التحقق من وجود كوكيز YouTube الأساسية
-        required_cookies = ['VISITOR_INFO1_LIVE', 'YSC']
-        missing_cookies = []
-        
-        for cookie in required_cookies:
-            if cookie not in content:
-                missing_cookies.append(cookie)
-        
-        if missing_cookies:
-            print(f"⚠️ كوكيز مفقودة: {missing_cookies}")
+        # التحقق من أن الملف غير فارغ
+        if not content.strip():
+            print("⚠️ ملف الكوكيز فارغ!")
             return False
+            
+        # التحقق من وجود كوكيز YouTube الأساسية (اختياري)
+        required_cookies = ['youtube.com']  # البحث عن أي كوكيز من YouTube
+        
+        if not any(cookie in content for cookie in required_cookies):
+            print("⚠️ تحذير: لا توجد كوكيز YouTube في الملف")
+            return True  # نعود True لأن الملف قد يحتوي على كوكيز صالحة
             
         print("✅ ملف الكوكيز صالح")
         return True
         
     except Exception as e:
         print(f"⚠️ خطأ في قراءة ملف الكوكيز: {e}")
+        return False
+
+# دالة إضافية لاختبار البحث
+async def test_search(query):
+    """اختبار البحث بدون تحميل"""
+    try:
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+        }
+        
+        with YoutubeDL(ydl_opts) as ydl:
+            search_info = ydl.extract_info(f"ytsearch1:{query}", download=False)
+            
+            if search_info and 'entries' in search_info and search_info['entries']:
+                video = search_info['entries'][0]
+                print(f"✅ نجح البحث: {video.get('title', 'لا يوجد عنوان')}")
+                return True
+            else:
+                print("❌ فشل البحث")
+                return False
+                
+    except Exception as e:
+        print(f"❌ خطأ في البحث: {e}")
         return False
 
         
