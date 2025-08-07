@@ -13,7 +13,7 @@ mutagen
 
 # ========== تحميل الفيديو والصوت ==========
 yt-dlp
-
+youtube_dl
 # ========== الترجمة ==========
 googletrans
 deep-translator
