@@ -5,6 +5,7 @@ aiohttp
 
 # ========== مكتبة Telegram ==========
 telethon
+
 # ========== معالجة الصور ==========
 Pillow
 
@@ -12,8 +13,9 @@ Pillow
 mutagen
 
 # ========== تحميل الفيديو والصوت ==========
--U yt-dlp
+yt-dlp
 youtube_dl
+
 # ========== الترجمة ==========
 googletrans
 deep-translator
@@ -27,6 +29,8 @@ python-dotenv
 # ========== مكتبة لمعالجة الصوت (بديل MoviePy) ==========
 pydub
 
+# ========== Git operations ==========
 gitpython
 
+# ========== System and process utilities ==========
 psutil
