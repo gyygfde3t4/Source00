@@ -12,7 +12,7 @@ Pillow
 mutagen
 
 # ========== تحميل الفيديو والصوت ==========
-yt-dlp
+-U yt-dlp
 youtube_dl
 # ========== الترجمة ==========
 googletrans
