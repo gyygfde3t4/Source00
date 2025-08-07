@@ -3938,9 +3938,9 @@ async def start_anime_game(event):
         if event.chat_id in anime_games:
             game = anime_games[event.chat_id]
             if game["status"] == "registering":
-                await event.reply("🔄 جاري تسجيل اللاعبين... اكتب `انا` للانضمام!")
+                await event.edit("🔄 جاري تسجيل اللاعبين... اكتب `انا` للانضمام!")
             else:
-                await event.reply("⏳ هناك لعبة نشطة بالفعل! استخدموا المحاولات المتاحة.")
+                await event.edit("⏳ هناك لعبة نشطة بالفعل! استخدموا المحاولات المتاحة.")
             return
         
         try:
@@ -3962,7 +3962,7 @@ async def start_anime_game(event):
 """.format(5 * player_count)
 
         # إرسال رسالة جديدة بدلاً من تحرير الرسالة الأصلية
-        registration_msg = await event.reply(
+        registration_msg = await event.edit(
             "🎮 لعبة تخمين الأنمي - وضع الجماعي\n\n"
             f"👥 عدد اللاعبين المطلوب: {player_count}\n"
             f"🖊️ اللاعب 1: {sender.first_name}\n\n"
