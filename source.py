@@ -3953,21 +3953,22 @@ async def start_anime_game(event):
 
         sender = await event.get_sender()
         rules_text = """
-💡 <b>القواعد:</b>
+💡 القواعد:
 - يمكن التخمين بالإنجليزية/اليابانية (العربية قريباً) 
 - إذا خمنت الاسم بنسبة تطابق 70% ستفوز
 - أول إجابة صحيحة تفوز!
 - لديكم {} محاولات مشتركة
-- للإنضمام اكتب: <code>انا</code>
+- للإنضمام اكتب: انا
 """.format(5 * player_count)
 
-        registration_msg = await event.edit(
-            "🎮 <b>لعبة تخمين الأنمي - وضع الجماعي</b>\n\n"
-            f"👥 <b>عدد اللاعبين المطلوب:</b> {player_count}\n"
-            f"🖊️ <b>اللاعب 1:</b> {sender.first_name}\n\n"
+        # إرسال رسالة جديدة بدلاً من تحرير الرسالة الأصلية
+        registration_msg = await event.reply(
+            "🎮 لعبة تخمين الأنمي - وضع الجماعي\n\n"
+            f"👥 عدد اللاعبين المطلوب: {player_count}\n"
+            f"🖊️ اللاعب 1: {sender.first_name}\n\n"
             f"{rules_text}\n"
-            "⏳ <b>انتظار اللاعبين . . .</b>\n"
-            "(اكتب <code>.انهاء تخمين</code> لإلغاء اللعبة)",
+            "⏳ انتظار اللاعبين . . .\n"
+            "(اكتب .انهاء تخمين لإلغاء اللعبة)",
             parse_mode='html'
         )
         
@@ -3982,7 +3983,8 @@ async def start_anime_game(event):
             "start_time": time.time(),
             "last_guess_time": {},  # تتبع آخر محاولة لكل لاعب
             "processing_guess": False,  # منع معالجة عدة تخمينات في نفس الوقت
-            "game_ended": False
+            "game_ended": False,
+            "chat_id": event.chat_id  # حفظ chat_id للاستخدام لاحقاً
         }
 
         if player_count == 1:
@@ -4019,6 +4021,7 @@ async def register_player(event):
             f"{i+1}. {p['name'].first_name}" 
             for i, p in enumerate(game["players"].values()))
 
+        # حذف رسالة العد التنازلي السابقة إن وجدت
         if game.get("countdown_message"):
             try:
                 await game["countdown_message"].delete()
@@ -4027,11 +4030,11 @@ async def register_player(event):
                 pass
         
         countdown_msg = await event.reply(
-            "🎮 <b>لعبة تخمين الأنمي - وضع الجماعي</b>\n\n"
-            f"👥 <b>عدد اللاعبين المطلوب:</b> {game['required_players']}\n"
-            f"🖊️ <b>اللاعبون المسجلون ({game['registered']}/{game['required_players']}):</b>\n"
+            "🎮 لعبة تخمين الأنمي - وضع الجماعي\n\n"
+            f"👥 عدد اللاعبين المطلوب: {game['required_players']}\n"
+            f"🖊️ اللاعبون المسجلون ({game['registered']}/{game['required_players']}):\n"
             f"{players_list}\n\n"
-            "⏳ <b>سيتم بدأ اللعبة بعد 10 ثوان...</b>",
+            "⏳ سيتم بدأ اللعبة بعد 10 ثوان...",
             parse_mode='html'
         )
         
@@ -4043,29 +4046,34 @@ async def register_player(event):
                 await asyncio.sleep(1)
                 try:
                     await countdown_msg.edit(
-                        "🎮 <b>لعبة تخمين الأنمي - وضع الجماعي</b>\n\n"
-                        f"👥 <b>عدد اللاعبين المطلوب:</b> {game['required_players']}\n"
-                        f"🖊️ <b>اللاعبون المسجلون ({game['registered']}/{game['required_players']}):</b>\n"
+                        "🎮 لعبة تخمين الأنمي - وضع الجماعي\n\n"
+                        f"👥 عدد اللاعبين المطلوب: {game['required_players']}\n"
+                        f"🖊️ اللاعبون المسجلون ({game['registered']}/{game['required_players']}):\n"
                         f"{players_list}\n\n"
-                        f"⏳ <b>سيتم بدأ اللعبة بعد {i} ثوان...</b>",
+                        f"⏳ سيتم بدأ اللعبة بعد {i} ثوان...",
                         parse_mode='html'
                     )
                 except:
                     pass
             
-            await countdown_msg.edit(
-                "🎮 <b>لعبة تخمين الأنمي - وضع الجماعي</b>\n\n"
-                f"👥 <b>عدد اللاعبين المطلوب:</b> {game['required_players']}\n"
-                f"🖊️ <b>اللاعبون المسجلون ({game['registered']}/{game['required_players']}):</b>\n"
-                f"{players_list}\n\n"
-                "⏳ <b>سيتم بدأ اللعبة بعد قليل...</b>",
-                parse_mode='html'
-            )
+            try:
+                await countdown_msg.edit(
+                    "🎮 لعبة تخمين الأنمي - وضع الجماعي\n\n"
+                    f"👥 عدد اللاعبين المطلوب: {game['required_players']}\n"
+                    f"🖊️ اللاعبون المسجلون ({game['registered']}/{game['required_players']}):\n"
+                    f"{players_list}\n\n"
+                    "⏳ سيتم بدأ اللعبة بعد قليل...",
+                    parse_mode='html'
+                )
+            except:
+                pass
+                
             await asyncio.sleep(2)
             
             await start_game(event.chat_id)
 
 async def start_game(chat_id):
+    """بدء اللعبة - تم إصلاح المعامل ليكون chat_id بدلاً من event"""
     try:
         if chat_id not in anime_games:
             return
@@ -4088,32 +4096,41 @@ async def start_game(chat_id):
             f"{i+1}. {p['name'].first_name}" 
             for i, p in enumerate(game["players"].values()))
         
+        # تحديث رسالة العد التنازلي
         if game.get("countdown_message"):
             try:
                 await game["countdown_message"].edit(
-                    "🎮 <b>لعبة تخمين الأنمي - وضع الجماعي</b>\n\n"
-                    f"👥 <b>عدد اللاعبين المطلوب:</b> {game['required_players']}\n"
-                    f"🖊️ <b>اللاعبون المسجلون ({game['registered']}/{game['required_players']}):</b>\n"
+                    "🎮 لعبة تخمين الأنمي - وضع الجماعي\n\n"
+                    f"👥 عدد اللاعبين المطلوب: {game['required_players']}\n"
+                    f"🖊️ اللاعبون المسجلون ({game['registered']}/{game['required_players']}):\n"
                     f"{players_list}\n\n"
-                    "✅ <b>لقد بدأت اللعبة!</b>",
+                    "✅ لقد بدأت اللعبة!",
                     parse_mode='html'
                 )
             except:
                 pass
         
         caption = (
-            "🎌 <b>بدأت لعبة تخمين الأنمي!</b>\n\n"
-            f"👥 <b>اللاعبون:</b>\n{players_list}\n\n"
+            "🎌 بدأت لعبة تخمين الأنمي!\n\n"
+            f"👥 اللاعبون:\n{players_list}\n\n"
+            f"🎯 المحاولات المتاحة: {game['remaining_attempts']}\n"
+            f"💡 اكتبوا تخميناتكم الآن!"
         )
         
         try:
             sent_msg = await client.send_file(chat_id, character["image"], caption=caption, parse_mode='html')
             game["game_messages"].append(sent_msg)
-        except:
-            sent_msg = await client.send_message(chat_id, caption + f"\n🖼️ [اضغط هنا لرؤية الصورة]({character['image']})", parse_mode='html')
+        except Exception as img_error:
+            print(f"خطأ في إرسال الصورة: {img_error}")
+            sent_msg = await client.send_message(
+                chat_id, 
+                caption + f"\n🖼️ [اضغط هنا لرؤية الصورة]({character['image']})", 
+                parse_mode='html'
+            )
             game["game_messages"].append(sent_msg)
 
     except Exception as e:
+        print(f"خطأ في بدء اللعبة: {e}")
         if chat_id in anime_games:
             del anime_games[chat_id]
         await client.send_message(chat_id, f"❌ فشل في بدء اللعبة: {str(e)}\n⚠️ يرجى المحاولة لاحقا")
@@ -4179,13 +4196,15 @@ async def handle_guesses(event):
             
             correct_names = [
                 character["name"],
-                character["name_native"]
-            ] + character["nicknames"]
+                character.get("name_native", "")
+            ] + character.get("nicknames", [])
+            
+            # تنظيف الأسماء وإزالة القيم الفارغة
+            correct_names = [name for name in correct_names if name and isinstance(name, str) and len(name.strip()) > 0]
             
             is_correct = any(
                 similar(guess, name)
                 for name in correct_names
-                if name and isinstance(name, str)
             )
             
             if is_correct:
@@ -4194,12 +4213,18 @@ async def handle_guesses(event):
                 winner = game["players"][player_id]["name"]
                 
                 message = (
-                    "✨ <b>تهانينا! لقد فاز {winner_name}</b> ✨\n\n"
-                    "🎯 <b>التخمين الصحيح:</b>\n"
-                    f"🏷️ <b>الاسم:</b> {character['name']} ({character['name_native']})\n"
-                    f"📺 <b>الأنمي:</b> {character['anime']}\n\n"
-                    f"🔗 [اضغط هنا للمزيد عن الشخصية]({character['url']})"
+                    "✨ تهانينا! لقد فاز {winner_name} ✨\n\n"
+                    "🎯 التخمين الصحيح:\n"
+                    f"🏷️ الاسم: {character['name']}"
                 ).format(winner_name=winner.first_name)
+                
+                if character.get("name_native"):
+                    message += f" ({character['name_native']})"
+                
+                message += f"\n📺 الأنمي: {character['anime']}\n\n"
+                
+                if character.get("url"):
+                    message += f"🔗 [اضغط هنا للمزيد عن الشخصية]({character['url']})"
                 
                 await event.reply(message, link_preview=False, parse_mode='html')
                 del anime_games[event.chat_id]
@@ -4208,19 +4233,26 @@ async def handle_guesses(event):
             if game["remaining_attempts"] <= 0:
                 game["game_ended"] = True
                 message = (
-                    "💔 <b>انتهت جميع المحاولات!</b>\n\n"
-                    "🔎 <b>الإجابة الصحيحة كانت:</b>\n"
-                    f"🏷️ <b>الاسم:</b> {character['name']} ({character['name_native']})\n"
-                    f"📺 <b>الأنمي:</b> {character['anime']}\n\n"
-                    f"🔗 [اضغط هنا للمزيد عن الشخصية]({character['url']})"
+                    "💔 انتهت جميع المحاولات!\n\n"
+                    "🔎 الإجابة الصحيحة كانت:\n"
+                    f"🏷️ الاسم: {character['name']}"
                 )
+                
+                if character.get("name_native"):
+                    message += f" ({character['name_native']})"
+                    
+                message += f"\n📺 الأنمي: {character['anime']}\n\n"
+                
+                if character.get("url"):
+                    message += f"🔗 [اضغط هنا للمزيد عن الشخصية]({character['url']})"
+                
                 await event.reply(message, link_preview=False, parse_mode='html')
                 del anime_games[event.chat_id]
             else:
                 remaining = game["remaining_attempts"]
                 attempts_word = "محاولة" if remaining == 1 else "محاولات"
                 reply_msg = await event.reply(
-                    f"❌ <b>تخمين خاطئ!</b>\n"
+                    f"❌ تخمين خاطئ!\n"
                     f"📊 تبقى لديكم {remaining} {attempts_word}",
                     parse_mode='html'
                 )
@@ -4236,12 +4268,12 @@ async def handle_guesses(event):
 @client.on(events.NewMessage(pattern=r'^\.انهاء تخمين$'))
 async def end_game(event):
     if event.chat_id not in anime_games:
-        await event.reply("**تم انهاء اللعبة **")
+        await event.reply("⚠️ لا توجد لعبة نشطة لإنهائها")
         return
     
     async with message_locks[event.chat_id]:
         if event.chat_id not in anime_games:
-            await event.reply("**تم انهاء اللعبة **")
+            await event.reply("⚠️ لا توجد لعبة نشطة لإنهائها")
             return
             
         game = anime_games[event.chat_id]
@@ -4250,12 +4282,18 @@ async def end_game(event):
         
         if character:
             message = (
-                "🛑 <b>تم إنهاء اللعبة!</b>\n\n"
-                "🔎 <b>الإجابة الصحيحة كانت:</b>\n"
-                f"🏷️ <b>الاسم:</b> {character['name']} ({character['name_native']})\n"
-                f"📺 <b>الأنمي:</b> {character['anime']}\n\n"
-                f"🔗 [اضغط هنا للمزيد عن الشخصية]({character['url']})"
+                "🛑 تم إنهاء اللعبة!\n\n"
+                "🔎 الإجابة الصحيحة كانت:\n"
+                f"🏷️ الاسم: {character['name']}"
             )
+            
+            if character.get("name_native"):
+                message += f" ({character['name_native']})"
+                
+            message += f"\n📺 الأنمي: {character['anime']}\n\n"
+            
+            if character.get("url"):
+                message += f"🔗 [اضغط هنا للمزيد عن الشخصية]({character['url']})"
         else:
             message = "✅ تم إلغاء لعبة التخمين أثناء التسجيل"
         
@@ -4270,10 +4308,8 @@ async def cleanup_stale_games():
             current_time = time.time()
             stale_games = []
             
-            for chat_id, game in anime_games.items():
-
-           #اذا مر 5 دقائق دون تخمين توقف اللعبة او اثناء التسجيل 
-           
+            for chat_id, game in list(anime_games.items()):
+                # اذا مر 5 دقائق دون تخمين توقف اللعبة او اثناء التسجيل 
                 if current_time - game["start_time"] > 300:
                     stale_games.append(chat_id)                    
                 elif game.get("game_start_time") and current_time - game["game_start_time"] > 300:
@@ -4295,7 +4331,7 @@ async def cleanup_stale_games():
             
         except Exception as e:
             print(f"خطأ في تنظيف الألعاب: {e}")
-            await asyncio.sleep(60)            
+            await asyncio.sleep(60)
 
 
 @client.on(events.NewMessage(pattern=r'^\.لصوره$'))
