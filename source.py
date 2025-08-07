@@ -37,6 +37,7 @@ import httpx
 import aiohttp
 
 # ========== مكتبات الجهات الخارجية ==========
+import yt_dlp
 import pytz
 from PIL import Image, ImageDraw, ImageFont
 from mutagen.easyid3 import EasyID3
@@ -6884,6 +6885,7 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}PB"                        
 
+
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
 async def download_and_send_pinterest(event):
     # التحقق من وجود رابط
@@ -6906,119 +6908,343 @@ async def download_and_send_pinterest(event):
             await event.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
             return
 
-        # إعدادات yt-dlp المحسنة
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'cookiefile': cookie_file,
-            'extract_flat': False,
-            'force_generic_extractor': True,
-            'sleep_interval': 2,
-            'max_sleep_interval': 5,
-            'headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Referer': 'https://www.pinterest.com/',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'ar,en-US;q=0.7,en;q=0.3',
-            },
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
-        }
-
         # إنشاء مجلد التحميل إذا لم يكن موجوداً
         os.makedirs('downloads', exist_ok=True)
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(input_url, download=False)
-            
-            # تحديد نوع المحتوى (فيديو أو صورة)
-            is_video = any(fmt.get('vcodec') != 'none' for fmt in info.get('formats', []))
-            ext = 'mp4' if is_video else 'jpg'
-            
-            # تعديل إعدادات التحميل حسب النوع
-            if is_video:
-                ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-                ydl_opts['postprocessors'] = [{
-                    'key': 'FFmpegVideoConvertor',
-                    'preferedformat': 'mp4',
-                }]
-            else:
-                ydl_opts['format'] = 'best'
-            
-            # بدء التحميل
-            info = ydl.extract_info(input_url, download=True)
-            filename = ydl.prepare_filename(info)
-            
-            # تصحيح امتداد الملف للصور
-            if not is_video and not filename.endswith(('.jpg', '.jpeg', '.png')):
-                new_filename = f"{os.path.splitext(filename)[0]}.jpg"
-                os.rename(filename, new_filename)
-                filename = new_filename
+        # إعدادات yt-dlp المحسنة والمحدثة
+        ydl_opts = {
+            'quiet': False,  # تفعيل الرسائل للتشخيص
+            'verbose': True,  # المزيد من التفاصيل
+            'no_warnings': False,
+            'cookiefile': cookie_file,
+            'extract_flat': False,
+            'sleep_interval': 3,
+            'max_sleep_interval': 6,
+            'retries': 3,
+            'fragment_retries': 3,
+            'skip_unavailable_fragments': True,
+            'http_chunk_size': 10485760,  # 10MB chunks
+            'headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Cache-Control': 'max-age=0',
+                'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"'
+            },
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'format': 'best[ext=mp4]/best[ext=jpg]/best[ext=png]/best',
+            # إضافة خيارات إضافية للتعامل مع Pinterest
+            'extractor_args': {
+                'pinterest': {
+                    'api-key': None,  # استخدام الكوكيز بدلاً من API
+                }
+            }
+        }
 
-            await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+        # محاولة التحميل باستخدام الكوكيز فقط
+        await event.edit("**╮ جـارِ استخـراج معلومـات المحتـوى... 📌♥️╰**")
+        filename = await download_pinterest_with_cookies(input_url, event)
+        
+        if not filename:
+            raise Exception("فشل في تحميل المحتوى - تحقق من صحة الرابط والكوكيز")
+        
+        is_video = filename.endswith(('.mp4', '.avi', '.mov', '.webm'))
 
-            # التحقق من حجم الملف
-            file_size = os.path.getsize(filename)
-            if file_size > 10 * 1024 * 1024:  # 10MB للصور / 2GB للفيديو
-                await event.edit("**⚠️ الملف كبير جداً للإرسال**")
-                os.remove(filename)
-                return
+        await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
 
-            # إرسال المحتوى
+        # التحقق من وجود الملف وحجمه
+        if not os.path.exists(filename):
+            raise Exception("لم يتم العثور على الملف المحمل")
+
+        file_size = os.path.getsize(filename)
+        max_size = 50 * 1024 * 1024 if is_video else 10 * 1024 * 1024  # 50MB للفيديو، 10MB للصور
+        
+        if file_size > max_size:
+            await event.edit("**⚠️ الملف كبير جداً للإرسال**")
+            os.remove(filename)
+            return
+
+        # إرسال المحتوى
+        try:
             if is_video:
                 await event.client.send_file(
                     event.chat_id,
                     filename,
-                    caption=f"**📹╎عـنوان الفيـديـو:** `{info.get('title', 'فيديو بنترست')}`",
+                    caption=f"**📹╎تم تحميـل الفيـديـو مـن بنترست**",
                     supports_streaming=True,
-                    progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
-                        progress(d, t, event, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
-                    )
+                    progress_callback=lambda d, t: asyncio.create_task(
+                        progress(d, t, event, "**╮ ❐ جـارِ رفـع الفيـديـو ...🎬╰**")
+                    ) if d and t else None
                 )
             else:
                 await event.client.send_file(
                     event.chat_id,
                     filename,
-                    caption=f"**🖼️╎صـورة مـن بنترست**",
-                    progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
-                        progress(d, t, event, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
-                    )
+                    caption=f"**🖼️╎تم تحميـل الصـورة مـن بنترست**",
+                    progress_callback=lambda d, t: asyncio.create_task(
+                        progress(d, t, event, "**╮ ❐ جـارِ رفـع الصـورة ...🖼️╰**")
+                    ) if d and t else None
                 )
 
             await event.edit(f"**╮ ❐ تم إرسـال المحتـوى بنجـاح ✅**\n**╰ ❐ النـوع:** {'فيديو' if is_video else 'صورة'}")
 
+        except Exception as upload_error:
+            print(f"Upload error: {upload_error}")
+            await event.edit("**⚠️ فشل في رفع الملف، يرجى المحاولة لاحقاً**")
+
     except Exception as e:
-        error_msg = str(e)
-        if "Private content" in error_msg:
+        error_msg = str(e).lower()
+        print(f"Main error: {e}")
+        
+        if "403" in error_msg or "forbidden" in error_msg:
+            await event.edit("**⚠️ رفض الوصول - قد تحتاج لتحديث الكوكيز أو الرابط محمي**")
+        elif "private content" in error_msg:
             await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل الدخول**")
-        elif "Image not found" in error_msg or "Video unavailable" in error_msg:
-            await event.edit("**⚠️ المحتوى غير متوفر أو محذوف**")
-        elif "Unsupported URL" in error_msg:
-            await event.edit("**⚠️ الرابط غير مدعوم أو غير صحيح**")
+        elif "not found" in error_msg or "unavailable" in error_msg:
+            await event.edit("**⚠️ المحتوى غير متوفر أو تم حذفه**")
+        elif "unsupported" in error_msg:
+            await event.edit("**⚠️ الرابط غير مدعوم - تأكد من أنه رابط Pinterest صحيح**")
+        elif "network" in error_msg or "connection" in error_msg:
+            await event.edit("**⚠️ مشكلة في الاتصال - يرجى المحاولة لاحقاً**")
         else:
-            await event.edit(f"**⚠️ حـدث خـطأ في التحـميل**: {str(e)}")
+            await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:100]}...")
     
     finally:
         # تنظيف الملفات المؤقتة
         try:
-            if 'filename' in locals() and os.path.exists(filename):
+            if 'filename' in locals() and filename and os.path.exists(filename):
                 os.remove(filename)
+                print(f"تم حذف الملف: {filename}")
         except Exception as cleanup_error:
-            print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
+            print(f"تحذير - فشل في تنظيف الملفات: {cleanup_error}")
+
+async def download_pinterest_with_cookies(url, event):
+    """التحميل من Pinterest باستخدام الكوكيز فقط مع تحسينات"""
+    try:
+        # قراءة الكوكيز من الملف
+        cookies = {}
+        cookie_file = 'pincook.txt'
+        
+        if os.path.exists(cookie_file):
+            with open(cookie_file, 'r') as f:
+                lines = f.readlines()
+                for line in lines:
+                    if line.startswith('#') or not line.strip():
+                        continue
+                    parts = line.strip().split('\t')
+                    if len(parts) >= 7:
+                        domain, _, path, secure, expires, name, value = parts[:7]
+                        if 'pinterest.com' in domain:
+                            cookies[name] = value
+
+        if not cookies:
+            raise Exception("لم يتم العثور على كوكيز صالحة")
+
+        # إعداد الهيدرز المحسنة
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        }
+
+        # إعداد الجلسة
+        session = requests.Session()
+        session.headers.update(headers)
+        session.cookies.update(cookies)
+        
+        # إضافة تأخير لتجنب الحظر
+        await asyncio.sleep(2)
+        
+        # الحصول على محتوى الصفحة
+        await event.edit("**╮ جـارِ تحليـل الصفحـة... 📌♥️╰**")
+        response = session.get(url, timeout=20, allow_redirects=True)
+        
+        if response.status_code == 403:
+            raise Exception("رفض الوصول - يرجى تحديث الكوكيز")
+        elif response.status_code == 404:
+            raise Exception("الرابط غير موجود أو محذوف")
+        elif response.status_code != 200:
+            raise Exception(f"خطأ في الخادم: {response.status_code}")
+        
+        response.raise_for_status()
+        html = response.text
+        
+        # البحث المحسن عن روابط الميديا
+        import re
+        
+        media_url = None
+        is_video = False
+        
+        # أنماط البحث المحسنة للفيديو
+        video_patterns = [
+            r'"video_url":\s*"([^"]+)"',
+            r'"videos":\s*{[^}]*"url":\s*"([^"]+)"',
+            r'"video":\s*{[^}]*"url":\s*"([^"]+\.mp4[^"]*)"',
+            r'<video[^>]+src="([^"]+)"',
+            r'"contentUrl":\s*"([^"]+\.mp4[^"]*)"'
+        ]
+        
+        # أنماط البحث المحسنة للصور
+        image_patterns = [
+            r'"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"',
+            r'"images":\s*{[^}]*"orig":\s*{[^}]*"url":\s*"([^"]+)"',
+            r'"url":\s*"(https://i\.pinimg\.com/\d+x\d+/[^"]+)"',
+            r'"image":\s*{[^}]*"url":\s*"(https://i\.pinimg\.com/[^"]+)"',
+            r'<meta property="og:image" content="([^"]+)"',
+            r'"contentUrl":\s*"(https://i\.pinimg\.com/[^"]+)"'
+        ]
+        
+        # البحث عن فيديو أولاً
+        for pattern in video_patterns:
+            matches = re.findall(pattern, html, re.IGNORECASE)
+            if matches:
+                media_url = matches[0].replace('\\/', '/').replace('\\u0026', '&')
+                is_video = True
+                print(f"Found video URL: {media_url}")
+                break
+        
+        # إذا لم نجد فيديو، نبحث عن صورة
+        if not media_url:
+            for pattern in image_patterns:
+                matches = re.findall(pattern, html, re.IGNORECASE)
+                if matches:
+                    # اختيار أعلى جودة متوفرة
+                    for match in matches:
+                        clean_url = match.replace('\\/', '/').replace('\\u0026', '&')
+                        if 'originals' in clean_url or '736x' in clean_url:
+                            media_url = clean_url
+                            print(f"Found high quality image URL: {media_url}")
+                            break
+                    if not media_url and matches:
+                        media_url = matches[0].replace('\\/', '/').replace('\\u0026', '&')
+                        print(f"Found image URL: {media_url}")
+                    if media_url:
+                        break
+        
+        if not media_url:
+            # محاولة أخيرة للعثور على أي رابط صورة
+            fallback_patterns = [
+                r'(https://i\.pinimg\.com/[^"\s]+)',
+                r'src="(https://[^"]*\.(?:jpg|jpeg|png|webp)[^"]*)"'
+            ]
+            
+            for pattern in fallback_patterns:
+                matches = re.findall(pattern, html, re.IGNORECASE)
+                if matches:
+                    media_url = matches[0]
+                    print(f"Found fallback media URL: {media_url}")
+                    break
+        
+        if not media_url:
+            raise Exception("لم يتم العثور على رابط الوسائط في الصفحة")
+        
+        await event.edit("**╮ جاري التحميل... 📌♥️╰**")
+        
+        # تحميل الملف مع إعادة المحاولة
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # إضافة تأخير بين المحاولات
+                if attempt > 0:
+                    await asyncio.sleep(3)
+                
+                media_response = session.get(media_url, timeout=30, stream=True)
+                media_response.raise_for_status()
+                
+                # تحديد اسم وامتداد الملف
+                content_type = media_response.headers.get('content-type', '').lower()
+                
+                if 'video' in content_type or is_video:
+                    ext = '.mp4'
+                elif 'image' in content_type:
+                    if 'jpeg' in content_type or 'jpg' in content_type:
+                        ext = '.jpg'
+                    elif 'png' in content_type:
+                        ext = '.png'
+                    elif 'webp' in content_type:
+                        ext = '.webp'
+                    else:
+                        ext = '.jpg'  # افتراضي
+                else:
+                    # تحديد الامتداد من الرابط
+                    if media_url.lower().endswith('.mp4'):
+                        ext = '.mp4'
+                    elif any(media_url.lower().endswith(f'.{fmt}') for fmt in ['jpg', 'jpeg', 'png', 'webp']):
+                        ext = '.' + media_url.split('.')[-1].lower()
+                    else:
+                        ext = '.jpg'  # افتراضي
+                
+                filename = f"downloads/pinterest_{hash(url) % 100000}{ext}"
+                
+                # حفظ الملف
+                with open(filename, 'wb') as f:
+                    for chunk in media_response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                
+                # التحقق من حفظ الملف بنجاح
+                if os.path.exists(filename) and os.path.getsize(filename) > 0:
+                    print(f"تم تحميل الملف بنجاح: {filename} ({os.path.getsize(filename)} bytes)")
+                    return filename
+                else:
+                    raise Exception("فشل في حفظ الملف")
+                    
+            except Exception as download_error:
+                print(f"محاولة {attempt + 1} فشلت: {download_error}")
+                if attempt == max_retries - 1:
+                    raise download_error
+                continue
+        
+        return None
+        
+    except Exception as error:
+        print(f"خطأ في التحميل: {error}")
+        return None
 
 async def progress(current, total, event, text):
     """دالة لعرض شريط التقدم"""
-    progress = f"{current * 100 / total:.1f}%"
-    await event.edit(f"{text}\n\n**╮ ❐ جـارِ الـرفع:** `{progress}`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
+    if not current or not total:
+        return
+    
+    try:
+        progress_percent = (current * 100) / total
+        if progress_percent % 10 < 1:  # تحديث كل 10%
+            await event.edit(f"{text}\n\n**╮ ❐ التقـدم:** `{progress_percent:.1f}%`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
+    except:
+        pass
 
 def humanbytes(size):
     """تحويل الحجم إلى صيغة مقروءة"""
     if not size:
         return "0B"
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+    for unit in ['B', 'KB', 'MB', 'GB']:
         if size < 1024:
             return f"{size:.2f}{unit}"
         size /= 1024
-    return f"{size:.2f}PB"
+    return f"{size:.2f}TB"
                           
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
