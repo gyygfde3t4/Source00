@@ -29,6 +29,7 @@ import string
 import contextlib
 import sys
 from mutagen.id3 import ID3NoHeaderError
+import glob
 
 # ========== مكتبات HTTP وطلبات الويب ==========
 import requests
@@ -45,70 +46,17 @@ from yt_dlp import YoutubeDL
 from googletrans import Translator
 from deep_translator import GoogleTranslator
 from telethon import events, functions, types, utils
-from yt_dlp import YoutubeDL
 from pydub import AudioSegment
 from mutagen.easyid3 import EasyID3
+
 # ========== Telethon - استيراد رئيسي ==========
 from telethon import TelegramClient, events, functions, types, Button
 from telethon.sessions import StringSession
-from telethon.tl.types import DocumentAttributeAnimated, DocumentAttributeAudio
-from telethon import events, types
-from telethon.tl.types import InputMediaDice
-
-# ========== Telethon - الأخطاء ==========
-from telethon.errors import (
-    SessionPasswordNeededError,
-    ChannelPrivateError,
-    FileReferenceExpiredError,
-    RPCError
-)
-
-# ========== Telethon - دوال API ==========
-from telethon.tl.functions import (
-    account,
-    photos,
-    messages,
-    contacts,
-    channels
-)
-from telethon.tl.functions.channels import (
-    JoinChannelRequest,
-    LeaveChannelRequest,
-    GetFullChannelRequest,
-    GetParticipantRequest
-)
-from telethon.tl.functions.messages import (
-    SendMessageRequest,
-    SendMediaRequest,
-    DeleteChatUserRequest,
-    DeleteMessagesRequest
-)
-from telethon.tl.functions.contacts import BlockRequest
-from telethon.tl.functions.account import UpdateProfileRequest
-from telethon.tl.functions.photos import GetUserPhotosRequest
-from telethon.tl.functions.stories import GetStoriesArchiveRequest
-from telethon import functions, types, events
-from telethon.tl.functions.phone import GetCallConfigRequest
-from telethon.errors import UserPrivacyRestrictedError
-from telethon import events
-from telethon.tl.types import InputMessagesFilterVideo, InputMessagesFilterPhotos
-from asyncio.exceptions import CancelledError
-from git import Repo
-from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
-from telethon.tl.functions.contacts import BlockRequest
-import time
-import psutil
-from datetime import datetime
-from platform import python_version
-from telethon import events, version
-from telethon.errors import (
-    MediaEmptyError,
-    WebpageCurlFailedError,
-    WebpageMediaEmptyError
-)
-
-# ========== Telethon - الأنواع ==========
 from telethon.tl.types import (
+    DocumentAttributeAnimated, 
+    DocumentAttributeAudio,
+    InputMediaDice,
+    DocumentAttributeAudio,
     User,
     Channel,
     InputPeerSelf,
@@ -127,10 +75,52 @@ from telethon.tl.types import (
     DocumentAttributeVideo
 )
 
+# ========== Telethon - الأخطاء ==========
+from telethon.errors import (
+    SessionPasswordNeededError,
+    ChannelPrivateError,
+    FileReferenceExpiredError,
+    RPCError,
+    UserPrivacyRestrictedError,
+    MediaEmptyError,
+    WebpageCurlFailedError,
+    WebpageMediaEmptyError
+)
 
-import os
-from telethon import TelegramClient
-from telethon.sessions import StringSession
+# ========== Telethon - دوال API ==========
+from telethon.tl.functions import (
+    account,
+    photos,
+    messages,
+    contacts,
+    channels,
+    phone,
+    stories
+)
+from telethon.tl.functions.channels import (
+    JoinChannelRequest,
+    LeaveChannelRequest,
+    GetFullChannelRequest,
+    GetParticipantRequest
+)
+from telethon.tl.functions.messages import (
+    SendMessageRequest,
+    SendMediaRequest,
+    DeleteChatUserRequest,
+    DeleteMessagesRequest
+)
+from telethon.tl.functions.contacts import BlockRequest
+from telethon.tl.functions.account import UpdateProfileRequest
+from telethon.tl.functions.photos import GetUserPhotosRequest
+from telethon.tl.functions.stories import GetStoriesArchiveRequest
+from telethon.tl.functions.phone import GetCallConfigRequest
+
+from asyncio.exceptions import CancelledError
+from git import Repo
+from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
+import psutil
+from platform import python_version
+from telethon import version
 
 # الحصول على المتغيرات من environment variables
 API_ID = int(os.getenv('API_ID'))  # القيمة الافتراضية 29984076 إذا لم يتم تحديد المتغير
@@ -6272,32 +6262,34 @@ async def update_command(event):
     # تنفيذ التحديث
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
-
-import glob
-from mutagen.easyid3 import EasyID3
-from mutagen.id3 import ID3, APIC
-from telethon.tl.types import DocumentAttributeAudio
-
 @client.on(events.NewMessage(pattern=r'\.بحث (.+)'))
 async def download_and_send_audio(event):
     query = event.pattern_match.group(1)
     await event.edit("**╮ جـارِ البحث ؏ـن المقطـٓع الصٓوتـي... 🎧♥️╰**")
 
     try:
-        # إعدادات yt-dlp الأساسية
+        # إعدادات yt-dlp محسنة للسرعة
         ydl_opts = {
-            'format': 'bestaudio/best',
+            'format': 'bestaudio[ext=m4a]/bestaudio/best[height<=480]',  # أولوية للصوت المضغوط
             'outtmpl': 'downloads/%(id)s.%(ext)s',
             'quiet': True,
             'no_warnings': True,
+            'extract_flat': False,
+            'writeinfojson': False,  # عدم كتابة ملفات JSON
+            'writethumbnail': False,  # عدم تحميل الصورة بشكل منفصل
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
-                'preferredquality': '192',
+                'preferredquality': '128',  # جودة أقل للسرعة
             }],
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-            }
+            },
+            # تحسينات الشبكة
+            'socket_timeout': 30,
+            'retries': 2,
+            'fragment_retries': 2,
+            'concurrent_fragment_downloads': 4,  # تحميل متوازي
         }
 
         # التحقق من وجود ملف الكوكيز
@@ -6335,7 +6327,7 @@ async def download_and_send_audio(event):
                 if thumbnail:
                     try:
                         thumb_path = f'downloads/{video_id}_thumb.jpg'
-                        async with httpx.AsyncClient() as client:
+                        async with httpx.AsyncClient(timeout=10.0) as client:
                             response = await client.get(thumbnail)
                             if response.status_code == 200:
                                 with open(thumb_path, 'wb') as f:
@@ -6399,7 +6391,8 @@ async def download_and_send_audio(event):
                             performer=artist
                         )
                     ],
-                    supports_streaming=True
+                    supports_streaming=True,
+                    part_size_kb=512,  # حجم أجزاء الرفع (محسن للسرعة)
                 )
                 
                 await event.delete()
@@ -6412,13 +6405,17 @@ async def download_and_send_audio(event):
         await event.edit(f"**⚠️ خطأ عام:** {str(e)[:500]}")
     
     finally:
-        # تنظيف الملفات المؤقتة
+        # تنظيف الملفات المؤقتة بشكل أسرع
         if 'video_id' in locals():
-            for f in glob.glob(f'downloads/{video_id}*'):
-                try:
-                    os.remove(f)
-                except:
-                    pass
+            cleanup_tasks = []
+            for pattern in [f'downloads/{video_id}*', 'downloads/*.part']:
+                for file_path in glob.glob(pattern):
+                    cleanup_tasks.append(asyncio.create_task(
+                        asyncio.to_thread(os.remove, file_path)
+                    ))
+            
+            if cleanup_tasks:
+                await asyncio.gather(*cleanup_tasks, return_exceptions=True)
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
