@@ -1,0 +1,15 @@
+# Netscape HTTP Cookie File
+# تم التحديث في أغسطس 2025 - الصلاحية حتى ديسمبر 2025
+# الملف يحتوي على أهم كوكيز يوتيوب طويلة الأمد
+
+.youtube.com TRUE / TRUE 1767225600 GPS 1
+.youtube.com TRUE / TRUE 1767225600 YSC ixzrVWqY2hs
+.youtube.com TRUE / TRUE 1767225600 VISITOR_INFO1_LIVE HbhCCQvbxMM
+.youtube.com TRUE / TRUE 1767225600 VISITOR_PRIVACY_METADATA CgJFRxIEGgAgaw%3D%3D
+.youtube.com TRUE / TRUE 1767225600 PREF tz=Africa.Cairo
+.youtube.com TRUE / FALSE 1767225600 HSID AwczOWKeTcGJH8cnO
+.youtube.com TRUE / FALSE 1767225600 SSID AzDuhVLBWVlH-x8CX
+.youtube.com TRUE / FALSE 1767225600 APISID xvgFhPohZwDI-YPE/AGCfy3fevXrhHnGgK
+.youtube.com TRUE / FALSE 1767225600 SAPISID 2ltKoWxZ0rUr0ZNx/AU0ivhT3Nm7cLZ7ri
+.youtube.com TRUE / TRUE 1767225600 __Secure-1PSID g.a000zwhyi-KKcPJSHf99Wke_0euRRda1JENrNxbDer-kiv_0bUb97uueB586TeTI7mCR4qtrmQACgYKAd4SARASFQHGX2Mi-LH-hx6uXh7Ha4vY5O3ZJxoVAUF8yKrdkx69Ejpa96CdSkbAQk0X0076
+.youtube.com TRUE / TRUE 1767225600 __Secure-3PSID g.a000zwhyi-KKcPJSHf99Wke_0euRRda1JENrNxbDer-kiv_0bUb9tAHBaQhITaZdCu0MmoMiwQACgYKARcSARASFQHGX2MicoAiOFjHiK6oSq9ZgUllaRoVAUF8yKrWfT9vD1145qY5AKQOqbK70076
