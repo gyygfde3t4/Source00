@@ -6230,21 +6230,37 @@ async def download_and_send_audio(event):
             'no_warnings': True,
             'cookiefile': cookie_file,
             'extract_flat': False,
-            'ignoreerrors': False,  # تغيير إلى False لرؤية الأخطاء
-            # إعدادات إضافية لتجنب مشاكل YouTube
+            'ignoreerrors': False,
+            
+            # إعدادات محسنة لتجاوز اكتشاف البوت
             'extractor_args': {
                 'youtube': {
-                    'skip': ['translated_subs', 'automatic_captions']
+                    'skip': ['translated_subs', 'automatic_captions'],
+                    'player_client': ['android', 'web'],
                 }
             },
-            # تحديد User-Agent
+            
+            # تحديد User-Agent محدث
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'ar,en-US;q=0.7,en;q=0.3',
+                'Accept-Encoding': 'gzip, deflate',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            },
+            
+            # إضافة تأخير لتجنب اكتشاف البوت
+            'sleep_interval': 1,
+            'max_sleep_interval': 3,
         }
 
         # إنشاء مجلد التحميل إذا لم يكن موجوداً
         os.makedirs('downloads', exist_ok=True)
+
+        # تأخير عشوائي قبل البدء
+        await asyncio.sleep(random.uniform(2, 4))
 
         # البحث عن الفيديو وتنزيله
         with YoutubeDL(ydl_opts) as ydl:
@@ -6255,7 +6271,7 @@ async def download_and_send_audio(event):
                     download=False
                 )
                 
-                # التحقق من وجود النتائج بشكل أكثر تفصيلاً
+                # التحقق من وجود النتائج بشكل مفصل
                 if not search_info:
                     await event.edit("**⚠️ فشل في البحث - لا توجد معلومات**")
                     return
@@ -6288,6 +6304,9 @@ async def download_and_send_audio(event):
 
                 await event.edit("**╮ جـارِ تحميـل المقطـٓع الصٓوتـي... 🎧♥️╰**")
 
+                # تأخير إضافي قبل التحميل
+                await asyncio.sleep(random.uniform(2, 4))
+
                 # تحديث إعدادات التحميل مع الرابط المباشر
                 ydl_opts_download = ydl_opts.copy()
                 ydl_opts_download['outtmpl'] = f'downloads/{video_id}.%(ext)s'
@@ -6296,7 +6315,17 @@ async def download_and_send_audio(event):
                     ydl_download.download([video_url])
 
             except Exception as download_error:
-                await event.edit(f"**⚠️ خطأ في التحميل**: {str(download_error)}")
+                error_msg = str(download_error)
+                
+                # رسائل خطأ محددة لمساعدة المستخدم
+                if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+                    await event.edit("**⚠️ YouTube يطلب التحقق. حدث الكوكيز أو جرب لاحقاً**")
+                elif "Video unavailable" in error_msg:
+                    await event.edit("**⚠️ الفيديو غير متوفر أو محذوف**")
+                elif "Private video" in error_msg:
+                    await event.edit("**⚠️ الفيديو خاص ولا يمكن تحميله**")
+                else:
+                    await event.edit(f"**⚠️ خطأ في التحميل**: {str(download_error)}")
                 return
 
         # البحث عن الملف المحمل
@@ -6327,7 +6356,6 @@ async def download_and_send_audio(event):
 
         # تحويل إلى MP3
         try:
-            from pydub import AudioSegment
             audio = AudioSegment.from_file(download_path)
             
             # تحديد جودة الصوت بناءً على المدة
@@ -6345,14 +6373,11 @@ async def download_and_send_audio(event):
             await event.edit(f"**⚠️ خطأ في التحويل**: {str(conversion_error)}")
             # في حالة فشل التحويل، استخدم الملف الأصلي
             audio_path = download_path
-            duration_minutes = 0  # لا نعرف المدة
+            duration_minutes = 0
 
         # إضافة البيانات الوصفية (فقط للملفات MP3)
         if audio_path.endswith('.mp3'):
             try:
-                from mutagen.id3 import ID3NoHeaderError
-                from mutagen.easyid3 import EasyID3
-                
                 try:
                     audio_file = EasyID3(audio_path)
                 except ID3NoHeaderError:
@@ -6382,8 +6407,7 @@ async def download_and_send_audio(event):
                 event.chat_id, 
                 audio_path, 
                 caption=caption, 
-                supports_streaming=True,
-                voice_note=False  # إرسال كملف صوتي وليس رسالة صوتية
+                supports_streaming=True
             )
             
             # حذف رسالة "جاري الرفع"
@@ -6423,12 +6447,12 @@ def validate_cookies_file():
             print("⚠️ ملف الكوكيز فارغ!")
             return False
             
-        # التحقق من وجود كوكيز YouTube الأساسية (اختياري)
-        required_cookies = ['youtube.com']  # البحث عن أي كوكيز من YouTube
+        # التحقق من وجود كوكيز YouTube
+        youtube_cookies = ['youtube.com']
         
-        if not any(cookie in content for cookie in required_cookies):
+        if not any(cookie in content for cookie in youtube_cookies):
             print("⚠️ تحذير: لا توجد كوكيز YouTube في الملف")
-            return True  # نعود True لأن الملف قد يحتوي على كوكيز صالحة
+            return True
             
         print("✅ ملف الكوكيز صالح")
         return True
@@ -6436,32 +6460,6 @@ def validate_cookies_file():
     except Exception as e:
         print(f"⚠️ خطأ في قراءة ملف الكوكيز: {e}")
         return False
-
-# دالة إضافية لاختبار البحث
-async def test_search(query):
-    """اختبار البحث بدون تحميل"""
-    try:
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': False,
-        }
-        
-        with YoutubeDL(ydl_opts) as ydl:
-            search_info = ydl.extract_info(f"ytsearch1:{query}", download=False)
-            
-            if search_info and 'entries' in search_info and search_info['entries']:
-                video = search_info['entries'][0]
-                print(f"✅ نجح البحث: {video.get('title', 'لا يوجد عنوان')}")
-                return True
-            else:
-                print("❌ فشل البحث")
-                return False
-                
-    except Exception as e:
-        print(f"❌ خطأ في البحث: {e}")
-        return False
-
         
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
