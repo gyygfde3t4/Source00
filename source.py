@@ -7140,17 +7140,47 @@ async def download_pinterest(event):
 
         # أخذ أول صورة فقط
         image_data = scraped_images[0]
+        print(f"Image data type: {type(image_data)}")
+        print(f"Image data attributes: {dir(image_data)}")
         
         await event.edit("**╮ ❐ جـارِ التحميـل انتظـر ...𓅫╰**")
         
+        # الحصول على URL الصورة من الكائن
+        image_url = None
+        if hasattr(image_data, 'url'):
+            image_url = image_data.url
+        elif hasattr(image_data, 'image_url'):
+            image_url = image_data.image_url
+        elif hasattr(image_data, 'media_url'):
+            image_url = image_data.media_url
+        elif hasattr(image_data, 'src'):
+            image_url = image_data.src
+        else:
+            # جرب تحويله إلى dictionary
+            try:
+                image_dict = image_data.to_dict() if hasattr(image_data, 'to_dict') else vars(image_data)
+                print(f"Image dict keys: {list(image_dict.keys())}")
+                # ابحث عن URL في القاموس
+                possible_url_keys = ['url', 'image_url', 'media_url', 'src', 'link', 'download_url']
+                for key in possible_url_keys:
+                    if key in image_dict and image_dict[key]:
+                        image_url = image_dict[key]
+                        break
+            except Exception as dict_error:
+                print(f"Error converting to dict: {dict_error}")
+        
+        if not image_url:
+            await event.edit("**⚠️ لم يتم العثور على رابط الصورة**")
+            return
+        
+        print(f"Found image URL: {image_url}")
         # تحديد امتداد الملف
-        image_url = image_data.url
         file_extension = '.jpg'
-        if any(ext in image_url.lower() for ext in ['.mp4', '.mov', '.webm']):
+        if image_url and any(ext in image_url.lower() for ext in ['.mp4', '.mov', '.webm']):
             file_extension = '.mp4'
-        elif any(ext in image_url.lower() for ext in ['.png']):
+        elif image_url and any(ext in image_url.lower() for ext in ['.png']):
             file_extension = '.png'
-        elif any(ext in image_url.lower() for ext in ['.gif']):
+        elif image_url and any(ext in image_url.lower() for ext in ['.gif']):
             file_extension = '.gif'
         
         # تحديد اسم الملف المؤقت
@@ -7203,8 +7233,27 @@ async def download_pinterest(event):
         caption_text = f"**📌╎تم تحميـل {'الفيديـو' if is_video else 'الصـورة'} مـن بنترست**\n"
         caption_text += f"**📊 الحجـم:** {humanbytes(file_size)}"
         
-        if hasattr(image_data, 'alt_text') and image_data.alt_text:
-            caption_text += f"\n**📝 الوصـف:** {image_data.alt_text[:100]}"
+        # محاولة الحصول على النص البديل
+        alt_text = None
+        if hasattr(image_data, 'alt_text'):
+            alt_text = image_data.alt_text
+        elif hasattr(image_data, 'alt'):
+            alt_text = image_data.alt
+        elif hasattr(image_data, 'description'):
+            alt_text = image_data.description
+        else:
+            try:
+                image_dict = image_data.to_dict() if hasattr(image_data, 'to_dict') else vars(image_data)
+                alt_keys = ['alt_text', 'alt', 'description', 'title', 'caption']
+                for key in alt_keys:
+                    if key in image_dict and image_dict[key]:
+                        alt_text = image_dict[key]
+                        break
+            except:
+                pass
+        
+        if alt_text:
+            caption_text += f"\n**📝 الوصـف:** {alt_text[:100]}"
         
         try:
             # إرسال المحتوى
@@ -7272,7 +7321,6 @@ async def download_pinterest(event):
             await event.edit("**⚠️ خطأ في المتصفح - تأكد من تثبيت Chrome أو استخدم وضع API**")
         else:
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
-
 
 
                           
