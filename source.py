@@ -7167,8 +7167,15 @@ async def download_pinterest(event):
         else:
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
 
-# تجاهل تحذيرات SSL
+#######################
+import requests.packages.urllib3.exceptions
+
 warnings.filterwarnings("ignore", category=requests.packages.urllib3.exceptions.InsecureRequestWarning)
+
+# متغيرات التخزين المؤقت والتحكم في الذاكرة
+CACHE_DOWNLOADED_URLS = set()
+MAX_MEMORY_USAGE = 100  # ميجابايت كحد أقصى للذاكرة
+DELAY_BETWEEN_UPLOADS = 1.0  # ثانية واحدة بين كل صورة
 
 # الدوال المساعدة
 def humanbytes(size):
@@ -7181,13 +7188,31 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}TB"
 
+def get_memory_usage():
+    """قياس استخدام الذاكرة الحالي"""
+    try:
+        import psutil
+        process = psutil.Process(os.getpid())
+        return process.memory_info().rss / 1024 / 1024  # بالميجابايت
+    except ImportError:
+        return 0
+
+def cleanup_memory():
+    """تنظيف الذاكرة"""
+    gc.collect()
+    time.sleep(0.1)
+
+def generate_search_hash(query, offset=0):
+    """إنشاء هاش فريد للبحث مع الإزاحة لتجنب التكرار"""
+    return hashlib.md5(f"{query}_{offset}".encode()).hexdigest()
+
 async def progress(current, total, event, text):
-    """دالة لعرض شريط التقدم"""
+    """دالة لعرض شريط التقدم مع تحسين الذاكرة"""
     if not current or not total:
         return
     try:
         progress_percent = (current * 100) / total
-        if progress_percent % 10 < 1:
+        if progress_percent % 20 < 1:  # تقليل عدد التحديثات لتوفير الذاكرة
             await event.edit(f"{text}\n\n**╮ ❐ التقـدم:** `{progress_percent:.1f}%`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
     except Exception as e:
         print(f"Error in progress: {e}")
@@ -7228,74 +7253,150 @@ def load_pinterest_cookies():
     
     return None
 
-async def download_pinterest_images(query, count, temp_dir, cookies):
-    """تحميل الصور من Pinterest بناءً على البحث"""
+async def download_pinterest_images_batch(query, total_count, temp_dir, cookies, event, offset=0):
+    """تحميل الصور من Pinterest بشكل تدريجي لتجنب مشاكل الذاكرة"""
     try:
-        # إنشاء ملف الكوكيز المؤقت
-        cookies_file = None
-        if cookies:
-            cookies_file = os.path.join(temp_dir, "cookies.txt")
-            with open(cookies_file, 'w', encoding='utf-8') as f:
-                f.write(cookies)
+        all_downloaded_files = []
+        batch_size = min(20, total_count)  # تحميل 20 صورة في كل مرة
+        batches = (total_count + batch_size - 1) // batch_size
         
-        # بناء رابط البحث في Pinterest
-        search_url = f"https://www.pinterest.com/search/pins/?q={quote(query)}"
+        for batch_num in range(batches):
+            start_range = batch_num * batch_size + 1 + offset
+            end_range = min((batch_num + 1) * batch_size + offset, total_count + offset)
+            current_batch_size = end_range - start_range + 1
+            
+            if current_batch_size <= 0:
+                break
+                
+            await event.edit(f"**╮ ❐ تحميل المجموعة {batch_num + 1}/{batches} - من {start_range} إلى {end_range}**")
+            
+            # إنشاء ملف الكوكيز المؤقت
+            cookies_file = None
+            if cookies:
+                cookies_file = os.path.join(temp_dir, f"cookies_batch_{batch_num}.txt")
+                with open(cookies_file, 'w', encoding='utf-8') as f:
+                    f.write(cookies)
+            
+            # إضافة معاملات إضافية للحصول على صور متنوعة
+            search_params = f"{quote(query)}&page={batch_num + 1}"
+            search_url = f"https://www.pinterest.com/search/pins/?q={search_params}"
+            
+            # بناء أمر gallery-dl مع معاملات محسنة
+            cmd = [
+                'gallery-dl',
+                '--no-check-certificate',
+                '--write-metadata',
+                '--write-info-json',
+                '--directory', temp_dir,
+                '--no-part',
+                '--no-mtime',
+                '--range', f'{start_range}-{end_range}',
+                '--retries', '3',
+                '--timeout', '30',
+                '--sleep', '1',  # توقف ثانية بين كل طلب
+                search_url
+            ]
+            
+            if cookies_file:
+                cmd.extend(['--cookies', cookies_file])
+            
+            # تنفيذ الأمر
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            # البحث عن الملفات التي تم تنزيلها في هذه المجموعة
+            batch_files = []
+            for root, _, files in os.walk(temp_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    if file.endswith(('.jpg', '.jpeg', '.png')) and file_path not in all_downloaded_files:
+                        batch_files.append(file_path)
+            
+            all_downloaded_files.extend(batch_files)
+            
+            # تنظيف ملف الكوكيز المؤقت
+            if cookies_file and os.path.exists(cookies_file):
+                os.remove(cookies_file)
+            
+            # تنظيف الذاكرة بين المجموعات
+            cleanup_memory()
+            
+            # فحص استخدام الذاكرة
+            memory_usage = get_memory_usage()
+            if memory_usage > MAX_MEMORY_USAGE:
+                await event.edit(f"**⚠️ تجاوز استخدام الذاكرة الحد المسموح ({memory_usage:.1f}MB)**\n**سيتم المتابعة مع الصور المحملة حتى الآن**")
+                break
         
-        # بناء أمر gallery-dl
-        cmd = [
-            'gallery-dl',
-            '--no-check-certificate',
-            '--write-metadata',
-            '--write-info-json',
-            '--directory', temp_dir,
-            '--no-part',
-            '--no-mtime',
-            '--range', f'1-{count}',
-            search_url
-        ]
-        
-        if cookies_file:
-            cmd.extend(['--cookies', cookies_file])
-        
-        # تنفيذ الأمر
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        
-        stdout, stderr = await process.communicate()
-        
-        print(f"gallery-dl stdout: {stdout.decode()}")
-        print(f"gallery-dl stderr: {stderr.decode()}")
-        
-        if process.returncode != 0:
-            raise Exception(f"gallery-dl failed with code {process.returncode}: {stderr.decode()}")
-        
-        # البحث عن الملفات التي تم تنزيلها
-        downloaded_files = []
-        for root, _, files in os.walk(temp_dir):
-            for file in files:
-                if file.endswith(('.jpg', '.jpeg', '.png')):
-                    downloaded_files.append(os.path.join(root, file))
-        
-        if not downloaded_files:
-            raise Exception("No images found after download")
-        
-        return downloaded_files
+        return all_downloaded_files
         
     except Exception as e:
-        print(f"Error in download_pinterest_images: {e}")
+        print(f"Error in download_pinterest_images_batch: {e}")
         raise
 
-@client.on(events.NewMessage(pattern=r'\.صور (.*?) (\d+)'))
+async def send_images_with_delay(event, image_files, query):
+    """إرسال الصور مع تأخير وإدارة الذاكرة"""
+    total_images = len(image_files)
+    sent_count = 0
+    
+    for i, image_path in enumerate(image_files, start=1):
+        try:
+            # فحص الذاكرة قبل كل صورة
+            memory_usage = get_memory_usage()
+            if memory_usage > MAX_MEMORY_USAGE:
+                await event.edit(f"**⚠️ تم إيقاف الإرسال بسبب استخدام الذاكرة**\n**تم إرسال {sent_count} من {total_images} صورة**")
+                break
+            
+            # إرسال الصورة
+            await event.client.send_file(
+                event.chat_id,
+                image_path,
+                caption=f"**الصورة {i} من {total_images} لـ {query}**",
+                progress_callback=lambda d, t: asyncio.create_task(
+                    progress(d, t, event, f"**╮ ❐ جـارِ رفـع الصور {i}/{total_images} ...🖼️╰**")
+                ) if d and t else None
+            )
+            
+            sent_count += 1
+            
+            # حذف الصورة من الذاكرة بعد الإرسال
+            try:
+                os.remove(image_path)
+            except:
+                pass
+            
+            # تأخير ثانية واحدة بين كل صورة
+            if i < total_images:
+                await asyncio.sleep(DELAY_BETWEEN_UPLOADS)
+                
+            # تنظيف الذاكرة كل 5 صور
+            if i % 5 == 0:
+                cleanup_memory()
+                
+        except Exception as upload_error:
+            print(f"Error uploading image {i}: {upload_error}")
+            continue
+    
+    return sent_count
+
+# متغير لتتبع آخر بحث
+last_search_data = {}
+
+@client.on(events.NewMessage(pattern=r'\.صور (.*?) (\d+)(?:\s+(\d+))?'))
 async def pinterest_images_search(event):
+    global last_search_data
+    
     # استخراج البحث وعدد الصور من الأمر
     match = event.pattern_match
     query = match.group(1).strip()
     count = int(match.group(2))
+    offset = int(match.group(3)) if match.group(3) else 0  # إزاحة للحصول على صور جديدة
     
-    # تحديد الحد الأقصى للصور (50 صورة كحد أقصى)
+    # تحديد الحد الأقصى للصور
     if count > 50:
         await event.edit("**⚠️ الحد الأقصى لعدد الصور هو 50**")
         return
@@ -7303,42 +7404,56 @@ async def pinterest_images_search(event):
         await event.edit("**⚠️ يجب أن يكون عدد الصور على الأقل 1**")
         return
     
+    # التحقق من تكرار نفس البحث وإضافة إزاحة تلقائية
+    search_key = f"{query}_{count}"
+    if search_key in last_search_data and offset == 0:
+        offset = last_search_data[search_key].get('last_offset', 0) + count
+        await event.edit(f"**📌 تم اكتشاف بحث متكرر - سيتم البحث عن صور جديدة (الإزاحة: {offset})**")
+    
     await event.edit(f"**╮ جـارِ البحث عن {count} صورة لـ {query} في بنترست... 📌╰**")
 
+    temp_dir = None
     try:
         # إنشاء مجلد التحميل المؤقت
         temp_dir = tempfile.mkdtemp()
         
-        # تحميل الكوكيز من ملف pincook.txt
+        # تحميل الكوكيز
         cookies = load_pinterest_cookies()
-        
         if not cookies:
             await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:** `pincook.txt`")
             return
         
-        # تحميل الصور
-        downloaded_files = await download_pinterest_images(query, count, temp_dir, cookies)
+        # تحميل الصور بشكل تدريجي
+        downloaded_files = await download_pinterest_images_batch(
+            query, count, temp_dir, cookies, event, offset
+        )
+        
+        if not downloaded_files:
+            await event.edit("**⚠️ لم يتم العثور على أي صور**")
+            return
         
         if len(downloaded_files) < count:
             await event.edit(f"**⚠️ تم العثور على {len(downloaded_files)} صور فقط من أصل {count}**")
         
-        await event.edit(f"**╮ ❐ جـارِ رفـع {len(downloaded_files)} صورة ...🖼️╰**")
+        await event.edit(f"**╮ ❐ جـارِ رفـع {len(downloaded_files)} صورة مع تأخير ثانية بين كل صورة ...🖼️╰**")
         
-        # إرسال الصور
-        for i, image_path in enumerate(downloaded_files, start=1):
-            try:
-                await event.client.send_file(
-                    event.chat_id,
-                    image_path,
-                    caption=f"**الصورة {i} من {len(downloaded_files)} لـ {query}**",
-                    progress_callback=lambda d, t: asyncio.create_task(
-                        progress(d, t, event, f"**╮ ❐ جـارِ رفـع الصور {i}/{len(downloaded_files)} ...🖼️╰**")
-                    ) if d and t else None
-                )
-            except Exception as upload_error:
-                print(f"Error uploading image {i}: {upload_error}")
+        # إرسال الصور مع التأخير وإدارة الذاكرة
+        sent_count = await send_images_with_delay(event, downloaded_files, query)
         
-        await event.edit(f"**╮ ❐ تم إرسـال {len(downloaded_files)} صورة لـ {query} بنجـاح ✅╰**")
+        # تحديث بيانات آخر بحث
+        last_search_data[search_key] = {
+            'last_offset': offset,
+            'sent_count': sent_count,
+            'timestamp': time.time()
+        }
+        
+        # تنظيف البيانات القديمة (أكبر من ساعة)
+        current_time = time.time()
+        for key in list(last_search_data.keys()):
+            if current_time - last_search_data[key]['timestamp'] > 3600:
+                del last_search_data[key]
+        
+        await event.edit(f"**╮ ❐ تم إرسـال {sent_count} صورة لـ {query} بنجـاح ✅╰**\n\n**💡 لتحميل صور جديدة، استخدم:** `.صور {query} {count} {offset + count}`")
 
     except Exception as e:
         error_msg = str(e).lower()
@@ -7354,12 +7469,25 @@ async def pinterest_images_search(event):
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
 
     finally:
-        # تنظيف الملفات المؤقتة
-        try:
-            shutil.rmtree(temp_dir)
-        except Exception as cleanup_error:
-            print(f"Cleanup error: {cleanup_error}")
+        # تنظيف شامل للذاكرة والملفات المؤقتة
+        if temp_dir:
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as cleanup_error:
+                print(f"Cleanup error: {cleanup_error}")
+        
+        # تنظيف الذاكرة
+        cleanup_memory()
 
+# أمر لتنظيف الذاكرة يدوياً
+@client.on(events.NewMessage(pattern=r'\.تنظيف'))
+async def manual_cleanup(event):
+    cleanup_memory()
+    CACHE_DOWNLOADED_URLS.clear()
+    last_search_data.clear()
+    
+    memory_after = get_memory_usage()
+    await event.edit(f"**🧹 تم تنظيف الذاكرة**\n\n**💾 استخدام الذاكرة الحالي:** {memory_after:.1f} MB")
 
                           
 def run_server():
