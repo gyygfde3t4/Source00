@@ -6893,6 +6893,7 @@ def humanbytes(size):
 
 ##########################
 
+
 # الدوال المساعدة
 def humanbytes(size):
     """تحويل الحجم إلى صيغة مقروءة"""
@@ -7015,7 +7016,6 @@ async def download_pinterest(event):
 
     # توسيع الرابط المختصر إذا كان من pin.it
     if 'pin.it' in input_url:
-        await event.edit("**╮ ❐ جـارِ توسـيع الرابـط المختصـر ...📌╰**")
         input_url = expand_pinterest_url(input_url)
         if not input_url or 'pinterest.com' not in input_url:
             await event.edit("**⚠️ فشل في توسيع الرابط المختصر**")
@@ -7040,8 +7040,6 @@ async def download_pinterest(event):
         if not cookies:
             await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:**\n• `pincook.txt` (Netscape format)\n• `pincook.json` (JSON format)\n\n**لتصدير الكوكيز:**\n1. افتح Pinterest وسجل دخولك\n2. استخدم إضافة Cookie Editor\n3. صدّر الكوكيز وضعها في الملف")
             return
-
-        await event.edit("**╮ ❐ جـارِ استخـراج المحتـوى ...𓅫╰**")
         
         # تهيئة PinterestDL باستخدام API mode مع الكوكيز
         pinterest_dl = PinterestDL.with_api(
@@ -7080,7 +7078,6 @@ async def download_pinterest(event):
                 
                 # جرب استخراج Pin ID واستخدام URL مباشر
                 try:
-                    await event.edit("**╮ ❐ محـاولة اسـتخراج البيانـات مباشـرة ...𓅫╰**")
                     pin_id = None
                     
                     # استخراج Pin ID من URL
@@ -7108,8 +7105,6 @@ async def download_pinterest(event):
                     print(f"Direct extraction failed: {direct_error}")
                     # كحل أخير، جرب الحصول على البيانات من Pinterest API مباشرة
                     try:
-                        await event.edit("**╮ ❐ محـاولة أخـيرة عبـر API مباشـر ...𓅫╰**")
-                        
                         # إنشاء Pinterest DL جديد بإعدادات مختلفة
                         final_dl = PinterestDL.with_api(
                             timeout=30,
@@ -7145,43 +7140,65 @@ async def download_pinterest(event):
         
         await event.edit("**╮ ❐ جـارِ التحميـل انتظـر ...𓅫╰**")
         
-        # الحصول على URL الصورة من الكائن
+        # التحقق من وجود فيديو أولاً
+        is_video = False
+        video_url = None
         image_url = None
-        if hasattr(image_data, 'url'):
+        
+        # التحقق من video_stream
+        if hasattr(image_data, 'video_stream') and image_data.video_stream:
+            is_video = True
+            video_url = image_data.video_stream
+            print(f"Found video stream: {video_url}")
+        
+        # الحصول على URL الصورة من الكائن
+        if hasattr(image_data, 'src'):
+            image_url = image_data.src
+        elif hasattr(image_data, 'url'):
             image_url = image_data.url
         elif hasattr(image_data, 'image_url'):
             image_url = image_data.image_url
         elif hasattr(image_data, 'media_url'):
             image_url = image_data.media_url
-        elif hasattr(image_data, 'src'):
-            image_url = image_data.src
         else:
             # جرب تحويله إلى dictionary
             try:
                 image_dict = image_data.to_dict() if hasattr(image_data, 'to_dict') else vars(image_data)
                 print(f"Image dict keys: {list(image_dict.keys())}")
                 # ابحث عن URL في القاموس
-                possible_url_keys = ['url', 'image_url', 'media_url', 'src', 'link', 'download_url']
+                possible_url_keys = ['src', 'url', 'image_url', 'media_url', 'link', 'download_url']
                 for key in possible_url_keys:
                     if key in image_dict and image_dict[key]:
                         image_url = image_dict[key]
                         break
+                        
+                # ابحث عن video_stream في القاموس أيضاً
+                if 'video_stream' in image_dict and image_dict['video_stream']:
+                    is_video = True
+                    video_url = image_dict['video_stream']
+                    print(f"Found video stream in dict: {video_url}")
+                    
             except Exception as dict_error:
                 print(f"Error converting to dict: {dict_error}")
         
-        if not image_url:
-            await event.edit("**⚠️ لم يتم العثور على رابط الصورة**")
+        # اختيار الـ URL المناسب للتحميل
+        download_url = video_url if is_video and video_url else image_url
+        
+        if not download_url:
+            await event.edit("**⚠️ لم يتم العثور على رابط المحتوى**")
             return
         
-        print(f"Found image URL: {image_url}")
+        print(f"Found {'video' if is_video else 'image'} URL: {download_url}")
+        
         # تحديد امتداد الملف
-        file_extension = '.jpg'
-        if image_url and any(ext in image_url.lower() for ext in ['.mp4', '.mov', '.webm']):
+        if is_video:
             file_extension = '.mp4'
-        elif image_url and any(ext in image_url.lower() for ext in ['.png']):
+        elif download_url and any(ext in download_url.lower() for ext in ['.png']):
             file_extension = '.png'
-        elif image_url and any(ext in image_url.lower() for ext in ['.gif']):
+        elif download_url and any(ext in download_url.lower() for ext in ['.gif']):
             file_extension = '.gif'
+        else:
+            file_extension = '.jpg'
         
         # تحديد اسم الملف المؤقت
         temp_filename = os.path.join(temp_dir, f"pinterest_media{file_extension}")
@@ -7190,7 +7207,7 @@ async def download_pinterest(event):
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Referer': 'https://www.pinterest.com/',
-            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8' if not is_video else 'video/mp4,video/*,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br'
         }
@@ -7200,7 +7217,7 @@ async def download_pinterest(event):
             connector=aiohttp.TCPConnector(limit=10)
         ) as session:
             download_success = await download_file_async(
-                image_url, 
+                download_url, 
                 temp_filename, 
                 session, 
                 headers
@@ -7223,8 +7240,7 @@ async def download_pinterest(event):
             os.remove(temp_filename)
             return
 
-        # تحديد نوع المحتوى
-        is_video = file_extension in ['.mp4', '.mov', '.webm']
+        # تحديد نوع المحتوى للعرض
         is_gif = file_extension == '.gif'
         
         await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
@@ -7235,16 +7251,16 @@ async def download_pinterest(event):
         
         # محاولة الحصول على النص البديل
         alt_text = None
-        if hasattr(image_data, 'alt_text'):
-            alt_text = image_data.alt_text
-        elif hasattr(image_data, 'alt'):
+        if hasattr(image_data, 'alt') and image_data.alt:
             alt_text = image_data.alt
+        elif hasattr(image_data, 'alt_text'):
+            alt_text = image_data.alt_text
         elif hasattr(image_data, 'description'):
             alt_text = image_data.description
         else:
             try:
                 image_dict = image_data.to_dict() if hasattr(image_data, 'to_dict') else vars(image_data)
-                alt_keys = ['alt_text', 'alt', 'description', 'title', 'caption']
+                alt_keys = ['alt', 'alt_text', 'description', 'title', 'caption']
                 for key in alt_keys:
                     if key in image_dict and image_dict[key]:
                         alt_text = image_dict[key]
@@ -7252,7 +7268,7 @@ async def download_pinterest(event):
             except:
                 pass
         
-        if alt_text:
+        if alt_text and len(alt_text.strip()) > 0:
             caption_text += f"\n**📝 الوصـف:** {alt_text[:100]}"
         
         try:
@@ -7321,6 +7337,7 @@ async def download_pinterest(event):
             await event.edit("**⚠️ خطأ في المتصفح - تأكد من تثبيت Chrome أو استخدم وضع API**")
         else:
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
+
 
 
                           
