@@ -7168,7 +7168,7 @@ async def download_pinterest(event):
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
 
 #######################
-
+import gc
 import requests.packages.urllib3.exceptions
 
 warnings.filterwarnings("ignore", category=requests.packages.urllib3.exceptions.InsecureRequestWarning)
