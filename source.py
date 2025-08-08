@@ -7271,7 +7271,6 @@ async def download_pinterest_images(query, count, temp_dir, cookies, offset=0):
             '--range', f'{offset + 1}-{offset + count}',  # استخدام offset لتجنب التكرار
             '--sleep', '0.5',  # تأخير بين الطلبات
             '--retries', '3',  # إعادة المحاولة
-            '--timeout', '30',  # مهلة زمنية
             search_url
         ]
         
