@@ -50,6 +50,7 @@ from deep_translator import GoogleTranslator
 from telethon import events, functions, types, utils
 from pydub import AudioSegment
 from mutagen.easyid3 import EasyID3
+from urllib.parse import urlparse
 
 # ========== Telethon - استيراد رئيسي ==========
 from telethon import TelegramClient, events, functions, types, Button
@@ -6886,6 +6887,36 @@ def humanbytes(size):
     return f"{size:.2f}PB"                        
 
 
+
+# الدوال المساعدة
+def humanbytes(size):
+    """تحويل الحجم إلى صيغة مقروءة"""
+    if not size:
+        return "0B"
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.2f}{unit}"
+        size /= 1024
+    return f"{size:.2f}TB"
+
+async def progress(current, total, event, text):
+    """دالة لعرض شريط التقدم"""
+    if not current or not total:
+        return
+    
+    try:
+        progress_percent = (current * 100) / total
+        if progress_percent % 10 < 1:  # تحديث كل 10%
+            await event.edit(f"{text}\n\n**╮ ❐ التقـدم:** `{progress_percent:.1f}%`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
+    except Exception as e:
+        print(f"Error in progress: {e}")
+
+def clean_filename(filename):
+    """تنظيف اسم الملف من الأحرف غير المسموح بها"""
+    keepchars = (' ', '.', '_', '-')
+    return "".join(c for c in filename if c.isalnum() or c in keepchars).rstrip()
+
+# الحدث الرئيسي
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
 async def download_and_send_pinterest(event):
     # التحقق من وجود رابط
@@ -6899,17 +6930,29 @@ async def download_and_send_pinterest(event):
         await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط بنترست .بنترست + رابط او بالـرد ع رابـط 📌╰**")
         return
 
+    # التحقق من أن الرابط من Pinterest
+    if not any(domain in input_url for domain in ['pinterest.com', 'pin.it']):
+        await event.edit("**⚠️ يـجب إدخـال رابـط بنترست صـحيح**")
+        return
+
     await event.edit("**╮ جـارِ تحميـل المحتـوى مـن بنترسـت... 📌♥️╰**")
 
     try:
+        # إنشاء مجلد التحميل إذا لم يكن موجوداً
+        if not os.path.exists('downloads'):
+            os.makedirs('downloads')
+
         # إعدادات yt-dlp المحدثة
         ydl_opts = {
             'format': 'bestvideo+bestaudio/best',
-            'outtmpl': 'pinterest_%(id)s.%(ext)s',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
             'quiet': True,
             'no_warnings': True,
             'force_generic_extractor': True,
             'extract_flat': False,
+            'noplaylist': True,
+            'writethumbnail': True,
+            'merge_output_format': 'mp4',
             'headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Referer': 'https://www.pinterest.com/',
@@ -6921,30 +6964,48 @@ async def download_and_send_pinterest(event):
         await event.edit("**╮ جـارِ استخـراج معلومـات المحتـوى... 📌♥️╰**")
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(input_url, download=True)
-            filename = ydl.prepare_filename(info)
-            
-            # إذا كان المحتوى عبارة عن صورة
-            if not filename.endswith(('.mp4', '.webm', '.mkv')):
-                filename = f"pinterest_{info['id']}.jpg"
-                if not os.path.exists(filename):
-                    raise Exception("لم يتم العثور على ملف الوسائط")
+            try:
+                info = ydl.extract_info(input_url, download=True)
+                filename = ydl.prepare_filename(info)
+                
+                # إذا كان هناك صورة مصغرة
+                if info.get('thumbnail') and not os.path.exists(filename):
+                    thumbnail = info['thumbnail']
+                    if thumbnail.startswith('http'):
+                        ext = os.path.splitext(urlparse(thumbnail).path)[1] or '.jpg'
+                        filename = f"downloads/{clean_filename(info.get('title', 'pinterest'))}{ext}"
+                        
+                        import requests
+                        r = requests.get(thumbnail, stream=True)
+                        if r.status_code == 200:
+                            with open(filename, 'wb') as f:
+                                for chunk in r.iter_content(1024):
+                                    f.write(chunk)
+            except yt_dlp.utils.DownloadError as e:
+                if "Private content" in str(e):
+                    await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل الدخول**")
+                    return
+                raise e
+
+        # إذا لم يتم العثور على ملف
+        if not os.path.exists(filename):
+            await event.edit("**⚠️ لم يتم العثور على محتوى قابل للتحميل**")
+            return
 
         await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
 
-        # التحقق من وجود الملف وحجمه
-        if not os.path.exists(filename):
-            raise Exception("لم يتم العثور على الملف المحمل")
-
+        # التحقق من حجم الملف
         file_size = os.path.getsize(filename)
-        max_size = 100 * 1024 * 1024  # 100MB للفيديوهات والصور
+        max_size = 100 * 1024 * 1024  # 100MB
         
         if file_size > max_size:
             await event.edit(f"**⚠️ الملف كبير جداً للإرسال ({humanbytes(file_size)})**\n**الحد الأقصى: {humanbytes(max_size)}**")
             os.remove(filename)
             return
 
-        is_video = filename.endswith(('.mp4', '.avi', '.mov', '.webm', '.mkv'))
+        # تحديد نوع الملف
+        is_video = filename.lower().endswith(('.mp4', '.avi', '.mov', '.webm', '.mkv'))
+        is_image = filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
 
         # إرسال المحتوى
         try:
@@ -6958,7 +7019,7 @@ async def download_and_send_pinterest(event):
                         progress(d, t, event, "**╮ ❐ جـارِ رفـع الفيـديـو ...🎬╰**")
                     ) if d and t else None
                 )
-            else:
+            elif is_image:
                 await event.client.send_file(
                     event.chat_id,
                     filename,
@@ -6967,6 +7028,9 @@ async def download_and_send_pinterest(event):
                         progress(d, t, event, "**╮ ❐ جـارِ رفـع الصـورة ...🖼️╰**")
                     ) if d and t else None
                 )
+            else:
+                await event.edit("**⚠️ نوع الملف غير مدعوم**")
+                return
 
             await event.edit(f"**╮ ❐ تم إرسـال المحتـوى بنجـاح ✅**\n**╰ ❐ النـوع:** {'فيديو' if is_video else 'صورة'}\n**📊 الحجـم:** {humanbytes(file_size)}")
 
@@ -6974,91 +7038,32 @@ async def download_and_send_pinterest(event):
             print(f"Upload error: {upload_error}")
             await event.edit("**⚠️ فشل في رفع الملف، يرجى المحاولة لاحقاً**")
 
-        # تنظيف الملف المؤقت
-        os.remove(filename)
+        # تنظيف الملفات المؤقتة
+        try:
+            if os.path.exists(filename):
+                os.remove(filename)
+            thumb_file = filename.rsplit('.', 1)[0] + '.webp'
+            if os.path.exists(thumb_file):
+                os.remove(thumb_file)
+        except Exception as clean_error:
+            print(f"Error cleaning files: {clean_error}")
 
     except Exception as e:
         error_msg = str(e).lower()
         print(f"Main error: {e}")
         
-        if "403" in error_msg or "forbidden" in error_msg:
-            await event.edit("**⚠️ رفض الوصول - قد تحتاج لتحديث الكوكيز أو الرابط محمي**")
-        elif "private content" in error_msg:
+        if "http error 403" in error_msg:
+            await event.edit("**⚠️ رفض الوصول - قد تحتاج لتحديث الكوكيز**")
+        elif "private" in error_msg:
             await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل الدخول**")
         elif "not found" in error_msg or "unavailable" in error_msg:
             await event.edit("**⚠️ المحتوى غير متوفر أو تم حذفه**")
-        elif "unsupported" in error_msg:
+        elif "unsupported url" in error_msg:
             await event.edit("**⚠️ الرابط غير مدعوم - تأكد من أنه رابط Pinterest صحيح**")
         elif "network" in error_msg or "connection" in error_msg:
             await event.edit("**⚠️ مشكلة في الاتصال - يرجى المحاولة لاحقاً**")
         else:
-            await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:100]}...")
-
-png'
-                    elif 'webp' in content_type:
-                        ext = '.webp'
-                    else:
-                        ext = '.jpg'  # افتراضي
-                else:
-                    # تحديد الامتداد من الرابط
-                    if media_url.lower().endswith('.mp4'):
-                        ext = '.mp4'
-                    elif any(media_url.lower().endswith(f'.{fmt}') for fmt in ['jpg', 'jpeg', 'png', 'webp']):
-                        ext = '.' + media_url.split('.')[-1].lower().split('?')[0]
-                    else:
-                        ext = '.jpg'  # افتراضي
-                
-                filename = f"downloads/pinterest_{hash(url) % 100000}{ext}"
-                
-                # حفظ الملف
-                with open(filename, 'wb') as f:
-                    for chunk in media_response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                
-                # التحقق من حفظ الملف بنجاح
-                if os.path.exists(filename) and os.path.getsize(filename) > 0:
-                    file_size = os.path.getsize(filename)
-                    print(f"تم تحميل الملف بنجاح: {filename} ({humanbytes(file_size)})")
-                    return filename
-                else:
-                    raise Exception("فشل في حفظ الملف")
-                    
-            except Exception as download_error:
-                print(f"محاولة {attempt + 1} فشلت: {download_error}")
-                if attempt == max_retries - 1:
-                    raise download_error
-                continue
-        
-        return None
-        
-    except Exception as error:
-        print(f"خطأ في التحميل: {error}")
-        return None
-
-# تم حذف باقي الدوال المساعدة لأن الكود سيستخدم yt-dlp مباشرة
-
-async def progress(current, total, event, text):
-    """دالة لعرض شريط التقدم"""
-    if not current or not total:
-        return
-    
-    try:
-        progress_percent = (current * 100) / total
-        if progress_percent % 10 < 1:  # تحديث كل 10%
-            await event.edit(f"{text}\n\n**╮ ❐ التقـدم:** `{progress_percent:.1f}%`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
-    except:
-        pass
-
-def humanbytes(size):
-    """تحويل الحجم إلى صيغة مقروءة"""
-    if not size:
-        return "0B"
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size < 1024:
-            return f"{size:.2f}{unit}"
-        size /= 1024
-    return f"{size:.2f}TB"
+            await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
 
                           
 def run_server():
