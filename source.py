@@ -6909,9 +6909,30 @@ async def progress(current, total, event, text):
     except Exception as e:
         print(f"Error in progress: {e}")
 
+
+# الدوال المساعدة (نفسها كما في الكود السابق)
+def humanbytes(size):
+    if not size:
+        return "0B"
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.2f}{unit}"
+        size /= 1024
+    return f"{size:.2f}TB"
+
+async def progress(current, total, event, text):
+    if not current or not total:
+        return
+    try:
+        progress_percent = (current * 100) / total
+        if progress_percent % 10 < 1:
+            await event.edit(f"{text}\n\n**╮ ❐ التقـدم:** `{progress_percent:.1f}%`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
+    except Exception as e:
+        print(f"Error in progress: {e}")
+
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
 async def download_pinterest(event):
-    # التحقق من وجود رابط
+    # التحقق من وجود رابط (نفس الكود السابق)
     reply = await event.get_reply_message()
     input_url = event.pattern_match.group(1).strip()
     
@@ -6929,32 +6950,36 @@ async def download_pinterest(event):
     await event.edit("**╮ جـارِ تحميـل المحتـوى مـن بنترسـت... 📌♥️╰**")
 
     try:
-        # إنشاء مجلد التحميل إذا لم يكن موجوداً
         if not os.path.exists('downloads'):
             os.makedirs('downloads')
 
-        # إعدادات pinterest-dl
+        # التعديل الرئيسي: طريقة تحميل الكوكيز الصحيحة
         pdl = PinterestDL(
-            cookies_file='pincook.txt' if os.path.exists('pincook.txt') else None,
             output_dir='downloads',
             quiet=True
         )
 
-        # الحصول على معلومات المحتوى
-        info = pdl.extract_info(input_url)
+        # إذا كان هناك ملف كوكيز، نضيفه يدوياً
+        cookies = {}
+        if os.path.exists('pincook.txt'):
+            from http.cookiejar import MozillaCookieJar
+            cj = MozillaCookieJar('pincook.txt')
+            cj.load()
+            cookies = {cookie.name: cookie.value for cookie in cj}
+
+        # الحصول على معلومات المحتوى مع الكوكيز
+        info = pdl.extract_info(input_url, cookies=cookies if cookies else None)
         if not info or not info.get('urls'):
             raise Exception("لم يتم العثور على محتوى قابل للتحميل")
 
-        # تحميل أفضل جودة متاحة
+        # باقي الكود يبقى كما هو (تحميل الملف وإرساله)
         media_url = info['urls'].get('hd') or info['urls'].get('sd') or info['urls'].get('image')
         if not media_url:
             raise Exception("لا توجد روابط وسائط متاحة")
 
-        # تحديد اسم الملف
         ext = '.mp4' if 'video' in info['type'] else '.jpg'
         filename = f"downloads/pin_{info.get('id', 'temp')}{ext}"
 
-        # تحميل الملف
         await event.edit("**╮ ❐ جـارِ التحميـل انتظـر ...𓅫╰**")
         
         headers = {
@@ -6962,23 +6987,23 @@ async def download_pinterest(event):
             'Referer': 'https://www.pinterest.com/'
         }
         
-        response = requests.get(media_url, headers=headers, stream=True)
+        # إضافة الكوكيز إلى الطلب إذا كانت موجودة
+        response = requests.get(media_url, headers=headers, cookies=cookies, stream=True)
         response.raise_for_status()
         
         with open(filename, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-        # التحقق من حجم الملف
+        # باقي الكود يبقى كما هو (التحقق من الحجم والإرسال)
         file_size = os.path.getsize(filename)
-        max_size = 100 * 1024 * 1024  # 100MB
+        max_size = 100 * 1024 * 1024
         
         if file_size > max_size:
             await event.edit(f"**⚠️ الملف كبير جداً للإرسال ({humanbytes(file_size)})**\n**الحد الأقصى: {humanbytes(max_size)}**")
             os.remove(filename)
             return
 
-        # إرسال المحتوى
         await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
         
         is_video = filename.endswith('.mp4')
@@ -7010,7 +7035,6 @@ async def download_pinterest(event):
             print(f"Upload error: {upload_error}")
             await event.edit("**⚠️ فشل في رفع الملف، يرجى المحاولة لاحقاً**")
 
-        # تنظيف الملف المؤقت
         if os.path.exists(filename):
             os.remove(filename)
 
@@ -7019,7 +7043,7 @@ async def download_pinterest(event):
         print(f"Main error: {e}")
         
         if "403" in error_msg or "forbidden" in error_msg:
-            await event.edit("**⚠️ تم حظر الوصول - جرب استخدام ملف كوكيز صالح**")
+            await event.edit("**⚠️ تم حظر الوصول - جرب استخدام ملف كوكيز صالح أو VPN**")
         elif "private" in error_msg:
             await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل دخول**")
         elif "not found" in error_msg or "unavailable" in error_msg:
