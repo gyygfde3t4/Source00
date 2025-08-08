@@ -30,6 +30,8 @@ import contextlib
 import sys
 from mutagen.id3 import ID3NoHeaderError
 import glob
+import tempfile
+import aiofiles
 
 # ========== مكتبات HTTP وطلبات الويب ==========
 import requests
@@ -6934,6 +6936,45 @@ async def progress(current, total, event, text):
     except Exception as e:
         print(f"Error in progress: {e}")
 
+
+
+
+
+# الدوال المساعدة
+def humanbytes(size):
+    """تحويل الحجم إلى صيغة مقروءة"""
+    if not size:
+        return "0B"
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.2f}{unit}"
+        size /= 1024
+    return f"{size:.2f}TB"
+
+async def progress(current, total, event, text):
+    """دالة لعرض شريط التقدم"""
+    if not current or not total:
+        return
+    try:
+        progress_percent = (current * 100) / total
+        if progress_percent % 10 < 1:
+            await event.edit(f"{text}\n\n**╮ ❐ التقـدم:** `{progress_percent:.1f}%`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
+    except Exception as e:
+        print(f"Error in progress: {e}")
+
+async def download_file_async(url, filename, session, headers=None):
+    """تحميل الملف بطريقة غير متزامنة"""
+    try:
+        async with session.get(url, headers=headers or {}) as response:
+            response.raise_for_status()
+            async with aiofiles.open(filename, 'wb') as f:
+                async for chunk in response.content.iter_chunked(8192):
+                    await f.write(chunk)
+        return True
+    except Exception as e:
+        print(f"Download error: {e}")
+        return False
+
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
 async def download_pinterest(event):
     # التحقق من وجود رابط
@@ -6954,95 +6995,182 @@ async def download_pinterest(event):
     await event.edit("**╮ جـارِ تحميـل المحتـوى مـن بنترسـت... 📌♥️╰**")
 
     try:
-        # إنشاء مجلد التحميل إذا لم يكن موجوداً
-        download_dir = 'pinterest_downloads'
-        if not os.path.exists(download_dir):
-            os.makedirs(download_dir)
-
-        # التهيئة الأساسية لمكتبة pinterest-dl
-        pdl = PinterestDL()
-
-        # تحميل الكوكيز إذا كانت موجودة
-        cookies = {}
-        if os.path.exists('pincook.txt'):
-            cj = MozillaCookieJar('pincook.txt')
-            cj.load()
-            cookies = {cookie.name: cookie.value for cookie in cj}
-
-        # الحصول على معلومات المحتوى
-        info = pdl.extract_info(input_url, cookies=cookies if cookies else None)
-        if not info or not info.get('urls'):
-            raise Exception("لم يتم العثور على محتوى قابل للتحميل")
-
-        # الحصول على أفضل رابط متاح
-        media_url = info['urls'].get('hd') or info['urls'].get('sd') or info['urls'].get('image')
-        if not media_url:
-            raise Exception("لا توجد روابط وسائط متاحة")
-
-        # تحديد اسم الملف
-        ext = '.mp4' if 'video' in info['type'] else '.jpg'
-        filename = os.path.join(download_dir, f"pin_{info.get('id', 'temp')}{ext}")
-
-        await event.edit("**╮ ❐ جـارِ التحميـل انتظـر ...𓅫╰**")
+        # إنشاء مجلد التحميل المؤقت
+        temp_dir = tempfile.mkdtemp()
         
-        # إعداد رؤوس الطلب
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': 'https://www.pinterest.com/'
-        }
+        # تحميل الكوكيز (مطلوبة دائماً للوصول لمحتوى Pinterest)
+        cookies = None
+        cookie_files = ['pincook.json', 'cookies.json', 'pinterest_cookies.json']
         
-        # تحميل الملف
-        response = requests.get(media_url, headers=headers, cookies=cookies, stream=True)
-        response.raise_for_status()
+        for cookie_file in cookie_files:
+            if os.path.exists(cookie_file):
+                try:
+                    with open(cookie_file, 'r') as f:
+                        cookies = json.load(f)
+                    print(f"Loaded cookies from: {cookie_file}")
+                    break
+                except Exception as e:
+                    print(f"Error loading cookies from {cookie_file}: {e}")
         
-        with open(filename, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-
-        # التحقق من حجم الملف
-        file_size = os.path.getsize(filename)
-        max_size = 100 * 1024 * 1024  # 100MB
-        
-        if file_size > max_size:
-            await event.edit(f"**⚠️ الملف كبير جداً للإرسال ({humanbytes(file_size)})**\n**الحد الأقصى: {humanbytes(max_size)}**")
-            os.remove(filename)
+        if not cookies:
+            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**للحصول على الكوكيز:**\n1. افتح Pinterest في المتصفح\n2. سجل دخولك\n3. اضغط F12 → Application → Cookies\n4. احفظ الكوكيز في ملف `pincook.json`")
             return
 
-        # إرسال المحتوى
+        await event.edit("**╮ ❐ جـارِ استخـراج المحتـوى ...𓅫╰**")
+        
+        # تهيئة PinterestDL باستخدام API mode مع الكوكيز
+        pinterest_dl = PinterestDL.with_api(
+            timeout=10,
+            verbose=False,
+            ensure_cap=False
+        ).with_cookies(cookies)
+        
+        # سكريب المحتوى
+        try:
+            scraped_images = await asyncio.get_event_loop().run_in_executor(
+                None, 
+                lambda: pinterest_dl.scrape(
+                    url=input_url,
+                    num=1,  # نحن نريد فقط صورة/فيديو واحد من البين
+                    min_resolution=(100, 100)  # دقة منخفضة للتأكد من التحميل
+                )
+            )
+        except Exception as e:
+            # في حالة فشل API mode، نجرب browser mode مع الكوكيز
+            print(f"API mode failed, trying browser mode: {e}")
+            try:
+                pinterest_dl = PinterestDL.with_browser(
+                    browser_type="chrome",
+                    headless=True
+                ).with_cookies(cookies)
+                
+                scraped_images = await asyncio.get_event_loop().run_in_executor(
+                    None, 
+                    lambda: pinterest_dl.scrape(
+                        url=input_url,
+                        num=1
+                    )
+                )
+            except Exception as browser_error:
+                raise Exception(f"فشل في كلا الوضعين: API ({str(e)[:100]}) و Browser ({str(browser_error)[:100]})")
+
+        if not scraped_images:
+            await event.edit("**⚠️ لم يتم العثور على محتوى قابل للتحميل**")
+            return
+
+        # أخذ أول صورة فقط
+        image_data = scraped_images[0]
+        
+        await event.edit("**╮ ❐ جـارِ التحميـل انتظـر ...𓅫╰**")
+        
+        # تحديد امتداد الملف
+        image_url = image_data.url
+        file_extension = '.jpg'
+        if any(ext in image_url.lower() for ext in ['.mp4', '.mov', '.webm']):
+            file_extension = '.mp4'
+        elif any(ext in image_url.lower() for ext in ['.png']):
+            file_extension = '.png'
+        elif any(ext in image_url.lower() for ext in ['.gif']):
+            file_extension = '.gif'
+        
+        # تحديد اسم الملف المؤقت
+        temp_filename = os.path.join(temp_dir, f"pinterest_media{file_extension}")
+        
+        # تحميل الملف
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://www.pinterest.com/',
+            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br'
+        }
+        
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30),
+            connector=aiohttp.TCPConnector(limit=10)
+        ) as session:
+            download_success = await download_file_async(
+                image_url, 
+                temp_filename, 
+                session, 
+                headers
+            )
+        
+        if not download_success or not os.path.exists(temp_filename):
+            await event.edit("**⚠️ فشل في تحميل الملف**")
+            return
+        
+        # التحقق من حجم الملف
+        file_size = os.path.getsize(temp_filename)
+        if file_size == 0:
+            await event.edit("**⚠️ الملف فارغ أو تالف**")
+            os.remove(temp_filename)
+            return
+            
+        max_size = 50 * 1024 * 1024  # 50MB
+        if file_size > max_size:
+            await event.edit(f"**⚠️ الملف كبير جداً للإرسال ({humanbytes(file_size)})**\n**الحد الأقصى: {humanbytes(max_size)}**")
+            os.remove(temp_filename)
+            return
+
+        # تحديد نوع المحتوى
+        is_video = file_extension in ['.mp4', '.mov', '.webm']
+        is_gif = file_extension == '.gif'
+        
         await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
         
-        is_video = filename.endswith('.mp4')
+        # إعداد التسمية التوضيحية
+        caption_text = f"**📌╎تم تحميـل {'الفيديـو' if is_video else 'الصـورة'} مـن بنترست**\n"
+        caption_text += f"**📊 الحجـم:** {humanbytes(file_size)}"
+        
+        if hasattr(image_data, 'alt_text') and image_data.alt_text:
+            caption_text += f"\n**📝 الوصـف:** {image_data.alt_text[:100]}"
         
         try:
+            # إرسال المحتوى
             if is_video:
                 await event.client.send_file(
                     event.chat_id,
-                    filename,
-                    caption=f"**📹╎تم تحميـل الفيـديـو مـن بنترست**\n**📊 الحجـم:** {humanbytes(file_size)}",
+                    temp_filename,
+                    caption=caption_text,
                     supports_streaming=True,
                     progress_callback=lambda d, t: asyncio.create_task(
                         progress(d, t, event, "**╮ ❐ جـارِ رفـع الفيـديـو ...🎬╰**")
                     ) if d and t else None
                 )
+            elif is_gif:
+                await event.client.send_file(
+                    event.chat_id,
+                    temp_filename,
+                    caption=caption_text,
+                    force_document=False,
+                    progress_callback=lambda d, t: asyncio.create_task(
+                        progress(d, t, event, "**╮ ❐ جـارِ رفـع الصـورة المتحركة ...🖼️╰**")
+                    ) if d and t else None
+                )
             else:
                 await event.client.send_file(
                     event.chat_id,
-                    filename,
-                    caption=f"**🖼️╎تم تحميـل الصـورة مـن بنترست**\n**📊 الحجـم:** {humanbytes(file_size)}",
+                    temp_filename,
+                    caption=caption_text,
                     progress_callback=lambda d, t: asyncio.create_task(
                         progress(d, t, event, "**╮ ❐ جـارِ رفـع الصـورة ...🖼️╰**")
                     ) if d and t else None
                 )
 
-            await event.edit(f"**╮ ❐ تم إرسـال المحتـوى بنجـاح ✅**\n**╰ ❐ النـوع:** {'فيديو' if is_video else 'صورة'}\n**📊 الحجـم:** {humanbytes(file_size)}")
+            await event.edit(f"**╮ ❐ تم إرسـال المحتـوى بنجـاح ✅**\n**╰ ❐ النـوع:** {'فيديو' if is_video else ('صورة متحركة' if is_gif else 'صورة')}\n**📊 الحجـم:** {humanbytes(file_size)}")
 
         except Exception as upload_error:
             print(f"Upload error: {upload_error}")
             await event.edit("**⚠️ فشل في رفع الملف، يرجى المحاولة لاحقاً**")
 
-        # تنظيف الملف المؤقت
-        if os.path.exists(filename):
-            os.remove(filename)
+        # تنظيف الملفات المؤقتة
+        try:
+            if os.path.exists(temp_filename):
+                os.remove(temp_filename)
+            os.rmdir(temp_dir)
+        except Exception as cleanup_error:
+            print(f"Cleanup error: {cleanup_error}")
 
     except Exception as e:
         error_msg = str(e).lower()
@@ -7050,15 +7178,22 @@ async def download_pinterest(event):
         
         if "403" in error_msg or "forbidden" in error_msg:
             await event.edit("**⚠️ تم حظر الوصول - جرب استخدام ملف كوكيز صالح أو VPN**")
-        elif "private" in error_msg:
-            await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل دخول**")
-        elif "not found" in error_msg or "unavailable" in error_msg:
+        elif "private" in error_msg or "login" in error_msg:
+            await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل دخول - استخدم ملف الكوكيز**")
+        elif "not found" in error_msg or "unavailable" in error_msg or "404" in error_msg:
             await event.edit("**⚠️ المحتوى غير متوفر أو تم حذفه**")
+        elif "timeout" in error_msg:
+            await event.edit("**⚠️ انتهت مهلة الاتصال - حاول مرة أخرى**")
         elif "unsupported" in error_msg:
             await event.edit("**⚠️ الرابط غير مدعوم - تأكد من أنه رابط Pinterest صحيح**")
+        elif "chrome" in error_msg or "browser" in error_msg:
+            await event.edit("**⚠️ خطأ في المتصفح - تأكد من تثبيت Chrome أو استخدم وضع API**")
         else:
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
 
+
+
+print("Pinterest Downloader loaded successfully!")
 
                           
 def run_server():
