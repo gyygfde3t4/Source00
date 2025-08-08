@@ -7253,18 +7253,9 @@ async def download_pinterest_images(query, count, temp_dir, cookies, offset=None
         # اختيار رابط البحث بشكل عشوائي مع إضافة معلمات مختلفة
         search_url = random.choice(search_variations)
         
-        # إضافة معاملات إضافية لتنويع النتائج
-        params = {
-            'page_size': count,
-            'page': 1,
-            'search_src': 'typed',
-            'rs': 'typed',
-            'term_meta[]': query.split(),
-        }
-        
-        # إذا كان هناك offset، نستخدمه لتجنب تكرار النتائج
+        # إذا كان هناك offset، نضيفه إلى رابط البحث
         if offset is not None:
-            params['page'] = offset + 1
+            search_url = f"{search_url}&page={offset + 1}"
         
         # بناء أمر gallery-dl مع تحسينات للذاكرة
         cmd = [
@@ -7280,14 +7271,6 @@ async def download_pinterest_images(query, count, temp_dir, cookies, offset=None
             '--retries', '3',
             search_url
         ]
-        
-        # إضافة معلمات البحث كمعلمات إضافية
-        for key, value in params.items():
-            if isinstance(value, list):
-                for v in value:
-                    cmd.extend(['--search-query', f'{key}={v}'])
-            else:
-                cmd.extend(['--search-query', f'{key}={value}'])
         
         if cookies_file:
             cmd.extend(['--cookies', cookies_file])
