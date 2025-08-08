@@ -6885,7 +6885,6 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}PB"                        
 
-
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
 async def download_and_send_pinterest(event):
     # التحقق من وجود رابط
@@ -7051,13 +7050,6 @@ async def download_pinterest_with_cookies(url, event):
             raise Exception("لم يتم العثور على كوكيز صالحة")
 
         # إعداد الهيدرز المحسنة مع Pinterest headers خاصة
-        headers.update({
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-APP-VERSION': 'cb1c7f9',
-            'X-Pinterest-AppState': 'active',
-            'Origin': 'https://www.pinterest.com',
-            'Referer': url
-        })
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -7076,6 +7068,14 @@ async def download_pinterest_with_cookies(url, event):
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache'
         }
+        
+        headers.update({
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-APP-VERSION': 'cb1c7f9',
+            'X-Pinterest-AppState': 'active',
+            'Origin': 'https://www.pinterest.com',
+            'Referer': url
+        })
 
         # إعداد الجلسة
         session = requests.Session()
@@ -7392,6 +7392,8 @@ def is_valid_video_url(url):
     
     return (any(ext in url.lower() for ext in video_extensions) or
             any(domain in url.lower() for domain in video_domains))
+
+async def progress(current, total, event, text):
     """دالة لعرض شريط التقدم"""
     if not current or not total:
         return
