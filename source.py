@@ -6890,18 +6890,9 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}PB"                        
 
-# الدوال المساعدة
-def humanbytes(size):
-    """تحويل الحجم إلى صيغة مقروءة"""
-    if not size:
-        return "0B"
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size < 1024:
-            return f"{size:.2f}{unit}"
-        size /= 1024
-    return f"{size:.2f}TB"
 
 ##########################
+
 
 # الدوال المساعدة
 def humanbytes(size):
@@ -7032,38 +7023,52 @@ async def download_pinterest(event):
         # تهيئة PinterestDL باستخدام API mode مع الكوكيز
         pinterest_dl = PinterestDL.with_api(
             timeout=10,
-            verbose=False,
-            ensure_cap=False
+            verbose=False
         ).with_cookies(cookies)
         
         # سكريب المحتوى
+        scraped_images = None
         try:
+            # جرب API mode أولاً
             scraped_images = await asyncio.get_event_loop().run_in_executor(
                 None, 
                 lambda: pinterest_dl.scrape(
                     url=input_url,
-                    num=1,  # نحن نريد فقط صورة/فيديو واحد من البين
-                    min_resolution=(100, 100)  # دقة منخفضة للتأكد من التحميل
+                    num=1  # نحن نريد فقط صورة/فيديو واحد من البين
                 )
             )
-        except Exception as e:
-            # في حالة فشل API mode، نجرب browser mode مع الكوكيز
-            print(f"API mode failed, trying browser mode: {e}")
+        except Exception as api_error:
+            print(f"API mode failed: {api_error}")
+            # جرب browser mode كبديل
             try:
-                pinterest_dl = PinterestDL.with_browser(
+                await event.edit("**╮ ❐ جـارِ المحـاولة بـوضع المتصـفح ...𓅫╰**")
+                browser_dl = PinterestDL.with_browser(
                     browser_type="chrome",
                     headless=True
-                ).with_cookies(cookies)
-                
+                )
+                # لا نستخدم with_cookies مع browser mode إذا فشل
                 scraped_images = await asyncio.get_event_loop().run_in_executor(
                     None, 
-                    lambda: pinterest_dl.scrape(
+                    lambda: browser_dl.scrape(
                         url=input_url,
                         num=1
                     )
                 )
             except Exception as browser_error:
-                raise Exception(f"فشل في كلا الوضعين: API ({str(e)[:100]}) و Browser ({str(browser_error)[:100]})")
+                print(f"Browser mode also failed: {browser_error}")
+                # أخيراً جرب API بدون cookies
+                try:
+                    await event.edit("**╮ ❐ جـارِ المحـاولة بـدون كوكيـز ...𓅫╰**")
+                    simple_dl = PinterestDL.with_api(timeout=10)
+                    scraped_images = await asyncio.get_event_loop().run_in_executor(
+                        None, 
+                        lambda: simple_dl.scrape(
+                            url=input_url,
+                            num=1
+                        )
+                    )
+                except Exception as final_error:
+                    raise Exception(f"فشل في جميع الطرق: API ({str(api_error)[:50]}) | Browser ({str(browser_error)[:50]}) | Simple ({str(final_error)[:50]})")
 
         if not scraped_images:
             await event.edit("**⚠️ لم يتم العثور على محتوى قابل للتحميل**")
@@ -7201,8 +7206,6 @@ async def download_pinterest(event):
             await event.edit("**⚠️ خطأ في المتصفح - تأكد من تثبيت Chrome أو استخدم وضع API**")
         else:
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
-
-
 
 
 
