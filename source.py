@@ -51,6 +51,7 @@ from telethon import events, functions, types, utils
 from pydub import AudioSegment
 from mutagen.easyid3 import EasyID3
 from urllib.parse import urlparse
+from pinterest_dl import PinterestDL
 
 # ========== Telethon - استيراد رئيسي ==========
 from telethon import TelegramClient, events, functions, types, Button
@@ -6886,8 +6887,7 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}PB"                        
 
-
-# ========== الدوال المساعدة ==========
+# الدوال المساعدة
 def humanbytes(size):
     """تحويل الحجم إلى صيغة مقروءة"""
     if not size:
@@ -6909,64 +6909,8 @@ async def progress(current, total, event, text):
     except Exception as e:
         print(f"Error in progress: {e}")
 
-def get_pinterest_headers(pin_url):
-    """إنشاء رؤوس HTTP مخصصة لـ Pinterest"""
-    pin_id = extract_pin_id(pin_url)
-    user_agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
-        'Mozilla/5.0 (Linux; Android 13; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36'
-    ]
-    
-    return {
-        'User-Agent': random.choice(user_agents),
-        'Referer': 'https://www.pinterest.com/',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'X-Pinterest-PWS-Handler': f'www/pin/{pin_id}.js' if pin_id else 'www/pin/[pin_id].js',
-        'X-Pinterest-Source-Url': pin_url,
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-APP-VERSION': '8.12.0',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'same-origin',
-        'Sec-Fetch-User': '?1'
-    }
-
-def extract_pin_id(url):
-    """استخراج معرف Pin من الرابط"""
-    patterns = [
-        r'pin/(\d+)',
-        r'\.pinimg\.com.*/([a-zA-Z0-9]+)',
-        r'\.pinimg\.com.*/(\d+)',
-        r'/([a-zA-Z0-9_-]+)\.(jpg|png|mp4)'
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    return None
-
-def clean_temp_files(filename):
-    """حذف الملفات المؤقتة"""
-    try:
-        if os.path.exists(filename):
-            os.remove(filename)
-        base_name = os.path.splitext(filename)[0]
-        for ext in ['.webp', '.jpg', '.part', '.temp']:
-            temp_file = f"{base_name}{ext}"
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-    except Exception as e:
-        print(f"Error cleaning files: {e}")
-
-# ========== الحدث الرئيسي ==========
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
-async def download_and_send_pinterest(event):
+async def download_pinterest(event):
     # التحقق من وجود رابط
     reply = await event.get_reply_message()
     input_url = event.pattern_match.group(1).strip()
@@ -6985,66 +6929,45 @@ async def download_and_send_pinterest(event):
     await event.edit("**╮ جـارِ تحميـل المحتـوى مـن بنترسـت... 📌♥️╰**")
 
     try:
+        # إنشاء مجلد التحميل إذا لم يكن موجوداً
         if not os.path.exists('downloads'):
             os.makedirs('downloads')
 
-        # إعدادات yt-dlp مع الرؤوس المخصصة
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': 'downloads/%(id)s.%(ext)s',
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': False,
-            'noplaylist': True,
-            'writethumbnail': False,
-            'ignoreerrors': True,
-            'retries': 3,
-            'socket_timeout': 30,
-            'http_headers': get_pinterest_headers(input_url),
-            'cookiefile': 'pincook.txt' if os.path.exists('pincook.txt') else None,
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
+        # إعدادات pinterest-dl
+        pdl = PinterestDL(
+            cookies_file='pincook.txt' if os.path.exists('pincook.txt') else None,
+            output_dir='downloads',
+            quiet=True
+        )
+
+        # الحصول على معلومات المحتوى
+        info = pdl.extract_info(input_url)
+        if not info or not info.get('urls'):
+            raise Exception("لم يتم العثور على محتوى قابل للتحميل")
+
+        # تحميل أفضل جودة متاحة
+        media_url = info['urls'].get('hd') or info['urls'].get('sd') or info['urls'].get('image')
+        if not media_url:
+            raise Exception("لا توجد روابط وسائط متاحة")
+
+        # تحديد اسم الملف
+        ext = '.mp4' if 'video' in info['type'] else '.jpg'
+        filename = f"downloads/pin_{info.get('id', 'temp')}{ext}"
+
+        # تحميل الملف
+        await event.edit("**╮ ❐ جـارِ التحميـل انتظـر ...𓅫╰**")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://www.pinterest.com/'
         }
-
-        await event.edit("**╮ جـارِ استخـراج معلومـات المحتـوى... 📌♥️╰**")
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            try:
-                info = ydl.extract_info(input_url, download=True)
-                if not info:
-                    raise Exception("لم يتم العثور على معلومات المحتوى")
-                
-                filename = ydl.prepare_filename(info)
-                
-                # إذا لم يتم تحميل الملف مباشرة، نبحث عن أفضل صيغة
-                if not os.path.exists(filename):
-                    for fmt in info.get('formats', []):
-                        if fmt.get('url'):
-                            import requests
-                            try:
-                                ext = fmt['ext'] if 'ext' in fmt else 'mp4'
-                                filename = f"downloads/{info['id']}.{ext}"
-                                headers = get_pinterest_headers(input_url)
-                                with open(filename, 'wb') as f:
-                                    r = requests.get(fmt['url'], headers=headers, stream=True, timeout=30)
-                                    r.raise_for_status()
-                                    for chunk in r.iter_content(chunk_size=8192):
-                                        f.write(chunk)
-                                break
-                            except Exception as e:
-                                continue
-            except yt_dlp.utils.DownloadError as e:
-                if "Private content" in str(e):
-                    await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل الدخول**")
-                    return
-                raise e
-
-        if not os.path.exists(filename):
-            raise Exception("فشل في تحميل الملف")
-
-        await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+        
+        response = requests.get(media_url, headers=headers, stream=True)
+        response.raise_for_status()
+        
+        with open(filename, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
 
         # التحقق من حجم الملف
         file_size = os.path.getsize(filename)
@@ -7052,14 +6975,14 @@ async def download_and_send_pinterest(event):
         
         if file_size > max_size:
             await event.edit(f"**⚠️ الملف كبير جداً للإرسال ({humanbytes(file_size)})**\n**الحد الأقصى: {humanbytes(max_size)}**")
-            clean_temp_files(filename)
+            os.remove(filename)
             return
 
-        # تحديد نوع الملف
-        is_video = filename.lower().endswith(('.mp4', '.avi', '.mov', '.webm', '.mkv'))
-        is_image = filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
-
         # إرسال المحتوى
+        await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+        
+        is_video = filename.endswith('.mp4')
+        
         try:
             if is_video:
                 await event.client.send_file(
@@ -7071,7 +6994,7 @@ async def download_and_send_pinterest(event):
                         progress(d, t, event, "**╮ ❐ جـارِ رفـع الفيـديـو ...🎬╰**")
                     ) if d and t else None
                 )
-            elif is_image:
+            else:
                 await event.client.send_file(
                     event.chat_id,
                     filename,
@@ -7080,9 +7003,6 @@ async def download_and_send_pinterest(event):
                         progress(d, t, event, "**╮ ❐ جـارِ رفـع الصـورة ...🖼️╰**")
                     ) if d and t else None
                 )
-            else:
-                await event.edit("**⚠️ نوع الملف غير مدعوم**")
-                return
 
             await event.edit(f"**╮ ❐ تم إرسـال المحتـوى بنجـاح ✅**\n**╰ ❐ النـوع:** {'فيديو' if is_video else 'صورة'}\n**📊 الحجـم:** {humanbytes(file_size)}")
 
@@ -7090,27 +7010,24 @@ async def download_and_send_pinterest(event):
             print(f"Upload error: {upload_error}")
             await event.edit("**⚠️ فشل في رفع الملف، يرجى المحاولة لاحقاً**")
 
-        # تنظيف الملفات المؤقتة
-        clean_temp_files(filename)
+        # تنظيف الملف المؤقت
+        if os.path.exists(filename):
+            os.remove(filename)
 
     except Exception as e:
         error_msg = str(e).lower()
         print(f"Main error: {e}")
         
-        if "http error 403" in error_msg or "forbidden" in error_msg:
-            await event.edit("**⚠️ تم حظر الوصول - جرب استخدام ملف كوكيز صالح أو VPN**")
+        if "403" in error_msg or "forbidden" in error_msg:
+            await event.edit("**⚠️ تم حظر الوصول - جرب استخدام ملف كوكيز صالح**")
         elif "private" in error_msg:
             await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل دخول**")
         elif "not found" in error_msg or "unavailable" in error_msg:
             await event.edit("**⚠️ المحتوى غير متوفر أو تم حذفه**")
-        elif "unsupported url" in error_msg:
+        elif "unsupported" in error_msg:
             await event.edit("**⚠️ الرابط غير مدعوم - تأكد من أنه رابط Pinterest صحيح**")
-        elif "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
-            await event.edit("**⚠️ مشكلة في الاتصال - يرجى المحاولة لاحقاً**")
         else:
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
-        
-        clean_temp_files(filename) if 'filename' in locals() else None
 
 
                           
