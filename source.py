@@ -6952,7 +6952,7 @@ async def progress(current, total, event, text):
         
         if not cookies:
             await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:**\n• `pincook.txt` (Netscape format)\n• `pincook.json` (JSON format)\n\n**لتصدير الكوكيز:**\n1. افتح Pinterest وسجل دخولك\n2. استخدم إضافة Cookie Editor\n3. صدّر الكوكيز وضعها في الملف")
-            returnimport os
+            return
 
 # الدوال المساعدة
 async def download_file_async(url, filename, session, headers=None):
