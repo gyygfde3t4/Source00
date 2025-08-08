@@ -132,6 +132,11 @@ import psutil
 from platform import python_version
 from telethon import version
 from telethon.tl.types import InputMessagesFilterPhotos, InputMessagesFilterVideo
+from datetime import datetime
+from telethon import events, functions, types
+from telethon.tl.functions.photos import GetUserPhotosRequest
+from telethon.tl.functions.messages import SearchRequest
+from telethon.tl.types import InputMessagesFilterEmpty
 
 # الحصول على المتغيرات من environment variables
 API_ID = int(os.getenv('API_ID'))  # القيمة الافتراضية 29984076 إذا لم يتم تحديد المتغير
@@ -183,16 +188,14 @@ current_email = None
 seen_ids = set()
 
 # ========== حالات النظام ==========
-protection_enabled = False  #حالة الحماية
-
 is_auto_saving = False  # حالة الحفظ التلقائي
 
 # ========== إعدادات عامة ==========
-protection_enabled = True
-MAX_WARNINGS = 7
-warned_users = {}
+protection_enabled = False
 accepted_users = {}
+warned_users = {}
 user_auto_messages = {}
+MAX_WARNINGS = 3 
 
 # ========== قوائم الرقابة والإشراف ==========
 accepted_users     = {}      # المستخدمون الذين تم قبولهم
@@ -295,6 +298,8 @@ async def show_account_commands(event):
 6- ☆ `.بلوك` - **حظر المستخدم** ☆
 7- ☆ `.لصوره` - **تحويل ملصق إلى صورة** ☆
 8- ☆ `.فحص` - **فحص البوت** ☆
+9- ☆ `.تحديث البوت` - **تحديث البوت من السورس** ☆
+10- ☆ `.حذف التنصيب` - **إيقاف البوت وحذف التنصيب** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
@@ -657,85 +662,81 @@ async def stop_timed_update(event):
 @client.on(events.NewMessage(pattern=r'^\.ايدي$'))
 async def show_user_info(event):
     if event.reply_to_msg_id:
-        reply_message = await client.get_messages(event.chat_id, ids=event.reply_to_msg_id)
-        if reply_message.sender_id:
-            user = await client.get_entity(reply_message.sender_id)
+        reply_message = await event.get_reply_message()
+        user = await event.client.get_entity(reply_message.sender_id)
 
-            await event.edit("**جاري عرض المعلومات . . .**")
+        await event.edit("**جاري عرض المعلومات . . .**")
 
-            user_photo_path = 'user_photo.jpg'
-            
-            # تحميل صورة البروفايل
-            try:
-                await client.download_profile_photo(user.id, file=user_photo_path)
-            except:
-                user_photo_path = None
-            
-            # جمع المعلومات الأساسية
-            user_id = user.id
-            username = user.username if user.username else "غير متوفر"
-            user_name = user.first_name or "غير متوفر"
+        user_photo_path = 'user_photo.jpg'
+        
+        # تحميل صورة البروفايل
+        try:
+            await event.client.download_profile_photo(user.id, file=user_photo_path)
+        except:
+            user_photo_path = None
+        
+        # جمع المعلومات الأساسية
+        user_id = user.id
+        username = user.username if user.username else "غير متوفر"
+        user_name = user.first_name or "غير متوفر"
 
-            # البايو
+        # البايو
+        bio = "لا يوجد"
+        try:
+            user_full = await event.client(functions.users.GetFullUserRequest(user.id))
+            if user_full.full_user.about:
+                bio = user_full.full_user.about
+        except:
             bio = "لا يوجد"
-            try:
-                user_full = await client(functions.users.GetFullUserRequest(user.id))
-                if user_full.full_user.about:
-                    bio = user_full.full_user.about
-            except:
-                bio = "لا يوجد"
 
-            # الرتبة
-            if user_id == 5683930416:
-                rank = "مطـور السـورس 𓄂"
-            else:
-                rank = "مميز"
+        # الرتبة
+        if user_id == 5683930416:
+            rank = "مطـور السـورس 𓄂"
+        else:
+            rank = "مميز"
 
-            # البريميوم
-            account_type = "بريميوم" if getattr(user, 'premium', False) else "عادي"
+        # البريميوم
+        account_type = "بريميوم" if getattr(user, 'premium', False) else "عادي"
 
-            # عدد الصور
-            try:
-                photos = await client(GetUserPhotosRequest(user.id, offset=0, max_id=0, limit=100))
-                num_photos = len(photos.photos)
-            except:
-                num_photos = "غير معروف"
+        # عدد الصور
+        try:
+            photos = await event.client(GetUserPhotosRequest(user.id, offset=0, max_id=0, limit=100))
+            num_photos = len(photos.photos)
+        except:
+            num_photos = "غير معروف"
 
-            # حساب عدد الرسائل
-            messages_count = 0
-            try:
-                search_result = await client(SearchRequest(
-                    peer=event.chat_id,
-                    q='',
-                    from_id=user.id,
-                    filter=InputMessagesFilterEmpty(),
-                    min_date=None,
-                    max_date=None,
-                    offset_id=0,
-                    add_offset=0,
-                    limit=1,
-                    max_id=0,
-                    min_id=0,
-                    hash=0
-                ))
-                
-                if hasattr(search_result, 'count'):
-                    messages_count = search_result.count
-            except:
-                messages_count = "غير معروف"
+        # حساب عدد الرسائل بشكل دقيق
+        messages_count = "غير معروف"
+        try:
+            # طريقة أكثر دقة لحساب الرسائل
+            messages = await event.client.get_messages(
+                event.chat_id,
+                from_user=user.id,
+                limit=0  # هذا سيعيد العدد فقط دون جلب الرسائل
+            )
+            messages_count = messages.total
+        except Exception as e:
+            print(f"Error counting messages: {e}")
 
-            # التفاعل
-            interaction = "نشط" if isinstance(messages_count, int) and messages_count > 100 else "ضعيف"
+        # التفاعل
+        interaction = "نشط" if isinstance(messages_count, int) and messages_count > 100 else "ضعيف"
 
-            # تاريخ الإنشاء
+        # تاريخ الإنشاء (طريقة أفضل باستخدام التاريخ الحقيقي إذا كان متاحاً)
+        creation_date = "غير معروف"
+        try:
+            if hasattr(user, 'status'):
+                if hasattr(user.status, 'was_online'):
+                    creation_date = user.status.was_online.strftime("%d/%m/%Y")
+        except:
+            # إذا لم يكن متاحاً نستخدم طريقة عشوائية (لأغراض العرض فقط)
             random.seed(user_id)
             year = "2023" if user_id > 6000000000 else "2022"
             month = random.randint(1, 12)
             day = random.randint(1, 28)
             creation_date = f"{day}/{month}/{year}"
 
-            # رسالة المعلومات بتنسيق Quote الحقيقي
-            user_info_message = f"""<blockquote>⧉ مـعلومـات المسـتخـدم | سـورس إيــريــن
+        # رسالة المعلومات بتنسيق Quote الحقيقي
+        user_info_message = f"""<blockquote>⧉ مـعلومـات المسـتخـدم | سـورس إيــريــن
 ═════════════════════════════
 
 ✦ الاســم: {user_name}
@@ -751,33 +752,31 @@ async def show_user_info(event):
 
 ⧉ قنـاة السـورس @EREN_PYTHON</blockquote>"""
 
-            if user_photo_path:
-                await client.send_file(
-                    event.chat_id,
-                    user_photo_path,
-                    caption=user_info_message,
-                    reply_to=event.reply_to_msg_id,
-                    parse_mode='html'
-                )
-                # حذف الصورة
-                try:
-                    os.remove(user_photo_path)
-                except:
-                    pass
-            else:
-                await client.send_message(
-                    event.chat_id,
-                    user_info_message,
-                    reply_to=event.reply_to_msg_id,
-                    parse_mode='html'
-                )
-            
-            await event.delete()
-            
+        if user_photo_path:
+            await event.client.send_file(
+                event.chat_id,
+                user_photo_path,
+                caption=user_info_message,
+                reply_to=event.reply_to_msg_id,
+                parse_mode='html'
+            )
+            # حذف الصورة
+            try:
+                os.remove(user_photo_path)
+            except:
+                pass
         else:
-            await event.edit("**⚠️ لم أتمكن من العثور على معلومات عن هذا المستخدم.**")
+            await event.client.send_message(
+                event.chat_id,
+                user_info_message,
+                reply_to=event.reply_to_msg_id,
+                parse_mode='html'
+            )
+        
+        await event.delete()
+        
     else:
-        await event.edit("**⚠️ يرجى الرد على رسالة المستخدم للحصول على معلوماته.**")	
+        await event.edit("**⚠️ يرجى الرد على رسالة المستخدم للحصول على معلوماته.**")
 
         
 # إضافة أمر .بل
@@ -1512,13 +1511,13 @@ ALIVE_PIC = None  # Put image URL here if needed
 # ─── Time Calculation Function ───
 def get_readable_time(seconds: float) -> str:
     intervals = [
-        ('years', 31536000),
-        ('months', 2592000),
-        ('weeks', 604800),
-        ('days', 86400),
-        ('hours', 3600),
-        ('minutes', 60),
-        ('seconds', 1)
+        ('y', 31536000),
+        ('m', 2592000),
+        ('w', 604800),
+        ('d', 86400),
+        ('h', 3600),
+        ('m', 60),
+        ('s', 1)
     ]
     result = []
     for name, count in intervals:
@@ -1526,7 +1525,7 @@ def get_readable_time(seconds: float) -> str:
         if value:
             seconds -= value * count
             result.append(f"{value} {name}")
-    return ', '.join(result) if result else "0 seconds"
+    return ', '.join(result) if result else "0 s"
 
 # ─── Check Command ───
 @client.on(events.NewMessage(pattern=r'^\.(check|فحص)$'))
@@ -1619,19 +1618,19 @@ async def edit_or_reply(event, text):
 
 @client.on(events.NewMessage(pattern=r'^\.الحمايه تفعيل$'))
 async def enable_protection(event):
-    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+    if not event.is_private or not await event.get_sender() == await client.get_me():
         return
     global protection_enabled
     protection_enabled = True
-    await edit_or_reply(event, "**⎉╎تـم تفعيـل امـر حمايـه الخـاص .. بنجـاح 🔕☑️...**")
+    await event.edit("**⎉╎تـم تفعيـل امـر حمايـه الخـاص .. بنجـاح 🔕☑️...**")
 
 @client.on(events.NewMessage(pattern=r'^\.الحمايه تعطيل$'))
 async def disable_protection(event):
-    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+    if not event.is_private or not await event.get_sender() == await client.get_me():
         return
     global protection_enabled
     protection_enabled = False
-    await edit_or_reply(event, "**⎉╎تـم تعطيـل أمـر حمايـة الخـاص .. بنجـاح 🔔☑️...**")
+    await event.edit("**⎉╎تـم تعطيـل أمـر حمايـة الخـاص .. بنجـاح 🔔☑️...**")
 
 @client.on(events.NewMessage(incoming=True))
 async def auto_reply(event):
@@ -1676,12 +1675,12 @@ async def auto_reply(event):
 
 @client.on(events.NewMessage(pattern=r'^\.قبول$'))
 async def accept_user(event):
-    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+    if not event.is_private or not await event.get_sender() == await client.get_me():
         return
         
     reply = await event.get_reply_message()
     if not reply:
-        return await edit_or_reply(event, "**⎉╎يجب الرد على رسالة المستخدم لقبوله**")
+        return await event.edit("**⎉╎يجب الرد على رسالة المستخدم لقبوله**")
     
     user = await client.get_entity(reply.sender_id)
     accepted_users[user.id] = {'name': user.first_name, 'reason': "لم يذكر"}
@@ -1693,7 +1692,7 @@ async def accept_user(event):
         except:
             pass
     
-    await edit_or_reply(event, f"""
+    await event.edit(f"""
 **⎉╎المستخـدم**  {user.first_name}
 **⎉╎تـم السـمـاح لـه بـإرسـال الـرسـائـل 💬✓ **
 **⎉╎ الـسـبـب ❔  : ⎉╎لـم يـذكـر 🤷🏻‍♂**
@@ -1701,12 +1700,12 @@ async def accept_user(event):
 
 @client.on(events.NewMessage(pattern=r'^\.رفض$'))
 async def reject_user(event):
-    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+    if not event.is_private or not await event.get_sender() == await client.get_me():
         return
         
     reply = await event.get_reply_message()
     if not reply:
-        return await edit_or_reply(event, "**⎉╎يجب الرد على رسالة المستخدم لرفضه**")
+        return await event.edit("**⎉╎يجب الرد على رسالة المستخدم لرفضه**")
     
     user = await client.get_entity(reply.sender_id)
     await client(BlockRequest(user.id))
@@ -1718,7 +1717,7 @@ async def reject_user(event):
         except:
             pass
     
-    await edit_or_reply(event, f"""
+    await event.edit(f"""
 **⎉╎المستخـدم ** {user.first_name}
 **⎉╎تـم رفـضـه مـن أرسـال الـرسـائـل ⚠️**
 **⎉╎ الـسـبـب ❔  : ⎉╎ لـم يـذكـر 💭**
@@ -1726,18 +1725,18 @@ async def reject_user(event):
 
 @client.on(events.NewMessage(pattern=r'^\.المقبولين$'))
 async def show_accepted(event):
-    if not event.out:  # يستجيب فقط للمستخدم الأصلي
+    if not event.is_private or not await event.get_sender() == await client.get_me():
         return
         
     if not accepted_users:
-        return await edit_or_reply(event, "**لا يوجد مستخدمين مقبولين حالياً.**")
+        return await event.edit("**لا يوجد مستخدمين مقبولين حالياً.**")
     
     message = "⎉╎ قائمـة المسمـوح لهـم ( المقبـوليـن ) :\n\n"
     for user_id, info in accepted_users.items():
         user = await client.get_entity(user_id)
         message += f"• 👤 **الاسـم :** {info['name']}\n⎉╎ **الايـدي :** {user_id}\n⎉╎ **المعـرف :** @{user.username}\n⎉╎ **السـبب :** {info['reason']}\n\n"
     
-    await edit_or_reply(event, message)
+    await event.edit(message)
 
 # متغيرات تجميع في بوت دعمكم
 is_collecting = False
@@ -5458,15 +5457,13 @@ async def show_avatars_menu(event):
 2- ☆ `.بنت انمي` - **صورة بنت أنمي عشوائية** ☆
 3- ☆ `.خيرني` - **صورة "لو خيروك" عشوائية** ☆
 4- ☆ `.ستوري انمي` - **لعرض ستوري أنمي** ☆
+5- ☆ `.صور + اسم + عدد` - **لإرسال صور حسب الطلب** ☆
 ٴ⋆─┄─┄─┄─ 𝐀𝐕𝐀𝐓𝐀𝐑 ─┄─┄─┄─⋆
     """
     if event.is_private or event.sender_id == (await event.client.get_me()).id:
         await event.edit(avatars_message)
     else:
-        await event.reply(avatars_message)                                                                                                              
-
-
-
+        await event.reply(avatars_message)                                                                                         
 async def edit_or_reply(event, text):
     """دالة مساعدة للتعديل أو الرد"""
     if event.is_reply:
@@ -7231,10 +7228,10 @@ def load_pinterest_cookies():
     
     return None
 
-# متغير لتتبع البحثات السابقة
+# متغير لتتبع البحثات السابقة مع تحسينات لتجنب التكرار
 search_cache = {}
 
-async def download_pinterest_images(query, count, temp_dir, cookies, offset=0):
+async def download_pinterest_images(query, count, temp_dir, cookies, offset=None):
     """تحميل الصور من Pinterest بناءً على البحث مع دعم التصفح المتعدد"""
     try:
         # إنشاء ملف الكوكيز المؤقت
@@ -7249,15 +7246,25 @@ async def download_pinterest_images(query, count, temp_dir, cookies, offset=0):
             f"https://www.pinterest.com/search/pins/?q={quote(query)}",
             f"https://www.pinterest.com/search/pins/?q={quote(query)}&rs=typed",
             f"https://www.pinterest.com/search/pins/?q={quote(query)}&source_id=",
+            f"https://www.pinterest.com/search/pins/?q={quote(query)}&sort=latest",
+            f"https://www.pinterest.com/search/pins/?q={quote(query)}&sort=popular",
         ]
         
-        # اختيار رابط البحث بناءً على العدد التراكمي
+        # اختيار رابط البحث بشكل عشوائي مع إضافة معلمات مختلفة
         search_url = random.choice(search_variations)
         
         # إضافة معاملات إضافية لتنويع النتائج
-        if offset > 0:
-            # إضافة معامل offset أو تنويع في البحث
-            search_url += f"&page={offset // 25 + 1}"
+        params = {
+            'page_size': count,
+            'page': 1,
+            'search_src': 'typed',
+            'rs': 'typed',
+            'term_meta[]': query.split(),
+        }
+        
+        # إذا كان هناك offset، نستخدمه لتجنب تكرار النتائج
+        if offset is not None:
+            params['page'] = offset + 1
         
         # بناء أمر gallery-dl مع تحسينات للذاكرة
         cmd = [
@@ -7268,11 +7275,19 @@ async def download_pinterest_images(query, count, temp_dir, cookies, offset=0):
             '--directory', temp_dir,
             '--no-part',
             '--no-mtime',
-            '--range', f'{offset + 1}-{offset + count}',  # استخدام offset لتجنب التكرار
-            '--sleep', '0.5',  # تأخير بين الطلبات
-            '--retries', '3',  # إعادة المحاولة
+            '--range', f'1-{count}',
+            '--sleep', '0.5',
+            '--retries', '3',
             search_url
         ]
+        
+        # إضافة معلمات البحث كمعلمات إضافية
+        for key, value in params.items():
+            if isinstance(value, list):
+                for v in value:
+                    cmd.extend(['--search-query', f'{key}={v}'])
+            else:
+                cmd.extend(['--search-query', f'{key}={value}'])
         
         if cookies_file:
             cmd.extend(['--cookies', cookies_file])
@@ -7342,22 +7357,22 @@ async def pinterest_images_search(event):
             await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:** `pincook.txt`")
             return
         
-        # تحديد offset بناءً على البحثات السابقة لتجنب التكرار
-        search_key = query.lower().strip()
-        offset = search_cache.get(search_key, 0)
+        # استخدام معرف فريد للبحث يتضمن التاريخ والوقت لتجنب التكرار
+        search_key = f"{query.lower().strip()}-{int(time.time() / 3600)}"  # يتغير كل ساعة
         
         # تحميل الصور مع محاولات متعددة لضمان الحصول على العدد المطلوب
         downloaded_files = []
         max_attempts = 3
-        current_count = count
-        current_offset = offset
         
         for attempt in range(max_attempts):
             try:
                 # تنظيف الذاكرة قبل كل محاولة
                 gc.collect()
                 
-                batch_files = await download_pinterest_images(query, current_count, temp_dir, cookies, current_offset)
+                # استخدام offset عشوائي لتجنب تكرار النتائج
+                random_offset = random.randint(0, 10) * count
+                
+                batch_files = await download_pinterest_images(query, count, temp_dir, cookies, random_offset)
                 
                 # إضافة الملفات الجديدة فقط (تجنب التكرار)
                 new_files = []
@@ -7372,13 +7387,6 @@ async def pinterest_images_search(event):
                     downloaded_files = downloaded_files[:count]
                     break
                 
-                # إذا لم نحصل على صور جديدة، جرب offset مختلف
-                if not new_files:
-                    current_offset += 25
-                else:
-                    current_count = count - len(downloaded_files)
-                    current_offset += len(new_files)
-                
                 # تأخير قصير بين المحاولات
                 await asyncio.sleep(1)
                 
@@ -7390,19 +7398,6 @@ async def pinterest_images_search(event):
         
         if not downloaded_files:
             raise Exception("No images found after all attempts")
-        
-        # تحديث cache البحث
-        search_cache[search_key] = current_offset
-        
-        # تنظيف cache إذا أصبح كبيراً جداً
-        if len(search_cache) > 100:
-            # الاحتفاظ بآخر 50 بحث فقط
-            items = list(search_cache.items())
-            search_cache.clear()
-            search_cache.update(dict(items[-50:]))
-        
-        if len(downloaded_files) < count:
-            await event.edit(f"**⚠️ تم العثور على {len(downloaded_files)} صور من أصل {count} المطلوبة**")
         
         await event.edit(f"**╮ ❐ جـارِ رفـع {len(downloaded_files)} صورة ...🖼️╰**")
         
@@ -7472,15 +7467,6 @@ async def pinterest_images_search(event):
         
         # تنظيف نهائي للذاكرة
         gc.collect()
-
-# إضافة أمر لمسح ذاكرة البحث
-@client.on(events.NewMessage(pattern=r'\.مسح_ذاكرة_البحث'))
-async def clear_search_cache(event):
-    """مسح ذاكرة البحث المحفوظة"""
-    global search_cache
-    search_cache.clear()
-    gc.collect()
-    await event.edit("**✅ تم مسح ذاكرة البحث بنجاح**")
 
 
                           
