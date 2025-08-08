@@ -34,6 +34,7 @@ import tempfile
 import aiofiles
 import warnings
 import shutil
+import gc
 
 # ========== مكتبات HTTP وطلبات الويب ==========
 import requests
@@ -7168,15 +7169,9 @@ async def download_pinterest(event):
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
 
 #######################
-import gc
-import requests.packages.urllib3.exceptions
 
+# تجاهل تحذيرات SSL
 warnings.filterwarnings("ignore", category=requests.packages.urllib3.exceptions.InsecureRequestWarning)
-
-# متغيرات التحكم
-DELAY_BETWEEN_UPLOADS = 1.0  # ثانية واحدة بين كل صورة
-MAX_BATCH_SIZE = 15  # حد أقصى للصور في المجموعة الواحدة
-CLEANUP_INTERVAL = 5  # تنظيف كل 5 صور
 
 # الدوال المساعدة
 def humanbytes(size):
@@ -7189,28 +7184,16 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}TB"
 
-def cleanup_memory():
-    """تنظيف الذاكرة بشكل آمن"""
-    try:
-        gc.collect()
-        time.sleep(0.1)
-    except Exception as e:
-        print(f"Memory cleanup warning: {e}")
-
-def generate_search_hash(query, offset=0):
-    """إنشاء هاش فريد للبحث مع الإزاحة لتجنب التكرار"""
-    return hashlib.md5(f"{query}_{offset}_{int(time.time() // 3600)}".encode()).hexdigest()[:8]
-
 async def progress(current, total, event, text):
     """دالة لعرض شريط التقدم"""
     if not current or not total:
         return
     try:
         progress_percent = (current * 100) / total
-        if int(progress_percent) % 25 == 0:  # تحديث كل 25%
+        if progress_percent % 10 < 1:
             await event.edit(f"{text}\n\n**╮ ❐ التقـدم:** `{progress_percent:.1f}%`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
     except Exception as e:
-        print(f"Progress update error: {e}")
+        print(f"Error in progress: {e}")
 
 def convert_cookies_to_netscape(cookies):
     """تحويل الكوكيز من JSON إلى تنسيق Netscape"""
@@ -7248,192 +7231,97 @@ def load_pinterest_cookies():
     
     return None
 
-def get_downloaded_images(directory):
-    """الحصول على قائمة الصور المحملة مع فرزها حسب التاريخ"""
-    downloaded_files = []
-    for root, _, files in os.walk(directory):
-        for file in files:
-            if file.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                file_path = os.path.join(root, file)
-                try:
-                    # إضافة معلومات الملف للفرز
-                    stat = os.stat(file_path)
-                    downloaded_files.append({
-                        'path': file_path,
-                        'size': stat.st_size,
-                        'mtime': stat.st_mtime
-                    })
-                except:
-                    downloaded_files.append({
-                        'path': file_path,
-                        'size': 0,
-                        'mtime': 0
-                    })
-    
-    # فرز الصور حسب تاريخ التعديل (الأحدث أولاً)
-    downloaded_files.sort(key=lambda x: x['mtime'], reverse=True)
-    return [f['path'] for f in downloaded_files]
+# متغير لتتبع البحثات السابقة
+search_cache = {}
 
-async def download_pinterest_images_smart(query, count, temp_dir, cookies, event, offset=0):
-    """تحميل الصور من Pinterest مع استراتيجية ذكية"""
+async def download_pinterest_images(query, count, temp_dir, cookies, offset=0):
+    """تحميل الصور من Pinterest بناءً على البحث مع دعم التصفح المتعدد"""
     try:
-        batch_size = min(MAX_BATCH_SIZE, count)
-        total_downloaded = 0
-        all_files = []
+        # إنشاء ملف الكوكيز المؤقت
+        cookies_file = None
+        if cookies:
+            cookies_file = os.path.join(temp_dir, "cookies.txt")
+            with open(cookies_file, 'w', encoding='utf-8') as f:
+                f.write(cookies)
         
-        # حساب عدد المجموعات
-        total_batches = (count + batch_size - 1) // batch_size
+        # إضافة تنويع في البحث لتجنب تكرار النتائج
+        search_variations = [
+            f"https://www.pinterest.com/search/pins/?q={quote(query)}",
+            f"https://www.pinterest.com/search/pins/?q={quote(query)}&rs=typed",
+            f"https://www.pinterest.com/search/pins/?q={quote(query)}&source_id=",
+        ]
         
-        for batch_num in range(total_batches):
-            current_batch_size = min(batch_size, count - total_downloaded)
-            if current_batch_size <= 0:
-                break
-                
-            start_pos = total_downloaded + 1 + offset
-            end_pos = total_downloaded + current_batch_size + offset
-            
-            await event.edit(f"**╮ ❐ تحميل المجموعة {batch_num + 1}/{total_batches}**\n**من {start_pos} إلى {end_pos} - {current_batch_size} صور**")
-            
-            # إنشاء ملف كوكيز مؤقت لكل مجموعة
-            cookies_file = None
-            if cookies:
-                cookies_file = os.path.join(temp_dir, f"cookies_{batch_num}.txt")
-                with open(cookies_file, 'w', encoding='utf-8') as f:
-                    f.write(cookies)
-            
-            # تنويع رابط البحث لكل مجموعة
-            search_hash = generate_search_hash(query, start_pos)
-            search_params = f"{quote(query)}&rs=typed&term_meta[]={search_hash}"
-            search_url = f"https://www.pinterest.com/search/pins/?q={search_params}"
-            
-            # بناء أمر gallery-dl محسن
-            cmd = [
-                'gallery-dl',
-                '--no-check-certificate',
-                '--write-metadata',
-                '--directory', temp_dir,
-                '--no-part',
-                '--no-mtime',
-                '--range', f'{start_pos}-{end_pos}',
-                '--retries', '2',
-                '--timeout', '25',
-                '--sleep-request', '1,2',  # توقف عشوائي بين 1-2 ثانية
-                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                search_url
-            ]
-            
-            if cookies_file:
-                cmd.extend(['--cookies', cookies_file])
-            
-            # تنفيذ الأمر مع معالجة أفضل للأخطاء
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=60  # 60 ثانية كحد أقصى لكل مجموعة
-                )
-                
-                if process.returncode != 0 and b"ERROR" in stderr:
-                    print(f"Gallery-dl warning for batch {batch_num + 1}: {stderr.decode()[:200]}")
-                
-            except asyncio.TimeoutError:
-                print(f"Batch {batch_num + 1} timed out, moving to next batch")
-                continue
-            except Exception as e:
-                print(f"Error in batch {batch_num + 1}: {e}")
-                continue
-            
-            # جمع الصور المحملة من هذه المجموعة
-            batch_files = get_downloaded_images(temp_dir)
-            new_files = [f for f in batch_files if f not in all_files]
-            
-            all_files.extend(new_files[:current_batch_size])
-            total_downloaded += len(new_files)
-            
-            # تنظيف ملف الكوكيز
-            if cookies_file and os.path.exists(cookies_file):
-                try:
-                    os.remove(cookies_file)
-                except:
-                    pass
-            
-            # تنظيف دوري للذاكرة
-            if batch_num % 2 == 0:  # كل مجموعتين
-                cleanup_memory()
-            
-            # توقف قصير بين المجموعات
-            if batch_num < total_batches - 1:
-                await asyncio.sleep(2)
+        # اختيار رابط البحث بناءً على العدد التراكمي
+        search_url = random.choice(search_variations)
         
-        return all_files[:count]  # إرجاع العدد المطلوب فقط
+        # إضافة معاملات إضافية لتنويع النتائج
+        if offset > 0:
+            # إضافة معامل offset أو تنويع في البحث
+            search_url += f"&page={offset // 25 + 1}"
+        
+        # بناء أمر gallery-dl مع تحسينات للذاكرة
+        cmd = [
+            'gallery-dl',
+            '--no-check-certificate',
+            '--write-metadata',
+            '--write-info-json',
+            '--directory', temp_dir,
+            '--no-part',
+            '--no-mtime',
+            '--range', f'{offset + 1}-{offset + count}',  # استخدام offset لتجنب التكرار
+            '--sleep', '0.5',  # تأخير بين الطلبات
+            '--retries', '3',  # إعادة المحاولة
+            '--timeout', '30',  # مهلة زمنية
+            search_url
+        ]
+        
+        if cookies_file:
+            cmd.extend(['--cookies', cookies_file])
+        
+        # تنفيذ الأمر مع تحسينات الذاكرة
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            limit=1024*1024  # تحديد حد الذاكرة للعملية
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        print(f"gallery-dl stdout: {stdout.decode()}")
+        print(f"gallery-dl stderr: {stderr.decode()}")
+        
+        if process.returncode != 0:
+            raise Exception(f"gallery-dl failed with code {process.returncode}: {stderr.decode()}")
+        
+        # البحث عن الملفات التي تم تنزيلها
+        downloaded_files = []
+        for root, _, files in os.walk(temp_dir):
+            for file in files:
+                if file.endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif')):
+                    file_path = os.path.join(root, file)
+                    downloaded_files.append(file_path)
+        
+        # ترتيب الملفات حسب وقت التعديل لضمان الترتيب الصحيح
+        downloaded_files.sort(key=lambda x: os.path.getmtime(x))
+        
+        if not downloaded_files:
+            raise Exception("No images found after download")
+        
+        return downloaded_files
         
     except Exception as e:
-        print(f"Error in download_pinterest_images_smart: {e}")
+        print(f"Error in download_pinterest_images: {e}")
         raise
 
-async def send_images_safely(event, image_files, query):
-    """إرسال الصور مع إدارة آمنة للذاكرة"""
-    total_images = len(image_files)
-    sent_count = 0
-    
-    for i, image_path in enumerate(image_files, start=1):
-        try:
-            # التحقق من وجود الملف
-            if not os.path.exists(image_path):
-                continue
-                
-            # إرسال الصورة
-            await event.client.send_file(
-                event.chat_id,
-                image_path,
-                caption=f"**الصورة {i} من {total_images} لـ {query}**",
-                progress_callback=lambda d, t: asyncio.create_task(
-                    progress(d, t, event, f"**╮ ❐ جـارِ رفـع الصور {i}/{total_images} ...🖼️╰**")
-                ) if d and t else None
-            )
-            
-            sent_count += 1
-            
-            # حذف الصورة بعد الإرسال لتوفير المساحة
-            try:
-                os.remove(image_path)
-            except:
-                pass
-            
-            # تأخير ثانية واحدة بين كل صورة
-            if i < total_images:
-                await asyncio.sleep(DELAY_BETWEEN_UPLOADS)
-                
-            # تنظيف دوري للذاكرة
-            if i % CLEANUP_INTERVAL == 0:
-                cleanup_memory()
-                await asyncio.sleep(0.5)  # راحة قصيرة
-                
-        except Exception as upload_error:
-            print(f"Error uploading image {i}: {upload_error}")
-            continue
-    
-    return sent_count
-
-# متغير لتتبع عمليات البحث
-search_history = {}
-
-@client.on(events.NewMessage(pattern=r'\.صور (.*?) (\d+)(?:\s+(\d+))?'))
+@client.on(events.NewMessage(pattern=r'\.صور (.*?) (\d+)'))
 async def pinterest_images_search(event):
-    global search_history
-    
-    # استخراج المعطيات من الأمر
+    # استخراج البحث وعدد الصور من الأمر
     match = event.pattern_match
     query = match.group(1).strip()
     count = int(match.group(2))
-    offset = int(match.group(3)) if match.group(3) else 0
     
-    # التحقق من صحة المدخلات
+    # تحديد الحد الأقصى للصور (50 صورة كحد أقصى)
     if count > 50:
         await event.edit("**⚠️ الحد الأقصى لعدد الصور هو 50**")
         return
@@ -7441,125 +7329,159 @@ async def pinterest_images_search(event):
         await event.edit("**⚠️ يجب أن يكون عدد الصور على الأقل 1**")
         return
     
-    # إدارة تكرار البحث
-    search_key = query.lower()
-    current_time = int(time.time())
-    
-    if search_key in search_history and offset == 0:
-        last_search = search_history[search_key]
-        # إذا كان البحث في آخر 10 دقائق، نضيف إزاحة تلقائية
-        if current_time - last_search['time'] < 600:
-            offset = last_search['total_downloaded']
-            await event.edit(f"**📌 تم اكتشاف بحث متكرر - البحث عن صور جديدة (إزاحة: {offset})**")
-    
-    await event.edit(f"**╮ جـارِ البحث عن {count} صورة لـ {query}... 📌╰**")
+    await event.edit(f"**╮ جـارِ البحث عن {count} صورة لـ {query} في بنترست... 📌╰**")
 
     temp_dir = None
     try:
         # إنشاء مجلد التحميل المؤقت
-        temp_dir = tempfile.mkdtemp(prefix='pinterest_')
+        temp_dir = tempfile.mkdtemp()
         
-        # تحميل الكوكيز
+        # تحميل الكوكيز من ملف pincook.txt
         cookies = load_pinterest_cookies()
+        
         if not cookies:
-            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:** `pincook.txt` أو `cookies.txt`")
+            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:** `pincook.txt`")
             return
         
-        # تحميل الصور
-        downloaded_files = await download_pinterest_images_smart(
-            query, count, temp_dir, cookies, event, offset
-        )
+        # تحديد offset بناءً على البحثات السابقة لتجنب التكرار
+        search_key = query.lower().strip()
+        offset = search_cache.get(search_key, 0)
+        
+        # تحميل الصور مع محاولات متعددة لضمان الحصول على العدد المطلوب
+        downloaded_files = []
+        max_attempts = 3
+        current_count = count
+        current_offset = offset
+        
+        for attempt in range(max_attempts):
+            try:
+                # تنظيف الذاكرة قبل كل محاولة
+                gc.collect()
+                
+                batch_files = await download_pinterest_images(query, current_count, temp_dir, cookies, current_offset)
+                
+                # إضافة الملفات الجديدة فقط (تجنب التكرار)
+                new_files = []
+                for file_path in batch_files:
+                    if file_path not in downloaded_files:
+                        new_files.append(file_path)
+                
+                downloaded_files.extend(new_files)
+                
+                # إذا حصلنا على العدد المطلوب، نتوقف
+                if len(downloaded_files) >= count:
+                    downloaded_files = downloaded_files[:count]
+                    break
+                
+                # إذا لم نحصل على صور جديدة، جرب offset مختلف
+                if not new_files:
+                    current_offset += 25
+                else:
+                    current_count = count - len(downloaded_files)
+                    current_offset += len(new_files)
+                
+                # تأخير قصير بين المحاولات
+                await asyncio.sleep(1)
+                
+            except Exception as batch_error:
+                print(f"Attempt {attempt + 1} failed: {batch_error}")
+                if attempt == max_attempts - 1:
+                    raise batch_error
+                await asyncio.sleep(2)
         
         if not downloaded_files:
-            await event.edit("**⚠️ لم يتم العثور على أي صور للبحث المحدد**\n\n**جرب:**\n• تغيير كلمة البحث\n• التأكد من صحة الكوكيز\n• استخدام VPN")
-            return
+            raise Exception("No images found after all attempts")
         
-        actual_count = len(downloaded_files)
-        if actual_count < count:
-            await event.edit(f"**تم العثور على {actual_count} صور من أصل {count} 📸**\n**جاري الرفع...**")
-        else:
-            await event.edit(f"**✅ تم تحميل {actual_count} صورة - جاري الرفع مع تأخير ثانية بين كل صورة**")
+        # تحديث cache البحث
+        search_cache[search_key] = current_offset
         
-        # إرسال الصور
-        sent_count = await send_images_safely(event, downloaded_files, query)
+        # تنظيف cache إذا أصبح كبيراً جداً
+        if len(search_cache) > 100:
+            # الاحتفاظ بآخر 50 بحث فقط
+            items = list(search_cache.items())
+            search_cache.clear()
+            search_cache.update(dict(items[-50:]))
         
-        # تحديث سجل البحث
-        if search_key not in search_history:
-            search_history[search_key] = {'total_downloaded': 0, 'searches': 0}
+        if len(downloaded_files) < count:
+            await event.edit(f"**⚠️ تم العثور على {len(downloaded_files)} صور من أصل {count} المطلوبة**")
         
-        search_history[search_key].update({
-            'total_downloaded': search_history[search_key]['total_downloaded'] + sent_count,
-            'searches': search_history[search_key]['searches'] + 1,
-            'time': current_time
-        })
+        await event.edit(f"**╮ ❐ جـارِ رفـع {len(downloaded_files)} صورة ...🖼️╰**")
         
-        # تنظيف السجل القديم (أكبر من ساعة)
-        old_keys = [k for k, v in search_history.items() if current_time - v.get('time', 0) > 3600]
-        for key in old_keys:
-            del search_history[key]
+        # إرسال الصور مع تحسينات الذاكرة والتأخير
+        for i, image_path in enumerate(downloaded_files, start=1):
+            try:
+                # تنظيف الذاكرة كل 5 صور
+                if i % 5 == 0:
+                    gc.collect()
+                
+                # قراءة الصورة وإرسالها مباشرة لتوفير الذاكرة
+                await event.client.send_file(
+                    event.chat_id,
+                    image_path,
+                    caption=f"**الصورة {i} من {len(downloaded_files)} لـ {query}**"
+                )
+                
+                # تأخير ثانية واحدة بين إرسال كل صورة
+                if i < len(downloaded_files):  # لا حاجة للتأخير بعد آخر صورة
+                    await asyncio.sleep(1)
+                
+                # حذف الصورة فور إرسالها لتوفير الذاكرة
+                try:
+                    os.remove(image_path)
+                except:
+                    pass
+                
+                # تحديث الرسالة كل 10 صور
+                if i % 10 == 0 or i == len(downloaded_files):
+                    try:
+                        await event.edit(f"**╮ ❐ تم إرسـال {i}/{len(downloaded_files)} صورة ...🖼️╰**")
+                    except:
+                        pass
+                        
+            except Exception as upload_error:
+                print(f"Error uploading image {i}: {upload_error}")
+                continue
         
-        # رسالة النجاح مع اقتراحات
-        success_msg = f"**✅ تم إرسـال {sent_count} صورة لـ {query} بنجـاح**"
+        # تنظيف نهائي للذاكرة
+        gc.collect()
         
-        if sent_count > 0:
-            next_offset = offset + sent_count
-            success_msg += f"\n\n**💡 للحصول على صور جديدة:**\n`.صور {query} {count} {next_offset}`"
-        
-        await event.edit(success_msg)
+        await event.edit(f"**╮ ❐ تم إرسـال {len(downloaded_files)} صورة لـ {query} بنجـاح ✅╰**")
 
     except Exception as e:
         error_msg = str(e).lower()
-        print(f"Pinterest search error: {e}")
+        print(f"Main error: {e}")
+        
+        # تنظيف الذاكرة عند الخطأ
+        gc.collect()
         
         if "403" in error_msg or "forbidden" in error_msg:
-            await event.edit("**⚠️ تم حظر الوصول**\n\n**الحلول:**\n• تحديث الكوكيز\n• استخدام VPN\n• الانتظار قليلاً ثم المحاولة")
-        elif "timeout" in error_msg or "timed out" in error_msg:
-            await event.edit("**⚠️ انتهت مهلة الاتصال**\n\n**جرب تقليل عدد الصور أو المحاولة لاحقاً**")
+            await event.edit("**⚠️ تم حظر الوصول - جرب استخدام كوكيز صالح أو VPN**")
         elif "private" in error_msg or "login" in error_msg:
-            await event.edit("**⚠️ يتطلب تسجيل دخول صالح**\n\n**تأكد من صحة ملف الكوكيز**")
+            await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل دخول - تأكد من صحة الكوكيز**")
+        elif "not found" in error_msg or "unavailable" in error_msg:
+            await event.edit("**⚠️ لم يتم العثور على صور لهذا البحث**")
         else:
-            await event.edit(f"**⚠️ خطأ غير متوقع:**\n`{str(e)[:150]}...`\n\n**جرب المحاولة مرة أخرى**")
+            await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
 
     finally:
-        # تنظيف شامل
-        if temp_dir and os.path.exists(temp_dir):
+        # تنظيف الملفات المؤقتة
+        if temp_dir:
             try:
                 shutil.rmtree(temp_dir)
             except Exception as cleanup_error:
-                print(f"Cleanup warning: {cleanup_error}")
+                print(f"Cleanup error: {cleanup_error}")
         
-        # تنظيف الذاكرة
-        cleanup_memory()
+        # تنظيف نهائي للذاكرة
+        gc.collect()
 
-# أوامر مساعدة
-@client.on(events.NewMessage(pattern=r'\.احصائيات_صور'))
-async def show_pinterest_stats(event):
-    """عرض إحصائيات استخدام Pinterest"""
-    if not search_history:
-        await event.edit("**📊 لا توجد إحصائيات بعد**\n\nابدأ بالبحث عن صور باستخدام: `.صور [كلمة البحث] [العدد]`")
-        return
-    
-    total_searches = sum(data['searches'] for data in search_history.values())
-    total_images = sum(data['total_downloaded'] for data in search_history.values())
-    
-    stats_msg = f"""**📊 إحصائيات Pinterest:**
-
-**🔍 إجمالي عمليات البحث:** {total_searches}
-**🖼️ إجمالي الصور المحملة:** {total_images}
-**📱 التأخير بين الصور:** {DELAY_BETWEEN_UPLOADS} ثانية
-**📦 حجم المجموعة:** {MAX_BATCH_SIZE} صور
-
-**🔥 أكثر عمليات البحث:**"""
-    
-    # أفضل 3 عمليات بحث
-    sorted_searches = sorted(search_history.items(), key=lambda x: x[1]['total_downloaded'], reverse=True)[:3]
-    
-    for i, (query, data) in enumerate(sorted_searches, 1):
-        stats_msg += f"\n{i}. **{query}** - {data['total_downloaded']} صور"
-    
-    await event.edit(stats_msg)
-
-
+# إضافة أمر لمسح ذاكرة البحث
+@client.on(events.NewMessage(pattern=r'\.مسح_ذاكرة_البحث'))
+async def clear_search_cache(event):
+    """مسح ذاكرة البحث المحفوظة"""
+    global search_cache
+    search_cache.clear()
+    gc.collect()
+    await event.edit("**✅ تم مسح ذاكرة البحث بنجاح**")
 
 
                           
