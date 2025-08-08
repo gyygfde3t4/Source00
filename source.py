@@ -32,6 +32,8 @@ from mutagen.id3 import ID3NoHeaderError
 import glob
 import tempfile
 import aiofiles
+import warnings
+import shutil
 
 # ========== مكتبات HTTP وطلبات الويب ==========
 import requests
@@ -54,7 +56,7 @@ from pydub import AudioSegment
 from mutagen.easyid3 import EasyID3
 from urllib.parse import urlparse
 from http.cookiejar import MozillaCookieJar
-import shutil
+from urllib.parse import quote
 
 # ========== Telethon - استيراد رئيسي ==========
 from telethon import TelegramClient, events, functions, types, Button
@@ -6893,6 +6895,8 @@ def humanbytes(size):
 
 ##########################
 
+# تجاهل تحذيرات SSL
+warnings.filterwarnings("ignore", category=requests.packages.urllib3.exceptions.InsecureRequestWarning)
 
 # الدوال المساعدة
 def humanbytes(size):
@@ -6923,7 +6927,7 @@ def expand_pinterest_url(short_url):
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
-            response = requests.head(short_url, headers=headers, allow_redirects=True, timeout=10)
+            response = requests.head(short_url, headers=headers, allow_redirects=True, timeout=10, verify=False)
             expanded_url = response.url
             print(f"Expanded URL: {short_url} -> {expanded_url}")
             return expanded_url
@@ -6932,26 +6936,20 @@ def expand_pinterest_url(short_url):
         print(f"Error expanding URL: {e}")
         return short_url
 
-def convert_cookies_to_json(cookies_text):
-    """تحويل ملف الكوكيز من تنسيق Netscape إلى JSON"""
-    cookies = []
-    lines = cookies_text.split('\n')
-    
-    for line in lines:
-        line = line.strip()
-        if line and not line.startswith('#'):
-            parts = line.split('\t')
-            if len(parts) >= 7:
-                cookies.append({
-                    "domain": parts[0],
-                    "httpOnly": False,
-                    "name": parts[5],
-                    "path": parts[2],
-                    "secure": parts[3].lower() == 'true',
-                    "value": parts[6]
-                })
-    
-    return cookies
+def convert_cookies_to_netscape(cookies):
+    """تحويل الكوكيز من JSON إلى تنسيق Netscape"""
+    netscape_cookies = "# Netscape HTTP Cookie File\n"
+    for cookie in cookies:
+        netscape_cookies += (
+            f"{cookie.get('domain', '.pinterest.com')}\t"
+            f"{'TRUE' if cookie.get('secure') else 'FALSE'}\t"
+            f"{cookie.get('path', '/')}\t"
+            f"{'TRUE' if cookie.get('secure') else 'FALSE'}\t"
+            f"{cookie.get('expiry', '0')}\t"
+            f"{cookie['name']}\t"
+            f"{cookie['value']}\n"
+        )
+    return netscape_cookies
 
 def load_pinterest_cookies():
     """تحميل كوكيز Pinterest من ملف pincook.txt"""
@@ -6964,9 +6962,10 @@ def load_pinterest_cookies():
                     content = f.read().strip()
                 
                 if content.startswith('# Netscape HTTP Cookie File'):
-                    return convert_cookies_to_json(content)
+                    return content
                 elif content.startswith('[') or content.startswith('{'):
-                    return json.loads(content)
+                    cookies = json.loads(content)
+                    return convert_cookies_to_netscape(cookies)
                 
             except Exception as e:
                 print(f"Error loading cookies from {cookie_file}: {e}")
@@ -6979,11 +6978,11 @@ async def download_with_gallerydl(url, temp_dir, cookies=None):
         # إنشاء ملف الكوكيز المؤقت إذا كانت متوفرة
         cookies_file = None
         if cookies:
-            cookies_file = os.path.join(temp_dir, "cookies.json")
+            cookies_file = os.path.join(temp_dir, "cookies.txt")
             with open(cookies_file, 'w', encoding='utf-8') as f:
-                json.dump(cookies, f)
+                f.write(cookies)
         
-        # بناء أمر gallery-dl (بدون --downloader)
+        # بناء أمر gallery-dl
         cmd = [
             'gallery-dl',
             '--no-check-certificate',
@@ -7068,7 +7067,7 @@ async def download_pinterest(event):
             await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:** `pincook.txt`\n\n**طريقة الحصول على الكوكيز:**\n1. افتح Pinterest في متصفحك\n2. استخدم إضافة مثل Cookie-Editor\n3. احفظ الكوكيز بصيغة Netscape (pincook.txt)")
             return
         
-        print(f"Loaded {len(cookies)} cookies for Pinterest")
+        print(f"Loaded cookies for Pinterest")
         
         # تحميل المحتوى باستخدام gallery-dl
         downloaded_file = await download_with_gallerydl(input_url, temp_dir, cookies)
@@ -7168,6 +7167,198 @@ async def download_pinterest(event):
         else:
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
 
+# تجاهل تحذيرات SSL
+warnings.filterwarnings("ignore", category=requests.packages.urllib3.exceptions.InsecureRequestWarning)
+
+# الدوال المساعدة
+def humanbytes(size):
+    """تحويل الحجم إلى صيغة مقروءة"""
+    if not size:
+        return "0B"
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.2f}{unit}"
+        size /= 1024
+    return f"{size:.2f}TB"
+
+async def progress(current, total, event, text):
+    """دالة لعرض شريط التقدم"""
+    if not current or not total:
+        return
+    try:
+        progress_percent = (current * 100) / total
+        if progress_percent % 10 < 1:
+            await event.edit(f"{text}\n\n**╮ ❐ التقـدم:** `{progress_percent:.1f}%`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
+    except Exception as e:
+        print(f"Error in progress: {e}")
+
+def convert_cookies_to_netscape(cookies):
+    """تحويل الكوكيز من JSON إلى تنسيق Netscape"""
+    netscape_cookies = "# Netscape HTTP Cookie File\n"
+    for cookie in cookies:
+        netscape_cookies += (
+            f"{cookie.get('domain', '.pinterest.com')}\t"
+            f"{'TRUE' if cookie.get('secure') else 'FALSE'}\t"
+            f"{cookie.get('path', '/')}\t"
+            f"{'TRUE' if cookie.get('secure') else 'FALSE'}\t"
+            f"{cookie.get('expiry', '0')}\t"
+            f"{cookie['name']}\t"
+            f"{cookie['value']}\n"
+        )
+    return netscape_cookies
+
+def load_pinterest_cookies():
+    """تحميل كوكيز Pinterest من ملف pincook.txt"""
+    cookie_files = ['pincook.txt', 'cookies.txt']
+    
+    for cookie_file in cookie_files:
+        if os.path.exists(cookie_file):
+            try:
+                with open(cookie_file, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                
+                if content.startswith('# Netscape HTTP Cookie File'):
+                    return content
+                elif content.startswith('[') or content.startswith('{'):
+                    cookies = json.loads(content)
+                    return convert_cookies_to_netscape(cookies)
+                
+            except Exception as e:
+                print(f"Error loading cookies from {cookie_file}: {e}")
+    
+    return None
+
+async def download_pinterest_images(query, count, temp_dir, cookies):
+    """تحميل الصور من Pinterest بناءً على البحث"""
+    try:
+        # إنشاء ملف الكوكيز المؤقت
+        cookies_file = None
+        if cookies:
+            cookies_file = os.path.join(temp_dir, "cookies.txt")
+            with open(cookies_file, 'w', encoding='utf-8') as f:
+                f.write(cookies)
+        
+        # بناء رابط البحث في Pinterest
+        search_url = f"https://www.pinterest.com/search/pins/?q={quote(query)}"
+        
+        # بناء أمر gallery-dl
+        cmd = [
+            'gallery-dl',
+            '--no-check-certificate',
+            '--write-metadata',
+            '--write-info-json',
+            '--directory', temp_dir,
+            '--no-part',
+            '--no-mtime',
+            '--range', f'1-{count}',
+            search_url
+        ]
+        
+        if cookies_file:
+            cmd.extend(['--cookies', cookies_file])
+        
+        # تنفيذ الأمر
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        print(f"gallery-dl stdout: {stdout.decode()}")
+        print(f"gallery-dl stderr: {stderr.decode()}")
+        
+        if process.returncode != 0:
+            raise Exception(f"gallery-dl failed with code {process.returncode}: {stderr.decode()}")
+        
+        # البحث عن الملفات التي تم تنزيلها
+        downloaded_files = []
+        for root, _, files in os.walk(temp_dir):
+            for file in files:
+                if file.endswith(('.jpg', '.jpeg', '.png')):
+                    downloaded_files.append(os.path.join(root, file))
+        
+        if not downloaded_files:
+            raise Exception("No images found after download")
+        
+        return downloaded_files
+        
+    except Exception as e:
+        print(f"Error in download_pinterest_images: {e}")
+        raise
+
+@client.on(events.NewMessage(pattern=r'\.صور (.*?) (\d+)'))
+async def pinterest_images_search(event):
+    # استخراج البحث وعدد الصور من الأمر
+    match = event.pattern_match
+    query = match.group(1).strip()
+    count = int(match.group(2))
+    
+    # تحديد الحد الأقصى للصور (50 صورة كحد أقصى)
+    if count > 50:
+        await event.edit("**⚠️ الحد الأقصى لعدد الصور هو 50**")
+        return
+    elif count < 1:
+        await event.edit("**⚠️ يجب أن يكون عدد الصور على الأقل 1**")
+        return
+    
+    await event.edit(f"**╮ جـارِ البحث عن {count} صورة لـ {query} في بنترست... 📌╰**")
+
+    try:
+        # إنشاء مجلد التحميل المؤقت
+        temp_dir = tempfile.mkdtemp()
+        
+        # تحميل الكوكيز من ملف pincook.txt
+        cookies = load_pinterest_cookies()
+        
+        if not cookies:
+            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:** `pincook.txt`")
+            return
+        
+        # تحميل الصور
+        downloaded_files = await download_pinterest_images(query, count, temp_dir, cookies)
+        
+        if len(downloaded_files) < count:
+            await event.edit(f"**⚠️ تم العثور على {len(downloaded_files)} صور فقط من أصل {count}**")
+        
+        await event.edit(f"**╮ ❐ جـارِ رفـع {len(downloaded_files)} صورة ...🖼️╰**")
+        
+        # إرسال الصور
+        for i, image_path in enumerate(downloaded_files, start=1):
+            try:
+                await event.client.send_file(
+                    event.chat_id,
+                    image_path,
+                    caption=f"**الصورة {i} من {len(downloaded_files)} لـ {query}**",
+                    progress_callback=lambda d, t: asyncio.create_task(
+                        progress(d, t, event, f"**╮ ❐ جـارِ رفـع الصور {i}/{len(downloaded_files)} ...🖼️╰**")
+                    ) if d and t else None
+                )
+            except Exception as upload_error:
+                print(f"Error uploading image {i}: {upload_error}")
+        
+        await event.edit(f"**╮ ❐ تم إرسـال {len(downloaded_files)} صورة لـ {query} بنجـاح ✅╰**")
+
+    except Exception as e:
+        error_msg = str(e).lower()
+        print(f"Main error: {e}")
+        
+        if "403" in error_msg or "forbidden" in error_msg:
+            await event.edit("**⚠️ تم حظر الوصول - جرب استخدام كوكيز صالح أو VPN**")
+        elif "private" in error_msg or "login" in error_msg:
+            await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل دخول - تأكد من صحة الكوكيز**")
+        elif "not found" in error_msg or "unavailable" in error_msg:
+            await event.edit("**⚠️ لم يتم العثور على صور لهذا البحث**")
+        else:
+            await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
+
+    finally:
+        # تنظيف الملفات المؤقتة
+        try:
+            shutil.rmtree(temp_dir)
+        except Exception as cleanup_error:
+            print(f"Cleanup error: {cleanup_error}")
 
 
                           
