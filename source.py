@@ -6885,7 +6885,6 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}PB"                        
 
-
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
 async def download_and_send_pinterest(event):
     # التحقق من وجود رابط
@@ -7050,7 +7049,14 @@ async def download_pinterest_with_cookies(url, event):
         if not cookies:
             raise Exception("لم يتم العثور على كوكيز صالحة")
 
-        # إعداد الهيدرز المحسنة
+        # إعداد الهيدرز المحسنة مع Pinterest headers خاصة
+        headers.update({
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-APP-VERSION': 'cb1c7f9',
+            'X-Pinterest-AppState': 'active',
+            'Origin': 'https://www.pinterest.com',
+            'Referer': url
+        })
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -7092,74 +7098,157 @@ async def download_pinterest_with_cookies(url, event):
         response.raise_for_status()
         html = response.text
         
-        # البحث المحسن عن روابط الميديا
-        import re
+        # البحث المحسن والمتقدم عن روابط الوسائط
+        import re, json
         
         media_url = None
         is_video = False
         
-        # أنماط البحث المحسنة للفيديو
-        video_patterns = [
-            r'"video_url":\s*"([^"]+)"',
-            r'"videos":\s*{[^}]*"url":\s*"([^"]+)"',
-            r'"video":\s*{[^}]*"url":\s*"([^"]+\.mp4[^"]*)"',
-            r'<video[^>]+src="([^"]+)"',
-            r'"contentUrl":\s*"([^"]+\.mp4[^"]*)"'
-        ]
+        print("بدء البحث عن الوسائط...")
         
-        # أنماط البحث المحسنة للصور
-        image_patterns = [
-            r'"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"',
-            r'"images":\s*{[^}]*"orig":\s*{[^}]*"url":\s*"([^"]+)"',
-            r'"url":\s*"(https://i\.pinimg\.com/\d+x\d+/[^"]+)"',
-            r'"image":\s*{[^}]*"url":\s*"(https://i\.pinimg\.com/[^"]+)"',
-            r'<meta property="og:image" content="([^"]+)"',
-            r'"contentUrl":\s*"(https://i\.pinimg\.com/[^"]+)"'
-        ]
+        # أولاً: البحث في البيانات الهيكلية JSON-LD
+        json_ld_matches = re.findall(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL)
+        for json_match in json_ld_matches:
+            try:
+                data = json.loads(json_match)
+                # البحث عن URL في البيانات الهيكلية
+                if isinstance(data, dict):
+                    if 'image' in data:
+                        if isinstance(data['image'], str):
+                            media_url = data['image']
+                        elif isinstance(data['image'], list) and data['image']:
+                            media_url = data['image'][0]
+                        elif isinstance(data['image'], dict) and 'url' in data['image']:
+                            media_url = data['image']['url']
+                    elif 'video' in data and isinstance(data['video'], dict):
+                        if 'contentUrl' in data['video']:
+                            media_url = data['video']['contentUrl']
+                            is_video = True
+                if media_url:
+                    print(f"Found media in JSON-LD: {media_url}")
+                    break
+            except:
+                continue
         
-        # البحث عن فيديو أولاً
-        for pattern in video_patterns:
-            matches = re.findall(pattern, html, re.IGNORECASE)
-            if matches:
-                media_url = matches[0].replace('\\/', '/').replace('\\u0026', '&')
-                is_video = True
-                print(f"Found video URL: {media_url}")
-                break
-        
-        # إذا لم نجد فيديو، نبحث عن صورة
+        # ثانياً: البحث في __PWS_DATA__ أو window.__initialData
         if not media_url:
-            for pattern in image_patterns:
-                matches = re.findall(pattern, html, re.IGNORECASE)
-                if matches:
-                    # اختيار أعلى جودة متوفرة
-                    for match in matches:
-                        clean_url = match.replace('\\/', '/').replace('\\u0026', '&')
-                        if 'originals' in clean_url or '736x' in clean_url:
-                            media_url = clean_url
-                            print(f"Found high quality image URL: {media_url}")
+            pws_patterns = [
+                r'__PWS_DATA__\s*=\s*({.+?});',
+                r'window\.__initialData\s*=\s*({.+?});',
+                r'__INITIAL_STATE__\s*=\s*({.+?});'
+            ]
+            
+            for pws_pattern in pws_patterns:
+                pws_match = re.search(pws_pattern, html)
+                if pws_match:
+                    try:
+                        pws_data = json.loads(pws_match.group(1))
+                        # البحث العميق في البيانات
+                        media_url = extract_media_from_data(pws_data)
+                        if media_url:
+                            if '.mp4' in media_url:
+                                is_video = True
+                            print(f"Found media in PWS data: {media_url}")
                             break
-                    if not media_url and matches:
-                        media_url = matches[0].replace('\\/', '/').replace('\\u0026', '&')
-                        print(f"Found image URL: {media_url}")
+                    except:
+                        continue
+        
+        # ثالثاً: البحث بالأنماط العادية المحسنة
+        if not media_url:
+            # أنماط الفيديو المحسنة
+            video_patterns = [
+                r'"video_url":\s*"([^"]+)"',
+                r'"videos":\s*\{[^}]*?"url":\s*"([^"]+)"',
+                r'"video_list":\s*\[.*?"url":\s*"([^"]+\.mp4[^"]*)"',
+                r'"contentUrl":\s*"([^"]+\.mp4[^"]*)"',
+                r'<video[^>]+src="([^"]+)"',
+                r'"story_pin_data":\s*\{[^}]*?"video_signature":\s*"([^"]+)"'
+            ]
+            
+            # أنماط الصور المحسنة
+            image_patterns = [
+                r'"images":\s*\{[^}]*?"orig":\s*\{[^}]*?"url":\s*"([^"]+)"',
+                r'"url":\s*"(https://i\.pinimg\.com/originals/[^"]+)"',
+                r'"image_signature":\s*"(https://i\.pinimg\.com/[^"]+)"',
+                r'"dominant_color".*?"url":\s*"(https://i\.pinimg\.com/[^"]+)"',
+                r'<meta property="og:image" content="([^"]+)"',
+                r'"grid_title"[^}]*?"url":\s*"(https://i\.pinimg\.com/[^"]+)"'
+            ]
+            
+            # البحث عن فيديو
+            for pattern in video_patterns:
+                matches = re.findall(pattern, html, re.IGNORECASE | re.DOTALL)
+                for match in matches:
+                    clean_url = clean_media_url(match)
+                    if clean_url and is_valid_video_url(clean_url):
+                        media_url = clean_url
+                        is_video = True
+                        print(f"Found video URL: {media_url}")
+                        break
+                if media_url:
+                    break
+            
+            # البحث عن صورة إذا لم نجد فيديو
+            if not media_url:
+                for pattern in image_patterns:
+                    matches = re.findall(pattern, html, re.IGNORECASE | re.DOTALL)
+                    best_url = None
+                    for match in matches:
+                        clean_url = clean_media_url(match)
+                        if clean_url and is_valid_image_url(clean_url):
+                            # أولوية للجودة العالية
+                            if 'originals' in clean_url:
+                                media_url = clean_url
+                                print(f"Found high quality image: {media_url}")
+                                break
+                            elif '736x' in clean_url and not best_url:
+                                best_url = clean_url
+                            elif not best_url:
+                                best_url = clean_url
+                    
                     if media_url:
                         break
+                    elif best_url:
+                        media_url = best_url
+                        print(f"Found image URL: {media_url}")
+                        break
         
+        # رابعاً: البحث الاحتياطي في كامل HTML
         if not media_url:
-            # محاولة أخيرة للعثور على أي رابط صورة
             fallback_patterns = [
-                r'(https://i\.pinimg\.com/[^"\s]+)',
-                r'src="(https://[^"]*\.(?:jpg|jpeg|png|webp)[^"]*)"'
+                r'(https://i\.pinimg\.com/originals/[^"\s<>]+\.(?:jpg|jpeg|png|webp))',
+                r'(https://i\.pinimg\.com/\d+x\d+/[^"\s<>]+\.(?:jpg|jpeg|png|webp))',
+                r'(https://i\.pinimg\.com/[^"\s<>]+\.(?:jpg|jpeg|png|webp))',
+                r'(https://[^"\s<>]*\.(?:mp4|webm|mov))',
             ]
             
             for pattern in fallback_patterns:
                 matches = re.findall(pattern, html, re.IGNORECASE)
-                if matches:
-                    media_url = matches[0]
-                    print(f"Found fallback media URL: {media_url}")
+                for match in matches:
+                    clean_url = clean_media_url(match)
+                    if clean_url and (is_valid_image_url(clean_url) or is_valid_video_url(clean_url)):
+                        media_url = clean_url
+                        if '.mp4' in clean_url or '.webm' in clean_url:
+                            is_video = True
+                        print(f"Found fallback media: {media_url}")
+                        break
+                if media_url:
                     break
         
         if not media_url:
-            raise Exception("لم يتم العثور على رابط الوسائط في الصفحة")
+            # محاولة أخيرة: استخراج أي صورة من Pinterest
+            pinterest_imgs = re.findall(r'(https://i\.pinimg\.com/[^"\s<>]+)', html)
+            if pinterest_imgs:
+                # اختيار أطول رابط (عادة ما يكون أعلى جودة)
+                media_url = max(pinterest_imgs, key=len)
+                print(f"Found Pinterest image (last resort): {media_url}")
+        
+        if not media_url:
+            # طباعة معلومات تشخيصية
+            print(f"Page title: {re.search(r'<title[^>]*>([^<]+)</title>', html)}")
+            print(f"HTML length: {len(html)}")
+            print(f"Contains Pinterest data: {'pinimg.com' in html}")
+            raise Exception("لم يتم العثور على أي رابط وسائط صالح في الصفحة")
         
         await event.edit("**╮ جاري التحميل... 📌♥️╰**")
         
@@ -7224,7 +7313,84 @@ async def download_pinterest_with_cookies(url, event):
         print(f"خطأ في التحميل: {error}")
         return None
 
-async def progress(current, total, event, text):
+def extract_media_from_data(data, depth=0):
+    """استخراج رابط الوسائط من البيانات المعقدة"""
+    if depth > 5:  # تجنب اللا نهاية
+        return None
+    
+    if isinstance(data, dict):
+        # البحث المباشر عن المفاتيح المهمة
+        direct_keys = ['url', 'contentUrl', 'image', 'video_url', 'src']
+        for key in direct_keys:
+            if key in data:
+                value = data[key]
+                if isinstance(value, str) and is_valid_media_url(value):
+                    return clean_media_url(value)
+        
+        # البحث في المستوى التالي
+        search_keys = ['images', 'videos', 'media', 'orig', 'video', 'image', 'pin', 'data']
+        for key in search_keys:
+            if key in data:
+                result = extract_media_from_data(data[key], depth + 1)
+                if result:
+                    return result
+        
+        # البحث في كل القيم
+        for value in data.values():
+            result = extract_media_from_data(value, depth + 1)
+            if result:
+                return result
+    
+    elif isinstance(data, list):
+        for item in data:
+            result = extract_media_from_data(item, depth + 1)
+            if result:
+                return result
+    
+    return None
+
+def clean_media_url(url):
+    """تنظيف رابط الوسائط"""
+    if not url:
+        return None
+    
+    # إزالة escape characters
+    url = url.replace('\\/', '/').replace('\\u0026', '&').replace('\\', '')
+    
+    # إزالة المعايير غير الضرورية
+    if '?' in url:
+        url = url.split('?')[0]
+    
+    return url.strip()
+
+def is_valid_media_url(url):
+    """التحقق من صحة رابط الوسائط"""
+    if not url or not isinstance(url, str):
+        return False
+    
+    return is_valid_image_url(url) or is_valid_video_url(url)
+
+def is_valid_image_url(url):
+    """التحقق من صحة رابط الصورة"""
+    if not url:
+        return False
+    
+    image_domains = ['i.pinimg.com', 'media.pinterest.com']
+    image_extensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif']
+    
+    return (any(domain in url.lower() for domain in image_domains) and 
+            any(ext in url.lower() for ext in image_extensions))
+
+def is_valid_video_url(url):
+    """التحقق من صحة رابط الفيديو"""
+    if not url:
+        return False
+    
+    video_extensions = ['.mp4', '.webm', '.mov', '.avi']
+    video_domains = ['v.pinimg.com', 'i.pinimg.com']
+    
+    return (any(ext in url.lower() for ext in video_extensions) or
+            any(domain in url.lower() for domain in video_domains))
     """دالة لعرض شريط التقدم"""
     if not current or not total:
         return
@@ -7245,6 +7411,7 @@ def humanbytes(size):
             return f"{size:.2f}{unit}"
         size /= 1024
     return f"{size:.2f}TB"
+
                           
 def run_server():
     handler = http.server.SimpleHTTPRequestHandler
