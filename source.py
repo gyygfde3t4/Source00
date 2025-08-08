@@ -6885,6 +6885,7 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}PB"                        
 
+
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
 async def download_and_send_pinterest(event):
     # التحقق من وجود رابط
