@@ -6901,18 +6901,7 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}TB"
 
-async def progress(current, total, event, text):
-    """دالة لعرض شريط التقدم"""
-    if not current or not total:
-        return
-    try:
-        progress_percent = (current * 100) / total
-        if progress_percent % 10 < 1:
-            await event.edit(f"{text}\n\n**╮ ❐ التقـدم:** `{progress_percent:.1f}%`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
-    except Exception as e:
-        print(f"Error in progress: {e}")
-
-
+##########################
 
 # الدوال المساعدة
 def humanbytes(size):
@@ -6926,46 +6915,6 @@ def humanbytes(size):
     return f"{size:.2f}TB"
 
 async def progress(current, total, event, text):
-    """دالة لعرض شريط التقدم"""
-    if not current or not total:
-        return
-    try:
-        progress_percent = (current * 100) / total
-        if progress_percent % 10 < 1:
-            await event.edit(f"{text}\n\n**╮ ❐ التقـدم:** `{progress_percent:.1f}%`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
-    except Exception as e:
-        print(f"Error in progress: {e}")
-
-
-
-
-
-# تحميل الكوكيز (مطلوبة دائماً للوصول لمحتوى Pinterest)
-        cookies = None
-        cookie_files = ['pincook.txt', 'pincook.json', 'cookies.json', 'cookies.txt', 'pinterest_cookies.json']
-        
-        for cookie_file in cookie_files:
-            cookies = load_cookies_from_file(cookie_file)
-            if cookies:
-                print(f"Loaded {len(cookies)} cookies from: {cookie_file}")
-                break
-        
-        if not cookies:
-            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:**\n• `pincook.txt` (Netscape format)\n• `pincook.json` (JSON format)\n\n**لتصدير الكوكيز:**\n1. افتح Pinterest وسجل دخولك\n2. استخدم إضافة Cookie Editor\n3. صدّر الكوكيز وضعها في الملف")
-            return
-
-# الدوال المساعدة
-async def download_file_async(url, filename, session, headers=None):
-    """تحويل الحجم إلى صيغة مقروءة"""
-    if not size:
-        return "0B"
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size < 1024:
-            return f"{size:.2f}{unit}"
-        size /= 1024
-    return f"{size:.2f}TB"
-
-def humanbytes(size):
     """دالة لعرض شريط التقدم"""
     if not current or not total:
         return
@@ -7027,6 +6976,8 @@ def load_cookies_from_file(filepath):
     except Exception as e:
         print(f"Error loading cookies from {filepath}: {e}")
         return None
+
+async def download_file_async(url, filename, session, headers=None):
     """تحميل الملف بطريقة غير متزامنة"""
     try:
         async with session.get(url, headers=headers or {}) as response:
@@ -7062,7 +7013,19 @@ async def download_pinterest(event):
         # إنشاء مجلد التحميل المؤقت
         temp_dir = tempfile.mkdtemp()
         
-async def progress(current, total, event, text):
+        # تحميل الكوكيز (مطلوبة دائماً للوصول لمحتوى Pinterest)
+        cookies = None
+        cookie_files = ['pincook.txt', 'pincook.json', 'cookies.json', 'cookies.txt', 'pinterest_cookies.json']
+        
+        for cookie_file in cookie_files:
+            cookies = load_cookies_from_file(cookie_file)
+            if cookies:
+                print(f"Loaded {len(cookies)} cookies from: {cookie_file}")
+                break
+        
+        if not cookies:
+            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:**\n• `pincook.txt` (Netscape format)\n• `pincook.json` (JSON format)\n\n**لتصدير الكوكيز:**\n1. افتح Pinterest وسجل دخولك\n2. استخدم إضافة Cookie Editor\n3. صدّر الكوكيز وضعها في الملف")
+            return
 
         await event.edit("**╮ ❐ جـارِ استخـراج المحتـوى ...𓅫╰**")
         
