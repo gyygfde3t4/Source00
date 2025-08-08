@@ -6893,7 +6893,6 @@ def humanbytes(size):
 
 ##########################
 
-
 # الدوال المساعدة
 def humanbytes(size):
     """تحويل الحجم إلى صيغة مقروءة"""
@@ -6915,6 +6914,22 @@ async def progress(current, total, event, text):
             await event.edit(f"{text}\n\n**╮ ❐ التقـدم:** `{progress_percent:.1f}%`\n**╰ ❐ الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`")
     except Exception as e:
         print(f"Error in progress: {e}")
+
+def expand_pinterest_url(short_url):
+    """توسيع الروابط المختصرة من pin.it إلى pinterest.com"""
+    try:
+        if 'pin.it' in short_url:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            response = requests.head(short_url, headers=headers, allow_redirects=True, timeout=10)
+            expanded_url = response.url
+            print(f"Expanded URL: {short_url} -> {expanded_url}")
+            return expanded_url
+        return short_url
+    except Exception as e:
+        print(f"Error expanding URL: {e}")
+        return short_url
 
 def load_cookies_from_file(filepath):
     """تحميل الكوكيز من ملف بتنسيقات مختلفة"""
@@ -6998,6 +7013,14 @@ async def download_pinterest(event):
         await event.edit("**⚠️ يـجب إدخـال رابـط بنترست صـحيح**")
         return
 
+    # توسيع الرابط المختصر إذا كان من pin.it
+    if 'pin.it' in input_url:
+        await event.edit("**╮ ❐ جـارِ توسـيع الرابـط المختصـر ...📌╰**")
+        input_url = expand_pinterest_url(input_url)
+        if not input_url or 'pinterest.com' not in input_url:
+            await event.edit("**⚠️ فشل في توسيع الرابط المختصر**")
+            return
+
     await event.edit("**╮ جـارِ تحميـل المحتـوى مـن بنترسـت... 📌♥️╰**")
 
     try:
@@ -7039,36 +7062,77 @@ async def download_pinterest(event):
             )
         except Exception as api_error:
             print(f"API mode failed: {api_error}")
-            # جرب browser mode كبديل
+            # لا نستخدم browser mode في Koyeb لأنه غير مدعوم
+            await event.edit("**╮ ❐ جـارِ المحـاولة بطريقـة أخـرى ...𓅫╰**")
+            
             try:
-                await event.edit("**╮ ❐ جـارِ المحـاولة بـوضع المتصـفح ...𓅫╰**")
-                browser_dl = PinterestDL.with_browser(
-                    browser_type="chrome",
-                    headless=True
-                )
-                # لا نستخدم with_cookies مع browser mode إذا فشل
+                # جرب API بدون cookies أولاً
+                simple_dl = PinterestDL.with_api(timeout=15)
                 scraped_images = await asyncio.get_event_loop().run_in_executor(
                     None, 
-                    lambda: browser_dl.scrape(
+                    lambda: simple_dl.scrape(
                         url=input_url,
                         num=1
                     )
                 )
-            except Exception as browser_error:
-                print(f"Browser mode also failed: {browser_error}")
-                # أخيراً جرب API بدون cookies
+            except Exception as simple_error:
+                print(f"Simple API also failed: {simple_error}")
+                
+                # جرب استخراج Pin ID واستخدام URL مباشر
                 try:
-                    await event.edit("**╮ ❐ جـارِ المحـاولة بـدون كوكيـز ...𓅫╰**")
-                    simple_dl = PinterestDL.with_api(timeout=10)
-                    scraped_images = await asyncio.get_event_loop().run_in_executor(
-                        None, 
-                        lambda: simple_dl.scrape(
-                            url=input_url,
-                            num=1
+                    await event.edit("**╮ ❐ محـاولة اسـتخراج البيانـات مباشـرة ...𓅫╰**")
+                    pin_id = None
+                    
+                    # استخراج Pin ID من URL
+                    if '/pin/' in input_url:
+                        pin_id = input_url.split('/pin/')[-1].split('/')[0].split('?')[0]
+                    
+                    if pin_id and pin_id.isdigit():
+                        # إنشاء URL نظيف
+                        clean_url = f"https://www.pinterest.com/pin/{pin_id}/"
+                        print(f"Trying clean URL: {clean_url}")
+                        
+                        # جرب مع cookies مرة أخرى
+                        pinterest_dl_retry = PinterestDL.with_api(timeout=20).with_cookies(cookies)
+                        scraped_images = await asyncio.get_event_loop().run_in_executor(
+                            None, 
+                            lambda: pinterest_dl_retry.scrape(
+                                url=clean_url,
+                                num=1
+                            )
                         )
-                    )
-                except Exception as final_error:
-                    raise Exception(f"فشل في جميع الطرق: API ({str(api_error)[:50]}) | Browser ({str(browser_error)[:50]}) | Simple ({str(final_error)[:50]})")
+                    else:
+                        raise Exception("Could not extract valid pin ID from URL")
+                        
+                except Exception as direct_error:
+                    print(f"Direct extraction failed: {direct_error}")
+                    # كحل أخير، جرب الحصول على البيانات من Pinterest API مباشرة
+                    try:
+                        await event.edit("**╮ ❐ محـاولة أخـيرة عبـر API مباشـر ...𓅫╰**")
+                        
+                        # إنشاء Pinterest DL جديد بإعدادات مختلفة
+                        final_dl = PinterestDL.with_api(
+                            timeout=30,
+                            verbose=True
+                        )
+                        
+                        # إضافة الكوكيز إذا كانت متوفرة
+                        if cookies:
+                            final_dl = final_dl.with_cookies(cookies)
+                        
+                        scraped_images = await asyncio.get_event_loop().run_in_executor(
+                            None, 
+                            lambda: final_dl.scrape(
+                                url=input_url,
+                                num=5  # زيادة العدد لضمان الحصول على صورة واحدة على الأقل
+                            )
+                        )
+                        
+                        if scraped_images:
+                            scraped_images = [scraped_images[0]]  # أخذ أول صورة فقط
+                        
+                    except Exception as final_error:
+                        raise Exception(f"فشل نهائياً: تحقق من الرابط أو الكوكيز. {str(final_error)[:100]}")
 
         if not scraped_images:
             await event.edit("**⚠️ لم يتم العثور على محتوى قابل للتحميل**")
@@ -7200,6 +7264,8 @@ async def download_pinterest(event):
             await event.edit("**⚠️ المحتوى غير متوفر أو تم حذفه**")
         elif "timeout" in error_msg:
             await event.edit("**⚠️ انتهت مهلة الاتصال - حاول مرة أخرى**")
+        elif "invalid" in error_msg and "url" in error_msg:
+            await event.edit("**⚠️ الرابط غير صحيح أو غير مدعوم**\n\n**تأكد من:**\n• الرابط يحتوي على `/pin/`\n• الرابط من Pinterest الرسمي\n• المحتوى عام وليس خاص")
         elif "unsupported" in error_msg:
             await event.edit("**⚠️ الرابط غير مدعوم - تأكد من أنه رابط Pinterest صحيح**")
         elif "chrome" in error_msg or "browser" in error_msg:
