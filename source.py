@@ -52,6 +52,7 @@ from pydub import AudioSegment
 from mutagen.easyid3 import EasyID3
 from urllib.parse import urlparse
 from pinterest_dl import PinterestDL
+from http.cookiejar import MozillaCookieJar
 
 # ========== Telethon - استيراد رئيسي ==========
 from telethon import TelegramClient, events, functions, types, Button
@@ -6910,8 +6911,10 @@ async def progress(current, total, event, text):
         print(f"Error in progress: {e}")
 
 
-# الدوال المساعدة (نفسها كما في الكود السابق)
+
+# الدوال المساعدة
 def humanbytes(size):
+    """تحويل الحجم إلى صيغة مقروءة"""
     if not size:
         return "0B"
     for unit in ['B', 'KB', 'MB', 'GB']:
@@ -6921,6 +6924,7 @@ def humanbytes(size):
     return f"{size:.2f}TB"
 
 async def progress(current, total, event, text):
+    """دالة لعرض شريط التقدم"""
     if not current or not total:
         return
     try:
@@ -6932,7 +6936,7 @@ async def progress(current, total, event, text):
 
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
 async def download_pinterest(event):
-    # التحقق من وجود رابط (نفس الكود السابق)
+    # التحقق من وجود رابط
     reply = await event.get_reply_message()
     input_url = event.pattern_match.group(1).strip()
     
@@ -6950,44 +6954,44 @@ async def download_pinterest(event):
     await event.edit("**╮ جـارِ تحميـل المحتـوى مـن بنترسـت... 📌♥️╰**")
 
     try:
-        if not os.path.exists('downloads'):
-            os.makedirs('downloads')
+        # إنشاء مجلد التحميل إذا لم يكن موجوداً
+        download_dir = 'pinterest_downloads'
+        if not os.path.exists(download_dir):
+            os.makedirs(download_dir)
 
-        # التعديل الرئيسي: طريقة تحميل الكوكيز الصحيحة
-        pdl = PinterestDL(
-            output_dir='downloads',
-            quiet=True
-        )
+        # التهيئة الأساسية لمكتبة pinterest-dl
+        pdl = PinterestDL()
 
-        # إذا كان هناك ملف كوكيز، نضيفه يدوياً
+        # تحميل الكوكيز إذا كانت موجودة
         cookies = {}
         if os.path.exists('pincook.txt'):
-            from http.cookiejar import MozillaCookieJar
             cj = MozillaCookieJar('pincook.txt')
             cj.load()
             cookies = {cookie.name: cookie.value for cookie in cj}
 
-        # الحصول على معلومات المحتوى مع الكوكيز
+        # الحصول على معلومات المحتوى
         info = pdl.extract_info(input_url, cookies=cookies if cookies else None)
         if not info or not info.get('urls'):
             raise Exception("لم يتم العثور على محتوى قابل للتحميل")
 
-        # باقي الكود يبقى كما هو (تحميل الملف وإرساله)
+        # الحصول على أفضل رابط متاح
         media_url = info['urls'].get('hd') or info['urls'].get('sd') or info['urls'].get('image')
         if not media_url:
             raise Exception("لا توجد روابط وسائط متاحة")
 
+        # تحديد اسم الملف
         ext = '.mp4' if 'video' in info['type'] else '.jpg'
-        filename = f"downloads/pin_{info.get('id', 'temp')}{ext}"
+        filename = os.path.join(download_dir, f"pin_{info.get('id', 'temp')}{ext}")
 
         await event.edit("**╮ ❐ جـارِ التحميـل انتظـر ...𓅫╰**")
         
+        # إعداد رؤوس الطلب
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Referer': 'https://www.pinterest.com/'
         }
         
-        # إضافة الكوكيز إلى الطلب إذا كانت موجودة
+        # تحميل الملف
         response = requests.get(media_url, headers=headers, cookies=cookies, stream=True)
         response.raise_for_status()
         
@@ -6995,15 +6999,16 @@ async def download_pinterest(event):
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-        # باقي الكود يبقى كما هو (التحقق من الحجم والإرسال)
+        # التحقق من حجم الملف
         file_size = os.path.getsize(filename)
-        max_size = 100 * 1024 * 1024
+        max_size = 100 * 1024 * 1024  # 100MB
         
         if file_size > max_size:
             await event.edit(f"**⚠️ الملف كبير جداً للإرسال ({humanbytes(file_size)})**\n**الحد الأقصى: {humanbytes(max_size)}**")
             os.remove(filename)
             return
 
+        # إرسال المحتوى
         await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
         
         is_video = filename.endswith('.mp4')
@@ -7035,6 +7040,7 @@ async def download_pinterest(event):
             print(f"Upload error: {upload_error}")
             await event.edit("**⚠️ فشل في رفع الملف، يرجى المحاولة لاحقاً**")
 
+        # تنظيف الملف المؤقت
         if os.path.exists(filename):
             os.remove(filename)
 
