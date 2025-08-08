@@ -195,7 +195,7 @@ protection_enabled = False
 accepted_users = {}
 warned_users = {}
 user_auto_messages = {}
-MAX_WARNINGS = 3 
+MAX_WARNINGS = 7
 
 # ========== قوائم الرقابة والإشراف ==========
 accepted_users     = {}      # المستخدمون الذين تم قبولهم
