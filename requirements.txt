@@ -16,6 +16,7 @@ mutagen
 yt-dlp
 youtube_dl
 pinterest-dl
+aiofiles
 
 # ========== الترجمة ==========
 googletrans
