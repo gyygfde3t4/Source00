@@ -6940,8 +6940,22 @@ async def progress(current, total, event, text):
 
 
 
+# تحميل الكوكيز (مطلوبة دائماً للوصول لمحتوى Pinterest)
+        cookies = None
+        cookie_files = ['pincook.txt', 'pincook.json', 'cookies.json', 'cookies.txt', 'pinterest_cookies.json']
+        
+        for cookie_file in cookie_files:
+            cookies = load_cookies_from_file(cookie_file)
+            if cookies:
+                print(f"Loaded {len(cookies)} cookies from: {cookie_file}")
+                break
+        
+        if not cookies:
+            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:**\n• `pincook.txt` (Netscape format)\n• `pincook.json` (JSON format)\n\n**لتصدير الكوكيز:**\n1. افتح Pinterest وسجل دخولك\n2. استخدم إضافة Cookie Editor\n3. صدّر الكوكيز وضعها في الملف")
+            returnimport os
+
 # الدوال المساعدة
-def humanbytes(size):
+async def download_file_async(url, filename, session, headers=None):
     """تحويل الحجم إلى صيغة مقروءة"""
     if not size:
         return "0B"
@@ -6951,7 +6965,7 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}TB"
 
-async def progress(current, total, event, text):
+def humanbytes(size):
     """دالة لعرض شريط التقدم"""
     if not current or not total:
         return
@@ -6962,7 +6976,57 @@ async def progress(current, total, event, text):
     except Exception as e:
         print(f"Error in progress: {e}")
 
-async def download_file_async(url, filename, session, headers=None):
+def load_cookies_from_file(filepath):
+    """تحميل الكوكيز من ملف بتنسيقات مختلفة"""
+    if not os.path.exists(filepath):
+        return None
+    
+    try:
+        # محاولة قراءة كـ JSON أولاً
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+            
+        if content.startswith('[') or content.startswith('{'):
+            # تنسيق JSON
+            cookies_data = json.loads(content)
+            if isinstance(cookies_data, list):
+                return cookies_data
+            else:
+                # تحويل dict إلى list format
+                return [{"name": k, "value": v, "domain": ".pinterest.com"} for k, v in cookies_data.items()]
+        
+        elif content.startswith('# Netscape HTTP Cookie File'):
+            # تنسيق Netscape - نحوله لـ JSON format
+            cookies = []
+            lines = content.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    parts = line.split('\t')
+                    if len(parts) >= 7:
+                        domain = parts[0]
+                        name = parts[5]
+                        value = parts[6]
+                        
+                        cookies.append({
+                            "name": name,
+                            "value": value,
+                            "domain": domain,
+                            "path": parts[2] if len(parts) > 2 else "/",
+                            "secure": parts[3].upper() == 'TRUE' if len(parts) > 3 else False,
+                            "httpOnly": False
+                        })
+            
+            return cookies if cookies else None
+        
+        else:
+            print(f"Unknown cookie format in {filepath}")
+            return None
+            
+    except Exception as e:
+        print(f"Error loading cookies from {filepath}: {e}")
+        return None
     """تحميل الملف بطريقة غير متزامنة"""
     try:
         async with session.get(url, headers=headers or {}) as response:
@@ -6998,23 +7062,7 @@ async def download_pinterest(event):
         # إنشاء مجلد التحميل المؤقت
         temp_dir = tempfile.mkdtemp()
         
-        # تحميل الكوكيز (مطلوبة دائماً للوصول لمحتوى Pinterest)
-        cookies = None
-        cookie_files = ['pincook.json', 'cookies.json', 'pinterest_cookies.json']
-        
-        for cookie_file in cookie_files:
-            if os.path.exists(cookie_file):
-                try:
-                    with open(cookie_file, 'r') as f:
-                        cookies = json.load(f)
-                    print(f"Loaded cookies from: {cookie_file}")
-                    break
-                except Exception as e:
-                    print(f"Error loading cookies from {cookie_file}: {e}")
-        
-        if not cookies:
-            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**للحصول على الكوكيز:**\n1. افتح Pinterest في المتصفح\n2. سجل دخولك\n3. اضغط F12 → Application → Cookies\n4. احفظ الكوكيز في ملف `pincook.json`")
-            return
+async def progress(current, total, event, text):
 
         await event.edit("**╮ ❐ جـارِ استخـراج المحتـوى ...𓅫╰**")
         
@@ -7193,7 +7241,7 @@ async def download_pinterest(event):
 
 
 
-print("Pinterest Downloader loaded successfully!")
+
 
                           
 def run_server():
