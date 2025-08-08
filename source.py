@@ -658,85 +658,88 @@ async def stop_timed_update(event):
     else:
         await event.edit("**⚠️ لا يوجد تحديث تلقائي للاسم مفعّل.**")
   	    
-
 @client.on(events.NewMessage(pattern=r'^\.ايدي$'))
 async def show_user_info(event):
     if event.reply_to_msg_id:
-        reply_message = await event.get_reply_message()
-        user = await event.client.get_entity(reply_message.sender_id)
+        reply_message = await client.get_messages(event.chat_id, ids=event.reply_to_msg_id)
+        if reply_message.sender_id:
+            user = await client.get_entity(reply_message.sender_id)
 
-        await event.edit("**جاري عرض المعلومات . . .**")
+            await event.edit("**جاري عرض المعلومات . . .**")
 
-        user_photo_path = 'user_photo.jpg'
-        
-        # تحميل صورة البروفايل
-        try:
-            await event.client.download_profile_photo(user.id, file=user_photo_path)
-        except:
-            user_photo_path = None
-        
-        # جمع المعلومات الأساسية
-        user_id = user.id
-        username = user.username if user.username else "غير متوفر"
-        user_name = user.first_name or "غير متوفر"
+            user_photo_path = 'user_photo.jpg'
+            
+            # تحميل صورة البروفايل
+            try:
+                await client.download_profile_photo(user.id, file=user_photo_path)
+            except:
+                user_photo_path = None
+            
+            # جمع المعلومات الأساسية
+            user_id = user.id
+            username = user.username if user.username else "غير متوفر"
+            user_name = user.first_name or "غير متوفر"
 
-        # البايو
-        bio = "لا يوجد"
-        try:
-            user_full = await event.client(functions.users.GetFullUserRequest(user.id))
-            if user_full.full_user.about:
-                bio = user_full.full_user.about
-        except:
+            # البايو
             bio = "لا يوجد"
+            try:
+                user_full = await client(functions.users.GetFullUserRequest(user.id))
+                if user_full.full_user.about:
+                    bio = user_full.full_user.about
+            except:
+                bio = "لا يوجد"
 
-        # الرتبة
-        if user_id == 5683930416:
-            rank = "مطـور السـورس 𓄂"
-        else:
-            rank = "مميز"
+            # الرتبة
+            if user_id == 5683930416:
+                rank = "مطـور السـورس 𓄂"
+            else:
+                rank = "مميز"
 
-        # البريميوم
-        account_type = "بريميوم" if getattr(user, 'premium', False) else "عادي"
+            # البريميوم
+            account_type = "بريميوم" if getattr(user, 'premium', False) else "عادي"
 
-        # عدد الصور
-        try:
-            photos = await event.client(GetUserPhotosRequest(user.id, offset=0, max_id=0, limit=100))
-            num_photos = len(photos.photos)
-        except:
-            num_photos = "غير معروف"
+            # عدد الصور
+            try:
+                photos = await client(GetUserPhotosRequest(user.id, offset=0, max_id=0, limit=100))
+                num_photos = len(photos.photos)
+            except:
+                num_photos = "غير معروف"
 
-        # حساب عدد الرسائل بشكل دقيق
-        messages_count = "غير معروف"
-        try:
-            # طريقة أكثر دقة لحساب الرسائل
-            messages = await event.client.get_messages(
-                event.chat_id,
-                from_user=user.id,
-                limit=0  # هذا سيعيد العدد فقط دون جلب الرسائل
-            )
-            messages_count = messages.total
-        except Exception as e:
-            print(f"Error counting messages: {e}")
+            # حساب عدد الرسائل
+            messages_count = 0
+            try:
+                search_result = await client(SearchRequest(
+                    peer=event.chat_id,
+                    q='',
+                    from_id=user.id,
+                    filter=InputMessagesFilterEmpty(),
+                    min_date=None,
+                    max_date=None,
+                    offset_id=0,
+                    add_offset=0,
+                    limit=1,
+                    max_id=0,
+                    min_id=0,
+                    hash=0
+                ))
+                
+                if hasattr(search_result, 'count'):
+                    messages_count = search_result.count
+            except:
+                messages_count = "غير معروف"
 
-        # التفاعل
-        interaction = "نشط" if isinstance(messages_count, int) and messages_count > 100 else "ضعيف"
+            # التفاعل
+            interaction = "نشط" if isinstance(messages_count, int) and messages_count > 100 else "ضعيف"
 
-        # تاريخ الإنشاء (طريقة أفضل باستخدام التاريخ الحقيقي إذا كان متاحاً)
-        creation_date = "غير معروف"
-        try:
-            if hasattr(user, 'status'):
-                if hasattr(user.status, 'was_online'):
-                    creation_date = user.status.was_online.strftime("%d/%m/%Y")
-        except:
-            # إذا لم يكن متاحاً نستخدم طريقة عشوائية (لأغراض العرض فقط)
+            # تاريخ الإنشاء
             random.seed(user_id)
             year = "2023" if user_id > 6000000000 else "2022"
             month = random.randint(1, 12)
             day = random.randint(1, 28)
             creation_date = f"{day}/{month}/{year}"
 
-        # رسالة المعلومات بتنسيق Quote الحقيقي
-        user_info_message = f"""<blockquote>⧉ مـعلومـات المسـتخـدم | سـورس إيــريــن
+            # رسالة المعلومات بتنسيق Quote الحقيقي
+            user_info_message = f"""<blockquote>⧉ مـعلومـات المسـتخـدم | سـورس إيــريــن
 ═════════════════════════════
 
 ✦ الاســم: {user_name}
@@ -752,31 +755,33 @@ async def show_user_info(event):
 
 ⧉ قنـاة السـورس @EREN_PYTHON</blockquote>"""
 
-        if user_photo_path:
-            await event.client.send_file(
-                event.chat_id,
-                user_photo_path,
-                caption=user_info_message,
-                reply_to=event.reply_to_msg_id,
-                parse_mode='html'
-            )
-            # حذف الصورة
-            try:
-                os.remove(user_photo_path)
-            except:
-                pass
+            if user_photo_path:
+                await client.send_file(
+                    event.chat_id,
+                    user_photo_path,
+                    caption=user_info_message,
+                    reply_to=event.reply_to_msg_id,
+                    parse_mode='html'
+                )
+                # حذف الصورة
+                try:
+                    os.remove(user_photo_path)
+                except:
+                    pass
+            else:
+                await client.send_message(
+                    event.chat_id,
+                    user_info_message,
+                    reply_to=event.reply_to_msg_id,
+                    parse_mode='html'
+                )
+            
+            await event.delete()
+            
         else:
-            await event.client.send_message(
-                event.chat_id,
-                user_info_message,
-                reply_to=event.reply_to_msg_id,
-                parse_mode='html'
-            )
-        
-        await event.delete()
-        
+            await event.edit("**⚠️ لم أتمكن من العثور على معلومات عن هذا المستخدم.**")
     else:
-        await event.edit("**⚠️ يرجى الرد على رسالة المستخدم للحصول على معلوماته.**")
+        await event.edit("**⚠️ يرجى الرد على رسالة المستخدم للحصول على معلوماته.**")	
 
         
 # إضافة أمر .بل
