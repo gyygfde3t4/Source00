@@ -6894,7 +6894,6 @@ def humanbytes(size):
 ##########################
 
 
-
 # الدوال المساعدة
 def humanbytes(size):
     """تحويل الحجم إلى صيغة مقروءة"""
@@ -6984,7 +6983,7 @@ async def download_with_gallerydl(url, temp_dir, cookies=None):
             with open(cookies_file, 'w', encoding='utf-8') as f:
                 json.dump(cookies, f)
         
-        # بناء أمر gallery-dl مع استخدام youtube-dl
+        # بناء أمر gallery-dl (بدون --downloader)
         cmd = [
             'gallery-dl',
             '--no-check-certificate',
@@ -6993,7 +6992,6 @@ async def download_with_gallerydl(url, temp_dir, cookies=None):
             '--directory', temp_dir,
             '--no-part',
             '--no-mtime',
-            '--downloader', 'youtube-dl',
             url
         ]
         
@@ -7072,7 +7070,7 @@ async def download_pinterest(event):
         
         print(f"Loaded {len(cookies)} cookies for Pinterest")
         
-        # تحميل المحتوى باستخدام gallery-dl مع youtube-dl
+        # تحميل المحتوى باستخدام gallery-dl
         downloaded_file = await download_with_gallerydl(input_url, temp_dir, cookies)
         
         # التحقق من حجم الملف
