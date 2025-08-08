@@ -6885,6 +6885,7 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}PB"                        
 
+
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
 async def download_and_send_pinterest(event):
     # التحقق من وجود رابط
@@ -6910,47 +6911,7 @@ async def download_and_send_pinterest(event):
         # إنشاء مجلد التحميل إذا لم يكن موجوداً
         os.makedirs('downloads', exist_ok=True)
 
-        # إعدادات yt-dlp المحسنة والمحدثة
-        ydl_opts = {
-            'quiet': False,  # تفعيل الرسائل للتشخيص
-            'verbose': True,  # المزيد من التفاصيل
-            'no_warnings': False,
-            'cookiefile': cookie_file,
-            'extract_flat': False,
-            'sleep_interval': 3,
-            'max_sleep_interval': 6,
-            'retries': 3,
-            'fragment_retries': 3,
-            'skip_unavailable_fragments': True,
-            'http_chunk_size': 10485760,  # 10MB chunks
-            'headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': '*/*',
-                'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                'Cache-Control': 'max-age=0',
-                'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"'
-            },
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
-            'format': 'best[ext=mp4]/best[ext=jpg]/best[ext=png]/best',
-            # إضافة خيارات إضافية للتعامل مع Pinterest
-            'extractor_args': {
-                'pinterest': {
-                    'api-key': None,  # استخدام الكوكيز بدلاً من API
-                }
-            }
-        }
-
-        # محاولة التحميل باستخدام الكوكيز فقط
+        # محاولة التحميل باستخدام الكوكيز
         await event.edit("**╮ جـارِ استخـراج معلومـات المحتـوى... 📌♥️╰**")
         filename = await download_pinterest_with_cookies(input_url, event)
         
@@ -6966,10 +6927,10 @@ async def download_and_send_pinterest(event):
             raise Exception("لم يتم العثور على الملف المحمل")
 
         file_size = os.path.getsize(filename)
-        max_size = 50 * 1024 * 1024 if is_video else 10 * 1024 * 1024  # 50MB للفيديو، 10MB للصور
+        max_size = 100 * 1024 * 1024  # رفع الحد إلى 100MB للفيديوهات والصور
         
         if file_size > max_size:
-            await event.edit("**⚠️ الملف كبير جداً للإرسال**")
+            await event.edit(f"**⚠️ الملف كبير جداً للإرسال ({humanbytes(file_size)})**\n**الحد الأقصى: {humanbytes(max_size)}**")
             os.remove(filename)
             return
 
@@ -6979,7 +6940,7 @@ async def download_and_send_pinterest(event):
                 await event.client.send_file(
                     event.chat_id,
                     filename,
-                    caption=f"**📹╎تم تحميـل الفيـديـو مـن بنترست**",
+                    caption=f"**📹╎تم تحميـل الفيـديـو مـن بنترست**\n**📊 الحجـم:** {humanbytes(file_size)}",
                     supports_streaming=True,
                     progress_callback=lambda d, t: asyncio.create_task(
                         progress(d, t, event, "**╮ ❐ جـارِ رفـع الفيـديـو ...🎬╰**")
@@ -6989,13 +6950,13 @@ async def download_and_send_pinterest(event):
                 await event.client.send_file(
                     event.chat_id,
                     filename,
-                    caption=f"**🖼️╎تم تحميـل الصـورة مـن بنترست**",
+                    caption=f"**🖼️╎تم تحميـل الصـورة مـن بنترست**\n**📊 الحجـم:** {humanbytes(file_size)}",
                     progress_callback=lambda d, t: asyncio.create_task(
                         progress(d, t, event, "**╮ ❐ جـارِ رفـع الصـورة ...🖼️╰**")
                     ) if d and t else None
                 )
 
-            await event.edit(f"**╮ ❐ تم إرسـال المحتـوى بنجـاح ✅**\n**╰ ❐ النـوع:** {'فيديو' if is_video else 'صورة'}")
+            await event.edit(f"**╮ ❐ تم إرسـال المحتـوى بنجـاح ✅**\n**╰ ❐ النـوع:** {'فيديو' if is_video else 'صورة'}\n**📊 الحجـم:** {humanbytes(file_size)}")
 
         except Exception as upload_error:
             print(f"Upload error: {upload_error}")
@@ -7015,6 +6976,8 @@ async def download_and_send_pinterest(event):
             await event.edit("**⚠️ الرابط غير مدعوم - تأكد من أنه رابط Pinterest صحيح**")
         elif "network" in error_msg or "connection" in error_msg:
             await event.edit("**⚠️ مشكلة في الاتصال - يرجى المحاولة لاحقاً**")
+        elif "كوكيز" in error_msg:
+            await event.edit("**⚠️ مشكلة في ملف الكوكيز - تأكد من صحة البيانات**")
         else:
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:100]}...")
     
@@ -7028,7 +6991,7 @@ async def download_and_send_pinterest(event):
             print(f"تحذير - فشل في تنظيف الملفات: {cleanup_error}")
 
 async def download_pinterest_with_cookies(url, event):
-    """التحميل من Pinterest باستخدام الكوكيز فقط مع تحسينات"""
+    """التحميل من Pinterest باستخدام الكوكيز مع دعم pin.it"""
     try:
         # قراءة الكوكيز من الملف
         cookies = {}
@@ -7047,12 +7010,12 @@ async def download_pinterest_with_cookies(url, event):
                             cookies[name] = value
 
         if not cookies:
-            raise Exception("لم يتم العثور على كوكيز صالحة")
+            raise Exception("لم يتم العثور على كوكيز صالحة في ملف pincook.txt")
 
-        # إعداد الهيدرز المحسنة مع Pinterest headers خاصة
+        # إعداد الهيدرز المحسنة
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
             'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
             'DNT': '1',
@@ -7068,14 +7031,6 @@ async def download_pinterest_with_cookies(url, event):
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache'
         }
-        
-        headers.update({
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-APP-VERSION': 'cb1c7f9',
-            'X-Pinterest-AppState': 'active',
-            'Origin': 'https://www.pinterest.com',
-            'Referer': url
-        })
 
         # إعداد الجلسة
         session = requests.Session()
@@ -7085,9 +7040,31 @@ async def download_pinterest_with_cookies(url, event):
         # إضافة تأخير لتجنب الحظر
         await asyncio.sleep(2)
         
+        # معالجة روابط pin.it (تحويلها إلى pinterest.com)
+        final_url = url
+        if 'pin.it' in url:
+            await event.edit("**╮ جـارِ تحويـل الرابـط... 📌♥️╰**")
+            # الحصول على الرابط الحقيقي
+            temp_response = session.head(url, allow_redirects=True, timeout=10)
+            if temp_response.url and 'pinterest.com' in temp_response.url:
+                final_url = temp_response.url
+                print(f"تم تحويل الرابط إلى: {final_url}")
+            else:
+                raise Exception("فشل في تحويل رابط pin.it")
+        
         # الحصول على محتوى الصفحة
         await event.edit("**╮ جـارِ تحليـل الصفحـة... 📌♥️╰**")
-        response = session.get(url, timeout=20, allow_redirects=True)
+        
+        # إضافة هيدرز Pinterest خاصة
+        session.headers.update({
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-APP-VERSION': 'cb1c7f9',
+            'X-Pinterest-AppState': 'active',
+            'Origin': 'https://www.pinterest.com',
+            'Referer': final_url
+        })
+        
+        response = session.get(final_url, timeout=20, allow_redirects=True)
         
         if response.status_code == 403:
             raise Exception("رفض الوصول - يرجى تحديث الكوكيز")
@@ -7106,13 +7083,14 @@ async def download_pinterest_with_cookies(url, event):
         is_video = False
         
         print("بدء البحث عن الوسائط...")
+        print(f"طول HTML: {len(html)}")
+        print(f"يحتوي على pinimg: {'pinimg.com' in html}")
         
         # أولاً: البحث في البيانات الهيكلية JSON-LD
         json_ld_matches = re.findall(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL)
         for json_match in json_ld_matches:
             try:
                 data = json.loads(json_match)
-                # البحث عن URL في البيانات الهيكلية
                 if isinstance(data, dict):
                     if 'image' in data:
                         if isinstance(data['image'], str):
@@ -7126,32 +7104,34 @@ async def download_pinterest_with_cookies(url, event):
                             media_url = data['video']['contentUrl']
                             is_video = True
                 if media_url:
-                    print(f"Found media in JSON-LD: {media_url}")
+                    print(f"وجد وسائط في JSON-LD: {media_url}")
                     break
             except:
                 continue
         
-        # ثانياً: البحث في __PWS_DATA__ أو window.__initialData
+        # ثانياً: البحث في المتغيرات الخاصة بـ Pinterest
         if not media_url:
             pws_patterns = [
+                r'window\.__PWS_DATA__\s*=\s*({.+?});',
                 r'__PWS_DATA__\s*=\s*({.+?});',
                 r'window\.__initialData\s*=\s*({.+?});',
-                r'__INITIAL_STATE__\s*=\s*({.+?});'
+                r'__INITIAL_STATE__\s*=\s*({.+?});',
+                r'window\.__SERVER_DATA__\s*=\s*({.+?});'
             ]
             
             for pws_pattern in pws_patterns:
-                pws_match = re.search(pws_pattern, html)
+                pws_match = re.search(pws_pattern, html, re.DOTALL)
                 if pws_match:
                     try:
                         pws_data = json.loads(pws_match.group(1))
-                        # البحث العميق في البيانات
                         media_url = extract_media_from_data(pws_data)
                         if media_url:
-                            if '.mp4' in media_url:
+                            if '.mp4' in media_url or 'video' in media_url:
                                 is_video = True
-                            print(f"Found media in PWS data: {media_url}")
+                            print(f"وجد وسائط في PWS data: {media_url}")
                             break
-                    except:
+                    except Exception as e:
+                        print(f"خطأ في تحليل PWS data: {e}")
                         continue
         
         # ثالثاً: البحث بالأنماط العادية المحسنة
@@ -7163,7 +7143,8 @@ async def download_pinterest_with_cookies(url, event):
                 r'"video_list":\s*\[.*?"url":\s*"([^"]+\.mp4[^"]*)"',
                 r'"contentUrl":\s*"([^"]+\.mp4[^"]*)"',
                 r'<video[^>]+src="([^"]+)"',
-                r'"story_pin_data":\s*\{[^}]*?"video_signature":\s*"([^"]+)"'
+                r'"story_pin_data":\s*\{[^}]*?"video_signature":\s*"([^"]+)"',
+                r'"pin":\s*\{[^}]*?"videos":\s*\{[^}]*?"video_list":\s*\{[^}]*?"V_720P":\s*\{[^}]*?"url":\s*"([^"]+)"'
             ]
             
             # أنماط الصور المحسنة
@@ -7173,7 +7154,8 @@ async def download_pinterest_with_cookies(url, event):
                 r'"image_signature":\s*"(https://i\.pinimg\.com/[^"]+)"',
                 r'"dominant_color".*?"url":\s*"(https://i\.pinimg\.com/[^"]+)"',
                 r'<meta property="og:image" content="([^"]+)"',
-                r'"grid_title"[^}]*?"url":\s*"(https://i\.pinimg\.com/[^"]+)"'
+                r'"grid_title"[^}]*?"url":\s*"(https://i\.pinimg\.com/[^"]+)"',
+                r'"pin":\s*\{[^}]*?"images":\s*\{[^}]*?"orig":\s*\{[^}]*?"url":\s*"([^"]+)"'
             ]
             
             # البحث عن فيديو
@@ -7184,7 +7166,7 @@ async def download_pinterest_with_cookies(url, event):
                     if clean_url and is_valid_video_url(clean_url):
                         media_url = clean_url
                         is_video = True
-                        print(f"Found video URL: {media_url}")
+                        print(f"وجد رابط فيديو: {media_url}")
                         break
                 if media_url:
                     break
@@ -7200,7 +7182,7 @@ async def download_pinterest_with_cookies(url, event):
                             # أولوية للجودة العالية
                             if 'originals' in clean_url:
                                 media_url = clean_url
-                                print(f"Found high quality image: {media_url}")
+                                print(f"وجد صورة عالية الجودة: {media_url}")
                                 break
                             elif '736x' in clean_url and not best_url:
                                 best_url = clean_url
@@ -7211,7 +7193,7 @@ async def download_pinterest_with_cookies(url, event):
                         break
                     elif best_url:
                         media_url = best_url
-                        print(f"Found image URL: {media_url}")
+                        print(f"وجد رابط صورة: {media_url}")
                         break
         
         # رابعاً: البحث الاحتياطي في كامل HTML
@@ -7220,7 +7202,8 @@ async def download_pinterest_with_cookies(url, event):
                 r'(https://i\.pinimg\.com/originals/[^"\s<>]+\.(?:jpg|jpeg|png|webp))',
                 r'(https://i\.pinimg\.com/\d+x\d+/[^"\s<>]+\.(?:jpg|jpeg|png|webp))',
                 r'(https://i\.pinimg\.com/[^"\s<>]+\.(?:jpg|jpeg|png|webp))',
-                r'(https://[^"\s<>]*\.(?:mp4|webm|mov))',
+                r'(https://v\.pinimg\.com/[^"\s<>]+\.mp4)',
+                r'(https://[^"\s<>]*pinimg[^"\s<>]*\.(?:mp4|webm|mov))',
             ]
             
             for pattern in fallback_patterns:
@@ -7229,26 +7212,39 @@ async def download_pinterest_with_cookies(url, event):
                     clean_url = clean_media_url(match)
                     if clean_url and (is_valid_image_url(clean_url) or is_valid_video_url(clean_url)):
                         media_url = clean_url
-                        if '.mp4' in clean_url or '.webm' in clean_url:
+                        if '.mp4' in clean_url or '.webm' in clean_url or 'v.pinimg.com' in clean_url:
                             is_video = True
-                        print(f"Found fallback media: {media_url}")
+                        print(f"وجد وسائط احتياطي: {media_url}")
                         break
                 if media_url:
                     break
         
+        # خامساً: محاولة أخيرة - استخراج أي صورة من Pinterest
         if not media_url:
-            # محاولة أخيرة: استخراج أي صورة من Pinterest
             pinterest_imgs = re.findall(r'(https://i\.pinimg\.com/[^"\s<>]+)', html)
             if pinterest_imgs:
-                # اختيار أطول رابط (عادة ما يكون أعلى جودة)
-                media_url = max(pinterest_imgs, key=len)
-                print(f"Found Pinterest image (last resort): {media_url}")
+                # فلترة الصور الصالحة
+                valid_imgs = [img for img in pinterest_imgs if any(ext in img.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp'])]
+                if valid_imgs:
+                    # اختيار أطول رابط (عادة ما يكون أعلى جودة)
+                    media_url = max(valid_imgs, key=len)
+                    print(f"وجد صورة Pinterest (محاولة أخيرة): {media_url}")
         
         if not media_url:
-            # طباعة معلومات تشخيصية
-            print(f"Page title: {re.search(r'<title[^>]*>([^<]+)</title>', html)}")
-            print(f"HTML length: {len(html)}")
-            print(f"Contains Pinterest data: {'pinimg.com' in html}")
+            # طباعة معلومات تشخيصية مفصلة
+            title_match = re.search(r'<title[^>]*>([^<]+)</title>', html)
+            print(f"عنوان الصفحة: {title_match.group(1) if title_match else 'غير موجود'}")
+            print(f"طول HTML: {len(html)}")
+            print(f"يحتوي على Pinterest data: {'pinimg.com' in html}")
+            print(f"يحتوي على PWS_DATA: {'__PWS_DATA__' in html}")
+            print(f"يحتوي على JSON-LD: {'application/ld+json' in html}")
+            
+            # محاولة العثور على أي نمط قد يحتوي على وسائط
+            potential_patterns = re.findall(r'(https://[^"\s<>]*(?:pinimg|pinterest)[^"\s<>]*)', html)
+            print(f"عدد الروابط المحتملة: {len(potential_patterns)}")
+            if potential_patterns:
+                print(f"أول 3 روابط: {potential_patterns[:3]}")
+            
             raise Exception("لم يتم العثور على أي رابط وسائط صالح في الصفحة")
         
         await event.edit("**╮ جاري التحميل... 📌♥️╰**")
@@ -7261,13 +7257,20 @@ async def download_pinterest_with_cookies(url, event):
                 if attempt > 0:
                     await asyncio.sleep(3)
                 
-                media_response = session.get(media_url, timeout=30, stream=True)
+                # تحديث الهيدرز للتحميل
+                download_headers = headers.copy()
+                download_headers.update({
+                    'Accept': '*/*',
+                    'Referer': 'https://www.pinterest.com/'
+                })
+                
+                media_response = session.get(media_url, headers=download_headers, timeout=30, stream=True)
                 media_response.raise_for_status()
                 
                 # تحديد اسم وامتداد الملف
                 content_type = media_response.headers.get('content-type', '').lower()
                 
-                if 'video' in content_type or is_video:
+                if 'video' in content_type or is_video or 'v.pinimg.com' in media_url:
                     ext = '.mp4'
                 elif 'image' in content_type:
                     if 'jpeg' in content_type or 'jpg' in content_type:
@@ -7283,7 +7286,7 @@ async def download_pinterest_with_cookies(url, event):
                     if media_url.lower().endswith('.mp4'):
                         ext = '.mp4'
                     elif any(media_url.lower().endswith(f'.{fmt}') for fmt in ['jpg', 'jpeg', 'png', 'webp']):
-                        ext = '.' + media_url.split('.')[-1].lower()
+                        ext = '.' + media_url.split('.')[-1].lower().split('?')[0]
                     else:
                         ext = '.jpg'  # افتراضي
                 
@@ -7297,7 +7300,8 @@ async def download_pinterest_with_cookies(url, event):
                 
                 # التحقق من حفظ الملف بنجاح
                 if os.path.exists(filename) and os.path.getsize(filename) > 0:
-                    print(f"تم تحميل الملف بنجاح: {filename} ({os.path.getsize(filename)} bytes)")
+                    file_size = os.path.getsize(filename)
+                    print(f"تم تحميل الملف بنجاح: {filename} ({humanbytes(file_size)})")
                     return filename
                 else:
                     raise Exception("فشل في حفظ الملف")
@@ -7316,21 +7320,21 @@ async def download_pinterest_with_cookies(url, event):
 
 def extract_media_from_data(data, depth=0):
     """استخراج رابط الوسائط من البيانات المعقدة"""
-    if depth > 5:  # تجنب اللا نهاية
+    if depth > 8:  # زيادة العمق للبحث الأفضل
         return None
     
     if isinstance(data, dict):
         # البحث المباشر عن المفاتيح المهمة
-        direct_keys = ['url', 'contentUrl', 'image', 'video_url', 'src']
+        direct_keys = ['url', 'contentUrl', 'image', 'video_url', 'src', 'image_signature']
         for key in direct_keys:
             if key in data:
                 value = data[key]
                 if isinstance(value, str) and is_valid_media_url(value):
                     return clean_media_url(value)
         
-        # البحث في المستوى التالي
-        search_keys = ['images', 'videos', 'media', 'orig', 'video', 'image', 'pin', 'data']
-        for key in search_keys:
+        # البحث في المفاتيح المتقدمة
+        advanced_keys = ['images', 'videos', 'media', 'orig', 'video', 'pin', 'data', 'video_list', 'V_720P', 'V_HLSV4']
+        for key in advanced_keys:
             if key in data:
                 result = extract_media_from_data(data[key], depth + 1)
                 if result:
@@ -7338,9 +7342,10 @@ def extract_media_from_data(data, depth=0):
         
         # البحث في كل القيم
         for value in data.values():
-            result = extract_media_from_data(value, depth + 1)
-            if result:
-                return result
+            if isinstance(value, (dict, list)):
+                result = extract_media_from_data(value, depth + 1)
+                if result:
+                    return result
     
     elif isinstance(data, list):
         for item in data:
@@ -7358,8 +7363,8 @@ def clean_media_url(url):
     # إزالة escape characters
     url = url.replace('\\/', '/').replace('\\u0026', '&').replace('\\', '')
     
-    # إزالة المعايير غير الضرورية
-    if '?' in url:
+    # إزالة المعايير غير الضرورية (لكن الاحتفاظ بالمعايير المهمة)
+    if '?' in url and 'signature' not in url:
         url = url.split('?')[0]
     
     return url.strip()
@@ -7391,7 +7396,8 @@ def is_valid_video_url(url):
     video_domains = ['v.pinimg.com', 'i.pinimg.com']
     
     return (any(ext in url.lower() for ext in video_extensions) or
-            any(domain in url.lower() for domain in video_domains))
+            'v.pinimg.com' in url.lower() or
+            ('pinimg.com' in url.lower() and 'video' in url.lower()))
 
 async def progress(current, total, event, text):
     """دالة لعرض شريط التقدم"""
