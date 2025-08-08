@@ -53,8 +53,8 @@ from telethon import events, functions, types, utils
 from pydub import AudioSegment
 from mutagen.easyid3 import EasyID3
 from urllib.parse import urlparse
-from pinterest_dl import PinterestDL
 from http.cookiejar import MozillaCookieJar
+import shutil
 
 # ========== Telethon - استيراد رئيسي ==========
 from telethon import TelegramClient, events, functions, types, Button
@@ -6894,6 +6894,7 @@ def humanbytes(size):
 ##########################
 
 
+
 # الدوال المساعدة
 def humanbytes(size):
     """تحويل الحجم إلى صيغة مقروءة"""
@@ -6932,70 +6933,105 @@ def expand_pinterest_url(short_url):
         print(f"Error expanding URL: {e}")
         return short_url
 
-def load_cookies_from_file(filepath):
-    """تحميل الكوكيز من ملف بتنسيقات مختلفة"""
-    if not os.path.exists(filepath):
-        return None
+def convert_cookies_to_json(cookies_text):
+    """تحويل ملف الكوكيز من تنسيق Netscape إلى JSON"""
+    cookies = []
+    lines = cookies_text.split('\n')
     
-    try:
-        # محاولة قراءة كـ JSON أولاً
-        with open(filepath, 'r', encoding='utf-8') as f:
-            content = f.read().strip()
-            
-        if content.startswith('[') or content.startswith('{'):
-            # تنسيق JSON
-            cookies_data = json.loads(content)
-            if isinstance(cookies_data, list):
-                return cookies_data
-            else:
-                # تحويل dict إلى list format
-                return [{"name": k, "value": v, "domain": ".pinterest.com"} for k, v in cookies_data.items()]
-        
-        elif content.startswith('# Netscape HTTP Cookie File'):
-            # تنسيق Netscape - نحوله لـ JSON format
-            cookies = []
-            lines = content.split('\n')
-            
-            for line in lines:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    parts = line.split('\t')
-                    if len(parts) >= 7:
-                        domain = parts[0]
-                        name = parts[5]
-                        value = parts[6]
-                        
-                        cookies.append({
-                            "name": name,
-                            "value": value,
-                            "domain": domain,
-                            "path": parts[2] if len(parts) > 2 else "/",
-                            "secure": parts[3].upper() == 'TRUE' if len(parts) > 3 else False,
-                            "httpOnly": False
-                        })
-            
-            return cookies if cookies else None
-        
-        else:
-            print(f"Unknown cookie format in {filepath}")
-            return None
-            
-    except Exception as e:
-        print(f"Error loading cookies from {filepath}: {e}")
-        return None
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith('#'):
+            parts = line.split('\t')
+            if len(parts) >= 7:
+                cookies.append({
+                    "domain": parts[0],
+                    "httpOnly": False,
+                    "name": parts[5],
+                    "path": parts[2],
+                    "secure": parts[3].lower() == 'true',
+                    "value": parts[6]
+                })
+    
+    return cookies
 
-async def download_file_async(url, filename, session, headers=None):
-    """تحميل الملف بطريقة غير متزامنة"""
+def load_pinterest_cookies():
+    """تحميل كوكيز Pinterest من ملف pincook.txt"""
+    cookie_files = ['pincook.txt', 'cookies.txt']
+    
+    for cookie_file in cookie_files:
+        if os.path.exists(cookie_file):
+            try:
+                with open(cookie_file, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                
+                if content.startswith('# Netscape HTTP Cookie File'):
+                    return convert_cookies_to_json(content)
+                elif content.startswith('[') or content.startswith('{'):
+                    return json.loads(content)
+                
+            except Exception as e:
+                print(f"Error loading cookies from {cookie_file}: {e}")
+    
+    return None
+
+async def download_with_gallerydl(url, temp_dir, cookies=None):
+    """استخدام gallery-dl لتحميل المحتوى مع الكوكيز"""
     try:
-        async with session.get(url, headers=headers or {}) as response:
-            response.raise_for_status()
-            async with aiofiles.open(filename, 'wb') as f:
-                async for chunk in response.content.iter_chunked(8192):
-                    await f.write(chunk)
-        return True
+        # إنشاء ملف الكوكيز المؤقت إذا كانت متوفرة
+        cookies_file = None
+        if cookies:
+            cookies_file = os.path.join(temp_dir, "cookies.json")
+            with open(cookies_file, 'w', encoding='utf-8') as f:
+                json.dump(cookies, f)
+        
+        # بناء أمر gallery-dl مع استخدام youtube-dl
+        cmd = [
+            'gallery-dl',
+            '--no-check-certificate',
+            '--write-metadata',
+            '--write-info-json',
+            '--directory', temp_dir,
+            '--no-part',
+            '--no-mtime',
+            '--downloader', 'youtube-dl',
+            url
+        ]
+        
+        if cookies_file:
+            cmd.extend(['--cookies', cookies_file])
+        
+        # تنفيذ الأمر
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        print(f"gallery-dl stdout: {stdout.decode()}")
+        print(f"gallery-dl stderr: {stderr.decode()}")
+        
+        if process.returncode != 0:
+            raise Exception(f"gallery-dl failed with code {process.returncode}: {stderr.decode()}")
+        
+        # البحث عن الملف الذي تم تنزيله
+        downloaded_files = []
+        for root, _, files in os.walk(temp_dir):
+            for file in files:
+                if file.endswith(('.jpg', '.jpeg', '.png', '.gif', '.mp4', '.webm', '.mkv')):
+                    downloaded_files.append(os.path.join(root, file))
+        
+        if not downloaded_files:
+            raise Exception("No media files found after download")
+        
+        # نرجع أول ملف (الأكبر حجماً عادةً)
+        downloaded_files.sort(key=lambda x: os.path.getsize(x), reverse=True)
+        return downloaded_files[0]
+        
     except Exception as e:
-        print(f"Download error: {e}")
-        return False
+        print(f"Error in download_with_gallerydl: {e}")
+        raise
 
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
 async def download_pinterest(event):
@@ -7027,257 +7063,59 @@ async def download_pinterest(event):
         # إنشاء مجلد التحميل المؤقت
         temp_dir = tempfile.mkdtemp()
         
-        # تحميل الكوكيز (مطلوبة دائماً للوصول لمحتوى Pinterest)
-        cookies = None
-        cookie_files = ['pincook.txt', 'pincook.json', 'cookies.json', 'cookies.txt', 'pinterest_cookies.json']
-        
-        for cookie_file in cookie_files:
-            cookies = load_cookies_from_file(cookie_file)
-            if cookies:
-                print(f"Loaded {len(cookies)} cookies from: {cookie_file}")
-                break
+        # تحميل الكوكيز من ملف pincook.txt
+        cookies = load_pinterest_cookies()
         
         if not cookies:
-            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:**\n• `pincook.txt` (Netscape format)\n• `pincook.json` (JSON format)\n\n**لتصدير الكوكيز:**\n1. افتح Pinterest وسجل دخولك\n2. استخدم إضافة Cookie Editor\n3. صدّر الكوكيز وضعها في الملف")
+            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:** `pincook.txt`\n\n**طريقة الحصول على الكوكيز:**\n1. افتح Pinterest في متصفحك\n2. استخدم إضافة مثل Cookie-Editor\n3. احفظ الكوكيز بصيغة Netscape (pincook.txt)")
             return
         
-        # تهيئة PinterestDL باستخدام API mode مع الكوكيز
-        pinterest_dl = PinterestDL.with_api(
-            timeout=10,
-            verbose=False
-        ).with_cookies(cookies)
+        print(f"Loaded {len(cookies)} cookies for Pinterest")
         
-        # سكريب المحتوى
-        scraped_images = None
-        try:
-            # جرب API mode أولاً
-            scraped_images = await asyncio.get_event_loop().run_in_executor(
-                None, 
-                lambda: pinterest_dl.scrape(
-                    url=input_url,
-                    num=1  # نحن نريد فقط صورة/فيديو واحد من البين
-                )
-            )
-        except Exception as api_error:
-            print(f"API mode failed: {api_error}")
-            # لا نستخدم browser mode في Koyeb لأنه غير مدعوم
-            await event.edit("**╮ ❐ جـارِ المحـاولة بطريقـة أخـرى ...𓅫╰**")
-            
-            try:
-                # جرب API بدون cookies أولاً
-                simple_dl = PinterestDL.with_api(timeout=15)
-                scraped_images = await asyncio.get_event_loop().run_in_executor(
-                    None, 
-                    lambda: simple_dl.scrape(
-                        url=input_url,
-                        num=1
-                    )
-                )
-            except Exception as simple_error:
-                print(f"Simple API also failed: {simple_error}")
-                
-                # جرب استخراج Pin ID واستخدام URL مباشر
-                try:
-                    pin_id = None
-                    
-                    # استخراج Pin ID من URL
-                    if '/pin/' in input_url:
-                        pin_id = input_url.split('/pin/')[-1].split('/')[0].split('?')[0]
-                    
-                    if pin_id and pin_id.isdigit():
-                        # إنشاء URL نظيف
-                        clean_url = f"https://www.pinterest.com/pin/{pin_id}/"
-                        print(f"Trying clean URL: {clean_url}")
-                        
-                        # جرب مع cookies مرة أخرى
-                        pinterest_dl_retry = PinterestDL.with_api(timeout=20).with_cookies(cookies)
-                        scraped_images = await asyncio.get_event_loop().run_in_executor(
-                            None, 
-                            lambda: pinterest_dl_retry.scrape(
-                                url=clean_url,
-                                num=1
-                            )
-                        )
-                    else:
-                        raise Exception("Could not extract valid pin ID from URL")
-                        
-                except Exception as direct_error:
-                    print(f"Direct extraction failed: {direct_error}")
-                    # كحل أخير، جرب الحصول على البيانات من Pinterest API مباشرة
-                    try:
-                        # إنشاء Pinterest DL جديد بإعدادات مختلفة
-                        final_dl = PinterestDL.with_api(
-                            timeout=30,
-                            verbose=True
-                        )
-                        
-                        # إضافة الكوكيز إذا كانت متوفرة
-                        if cookies:
-                            final_dl = final_dl.with_cookies(cookies)
-                        
-                        scraped_images = await asyncio.get_event_loop().run_in_executor(
-                            None, 
-                            lambda: final_dl.scrape(
-                                url=input_url,
-                                num=5  # زيادة العدد لضمان الحصول على صورة واحدة على الأقل
-                            )
-                        )
-                        
-                        if scraped_images:
-                            scraped_images = [scraped_images[0]]  # أخذ أول صورة فقط
-                        
-                    except Exception as final_error:
-                        raise Exception(f"فشل نهائياً: تحقق من الرابط أو الكوكيز. {str(final_error)[:100]}")
-
-        if not scraped_images:
-            await event.edit("**⚠️ لم يتم العثور على محتوى قابل للتحميل**")
-            return
-
-        # أخذ أول صورة فقط
-        image_data = scraped_images[0]
-        print(f"Image data type: {type(image_data)}")
-        print(f"Image data attributes: {dir(image_data)}")
-        
-        await event.edit("**╮ ❐ جـارِ التحميـل انتظـر ...𓅫╰**")
-        
-        # التحقق من وجود فيديو أولاً
-        is_video = False
-        video_url = None
-        image_url = None
-        
-        # التحقق من video_stream
-        if hasattr(image_data, 'video_stream') and image_data.video_stream:
-            is_video = True
-            video_url = image_data.video_stream
-            print(f"Found video stream: {video_url}")
-        
-        # الحصول على URL الصورة من الكائن
-        if hasattr(image_data, 'src'):
-            image_url = image_data.src
-        elif hasattr(image_data, 'url'):
-            image_url = image_data.url
-        elif hasattr(image_data, 'image_url'):
-            image_url = image_data.image_url
-        elif hasattr(image_data, 'media_url'):
-            image_url = image_data.media_url
-        else:
-            # جرب تحويله إلى dictionary
-            try:
-                image_dict = image_data.to_dict() if hasattr(image_data, 'to_dict') else vars(image_data)
-                print(f"Image dict keys: {list(image_dict.keys())}")
-                # ابحث عن URL في القاموس
-                possible_url_keys = ['src', 'url', 'image_url', 'media_url', 'link', 'download_url']
-                for key in possible_url_keys:
-                    if key in image_dict and image_dict[key]:
-                        image_url = image_dict[key]
-                        break
-                        
-                # ابحث عن video_stream في القاموس أيضاً
-                if 'video_stream' in image_dict and image_dict['video_stream']:
-                    is_video = True
-                    video_url = image_dict['video_stream']
-                    print(f"Found video stream in dict: {video_url}")
-                    
-            except Exception as dict_error:
-                print(f"Error converting to dict: {dict_error}")
-        
-        # اختيار الـ URL المناسب للتحميل
-        download_url = video_url if is_video and video_url else image_url
-        
-        if not download_url:
-            await event.edit("**⚠️ لم يتم العثور على رابط المحتوى**")
-            return
-        
-        print(f"Found {'video' if is_video else 'image'} URL: {download_url}")
-        
-        # تحديد امتداد الملف
-        if is_video:
-            file_extension = '.mp4'
-        elif download_url and any(ext in download_url.lower() for ext in ['.png']):
-            file_extension = '.png'
-        elif download_url and any(ext in download_url.lower() for ext in ['.gif']):
-            file_extension = '.gif'
-        else:
-            file_extension = '.jpg'
-        
-        # تحديد اسم الملف المؤقت
-        temp_filename = os.path.join(temp_dir, f"pinterest_media{file_extension}")
-        
-        # تحميل الملف
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': 'https://www.pinterest.com/',
-            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8' if not is_video else 'video/mp4,video/*,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br'
-        }
-        
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=30),
-            connector=aiohttp.TCPConnector(limit=10)
-        ) as session:
-            download_success = await download_file_async(
-                download_url, 
-                temp_filename, 
-                session, 
-                headers
-            )
-        
-        if not download_success or not os.path.exists(temp_filename):
-            await event.edit("**⚠️ فشل في تحميل الملف**")
-            return
+        # تحميل المحتوى باستخدام gallery-dl مع youtube-dl
+        downloaded_file = await download_with_gallerydl(input_url, temp_dir, cookies)
         
         # التحقق من حجم الملف
-        file_size = os.path.getsize(temp_filename)
+        file_size = os.path.getsize(downloaded_file)
         if file_size == 0:
             await event.edit("**⚠️ الملف فارغ أو تالف**")
-            os.remove(temp_filename)
+            os.remove(downloaded_file)
             return
             
         max_size = 50 * 1024 * 1024  # 50MB
         if file_size > max_size:
             await event.edit(f"**⚠️ الملف كبير جداً للإرسال ({humanbytes(file_size)})**\n**الحد الأقصى: {humanbytes(max_size)}**")
-            os.remove(temp_filename)
+            os.remove(downloaded_file)
             return
 
-        # تحديد نوع المحتوى للعرض
-        is_gif = file_extension == '.gif'
+        # تحديد نوع المحتوى
+        is_video = downloaded_file.lower().endswith(('.mp4', '.webm', '.mkv'))
+        is_gif = downloaded_file.lower().endswith('.gif')
         
         await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
         
         # إعداد التسمية التوضيحية
-        caption_text = f"**📌╎تم تحميـل {'الفيديـو' if is_video else 'الصـورة'} مـن بنترست**\n"
-        caption_text += f"**📊 الحجـم:** {humanbytes(file_size)}"
+        caption = f"**📌╎تم تحميـل {'الفيديـو' if is_video else 'الصـورة'} مـن بنترست**\n"
+        caption += f"**📊 الحجـم:** {humanbytes(file_size)}"
         
-        # محاولة الحصول على النص البديل
-        alt_text = None
-        if hasattr(image_data, 'alt') and image_data.alt:
-            alt_text = image_data.alt
-        elif hasattr(image_data, 'alt_text'):
-            alt_text = image_data.alt_text
-        elif hasattr(image_data, 'description'):
-            alt_text = image_data.description
-        else:
+        # محاولة قراءة ملف المعلومات (إن وجد)
+        info_file = os.path.splitext(downloaded_file)[0] + '.info.json'
+        if os.path.exists(info_file):
             try:
-                image_dict = image_data.to_dict() if hasattr(image_data, 'to_dict') else vars(image_data)
-                alt_keys = ['alt', 'alt_text', 'description', 'title', 'caption']
-                for key in alt_keys:
-                    if key in image_dict and image_dict[key]:
-                        alt_text = image_dict[key]
-                        break
+                with open(info_file, 'r', encoding='utf-8') as f:
+                    info = json.load(f)
+                    if 'description' in info:
+                        caption += f"\n**📝 الوصـف:** {info['description'][:100]}"
             except:
                 pass
-        
-        if alt_text and len(alt_text.strip()) > 0:
-            caption_text += f"\n**📝 الوصـف:** {alt_text[:100]}"
         
         try:
             # إرسال المحتوى
             if is_video:
                 await event.client.send_file(
                     event.chat_id,
-                    temp_filename,
-                    caption=caption_text,
+                    downloaded_file,
+                    caption=caption,
                     supports_streaming=True,
                     progress_callback=lambda d, t: asyncio.create_task(
                         progress(d, t, event, "**╮ ❐ جـارِ رفـع الفيـديـو ...🎬╰**")
@@ -7286,8 +7124,8 @@ async def download_pinterest(event):
             elif is_gif:
                 await event.client.send_file(
                     event.chat_id,
-                    temp_filename,
-                    caption=caption_text,
+                    downloaded_file,
+                    caption=caption,
                     force_document=False,
                     progress_callback=lambda d, t: asyncio.create_task(
                         progress(d, t, event, "**╮ ❐ جـارِ رفـع الصـورة المتحركة ...🖼️╰**")
@@ -7296,8 +7134,8 @@ async def download_pinterest(event):
             else:
                 await event.client.send_file(
                     event.chat_id,
-                    temp_filename,
-                    caption=caption_text,
+                    downloaded_file,
+                    caption=caption,
                     progress_callback=lambda d, t: asyncio.create_task(
                         progress(d, t, event, "**╮ ❐ جـارِ رفـع الصـورة ...🖼️╰**")
                     ) if d and t else None
@@ -7311,9 +7149,7 @@ async def download_pinterest(event):
 
         # تنظيف الملفات المؤقتة
         try:
-            if os.path.exists(temp_filename):
-                os.remove(temp_filename)
-            os.rmdir(temp_dir)
+            shutil.rmtree(temp_dir)
         except Exception as cleanup_error:
             print(f"Cleanup error: {cleanup_error}")
 
@@ -7322,19 +7158,15 @@ async def download_pinterest(event):
         print(f"Main error: {e}")
         
         if "403" in error_msg or "forbidden" in error_msg:
-            await event.edit("**⚠️ تم حظر الوصول - جرب استخدام ملف كوكيز صالح أو VPN**")
+            await event.edit("**⚠️ تم حظر الوصول - جرب استخدام كوكيز صالح أو VPN**")
         elif "private" in error_msg or "login" in error_msg:
-            await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل دخول - استخدم ملف الكوكيز**")
+            await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل دخول - تأكد من صحة الكوكيز**")
         elif "not found" in error_msg or "unavailable" in error_msg or "404" in error_msg:
             await event.edit("**⚠️ المحتوى غير متوفر أو تم حذفه**")
         elif "timeout" in error_msg:
             await event.edit("**⚠️ انتهت مهلة الاتصال - حاول مرة أخرى**")
         elif "invalid" in error_msg and "url" in error_msg:
-            await event.edit("**⚠️ الرابط غير صحيح أو غير مدعوم**\n\n**تأكد من:**\n• الرابط يحتوي على `/pin/`\n• الرابط من Pinterest الرسمي\n• المحتوى عام وليس خاص")
-        elif "unsupported" in error_msg:
-            await event.edit("**⚠️ الرابط غير مدعوم - تأكد من أنه رابط Pinterest صحيح**")
-        elif "chrome" in error_msg or "browser" in error_msg:
-            await event.edit("**⚠️ خطأ في المتصفح - تأكد من تثبيت Chrome أو استخدم وضع API**")
+            await event.edit("**⚠️ الرابط غير صحيح أو غير مدعوم**")
         else:
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
 
