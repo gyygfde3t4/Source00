@@ -15,7 +15,7 @@ mutagen
 # ========== تحميل الفيديو والصوت ==========
 yt-dlp
 youtube_dl
-pinterest-dl
+gallery-dl
 aiofiles
 
 # ========== الترجمة ==========
