@@ -248,10 +248,9 @@ async def start_client():
         await client.connect()
         
         if not await client.is_user_authorized():
-            print("⚠️ الجلسة غير صالحة، يلزم إنشاء جلسة جديدة")
+            print("⚠️ جلسة تيرمكس، يلزم إنشاء جلسة جديدة")
             exit(1)
             
-        print("✅ تم تسجيل الدخول باستخدام كود التيرمكس بنجاح!")
         return client
         
     except Exception as e:
@@ -2352,7 +2351,6 @@ async def get_crypto_price(event):
 
 
 @client.on(events.NewMessage(pattern=r'^\.احصائيات'))
-
 async def show_stats(event):
     try:
         start_time = time.time()
@@ -2368,6 +2366,8 @@ async def show_stats(event):
         private_chats = []
         admin_channels = 0
         admin_groups = 0
+        
+        last_progress = -1  # متغير لتتبع آخر نسبة تقدم تم عرضها
         
         for dialog in dialogs:
             entity = dialog.entity
@@ -2396,10 +2396,18 @@ async def show_stats(event):
             
             processed += 1
             progress = int((processed / total_dialogs) * 100)
-            if progress % 10 == 0:  # تحديث كل 10%
+            
+            # تحديث فقط إذا كان هناك تغيير في النسبة وكل 10%
+            if progress % 10 == 0 and progress != last_progress and progress < 100:
                 remaining_time = (time.time() - start_time) * (100 - progress) / max(progress, 1)
-                await msg.edit(f"**⎉╎جـاري حساب الإحصائيات... {progress}%\n⏳ المتبقي: {int(remaining_time)} ثانية**")
+                try:
+                    await msg.edit(f"**⎉╎جـاري حساب الإحصائيات... {progress}%\n⏳ المتبقي: {int(remaining_time)} ثانية**")
+                    last_progress = progress
+                except Exception:
+                    pass  # تجاهل أخطاء التحديث المتكررة
         
+        # التأكد من أن الرسالة النهائية مختلفة
+        final_time = int(time.time() - start_time)
         stats_message = f"""
 ╭━━━┳━━━━╮
 **⎉╎إحصائيات حسابك ⎚**
@@ -2412,13 +2420,24 @@ async def show_stats(event):
 **✾╎عدد البوتات:** {len(bots)}
 **✾╎عدد المحادثات الخاصة:** {len(private_chats)}
 **✾╎إجمالي الدردشات:** {total_dialogs}
-**✾╎الوقت المستغرق:** {int(time.time() - start_time)} ثانية
+**✾╎الوقت المستغرق:** {final_time} ثانية
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
 """
-        await msg.edit(stats_message)
+        
+        # محاولة التحديث مع معالجة الخطأ
+        try:
+            await msg.edit(stats_message)
+        except Exception as edit_error:
+            # إذا فشل التحديث، إرسال رسالة جديدة
+            await event.reply(stats_message)
+            try:
+                await msg.delete()
+            except:
+                pass
         
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ أثناء حساب الإحصائيات:** {str(e)}")
+        
 
 @client.on(events.NewMessage(pattern=r'^\.مغادرة القنوات$'))
 
@@ -5576,7 +5595,6 @@ async def anime_girl(event):
     except Exception as e:
         await event.reply(f"**حدث خطأ: {str(e)}**")
                                                              
-
 # شروط الفوز لكل لعبة
 WIN_CONDITIONS = {
     "🎯": 6,    # السهم - الفوز عند الحصول على 6 (في المنتصف)
@@ -5599,6 +5617,8 @@ async def edit_or_reply(event, text, **kwargs):
 @client.on(events.NewMessage(pattern=r'^\.الالعاب$'))
 async def games_menu(event):
     """عرض قائمة الألعاب"""
+    if not event.out:
+        return
     menu = """
 🎮 **قائمة الألعاب الجماعية**:
 
@@ -5617,6 +5637,8 @@ async def games_menu(event):
 @client.on(events.NewMessage(pattern=r'^\.اكس او$'))
 async def xo_game(event):
     """لعبة XO مع البوت"""
+    if not event.out:
+        return
     bot_username = "@xobot"
     try:
         zzevent = await edit_or_reply(event, "**⚔️ جاري بدء لعبة XO...**")
@@ -5629,6 +5651,8 @@ async def xo_game(event):
 @client.on(events.NewMessage(pattern=r'^\.(سهم|نرد|سله|كرة|حظ)(?:\s+(\d+))?$'))
 async def start_game(event):
     """بدء لعبة جماعية"""
+    if not event.out:
+        return
     game_types = {
         "سهم": "🎯",
         "نرد": "🎲", 
@@ -5846,6 +5870,8 @@ async def end_game(chat_id, winner_id):
 @client.on(events.NewMessage(pattern=r'^\.ايقاف$'))
 async def stop_game(event):
     """إيقاف اللعبة الحالية"""
+    if not event.out:
+        return
     chat_id = event.chat_id
     if chat_id not in active_games:
         await event.reply("**⚠️ لا يوجد لعبة نشطة لإنهائها**")
@@ -5856,8 +5882,7 @@ async def stop_game(event):
     await event.reply(f"**🛑 تم إيقاف لعبة {game_type}**")
 
 
-
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")     
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")    
 
 # سيتم تعبئة هذه المتغيرات تلقائياً
 KOYEB_APP_NAME = None
