@@ -6692,7 +6692,7 @@ def humanbytes(size):
 import json
 import re
 
-@client.on(events.NewMessage(pattern=r'^\.معلومات انستا(?:\s+)(@[\w\.-]+|https?://[^\s]+)
+@client.on(events.NewMessage(pattern=r'^\.معلومات انستا(?:\s+)(@[\w\.-]+|https?://[^\s]+)$', outgoing=True))
     processing_msg = await event.edit("**⌁︙جاري جلب المعلومات من الإنستجرام...**")
     
     try:
@@ -7168,6 +7168,7 @@ async def get_instagram_info(event):
         temp_file = f"temp_insta_{event.chat_id}.jpg"
         if os.path.exists(temp_file):
             os.remove(temp_file)
+
 
 
         
