@@ -7168,6 +7168,8 @@ async def get_instagram_info(event):
         temp_file = f"temp_insta_{event.chat_id}.jpg"
         if os.path.exists(temp_file):
             os.remove(temp_file)
+
+
         
 ######################
 
