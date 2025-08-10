@@ -7080,336 +7080,217 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}PB"                        
 
-@client.on(events.NewMessage(pattern=r'^\.معلومات تيك(?:\s+)(@[\w\.-]+|https?://[^\s]+)$', outgoing=True))
+
 async def get_tiktok_user_info(event):
+    """دالة متكاملة لجلب معلومات حساب تيك توك مع معالجة الأخطاء المحسنة"""
+    
+    # 1. التحضير الأولي وإعداد الرسالة
     processing_msg = await event.edit("**╮ جـارِ جـلب المعلومـات مـن تيـك تـوك... 📡╰**")
     
     try:
+        # 2. الحصول على المدخلات وتنظيفها
         input_text = event.pattern_match.group(1).strip()
         
-        # تنظيف وإعداد الرابط
+        # 3. التحقق من الرابط وإعداده
         if input_text.startswith('http'):
             url = input_text.split('?')[0]
+            if 'tiktok.com' not in url:
+                await processing_msg.edit("**⚠️ الرابط غير صالح لموقع تيك توك**")
+                return
         else:
-            username = input_text.replace('@', '')
+            username = input_text.replace('@', '').strip()
+            if not username:
+                await processing_msg.edit("**⚠️ يرجى تحديد اسم مستخدم صحيح**")
+                return
             url = f"https://www.tiktok.com/@{username}"
         
-        # التحقق من ملف الكوكيز
-        cookie_file = 'tekcook.txt'
-        if not os.path.exists(cookie_file):
-            await processing_msg.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
-            return
-        
-        # إعدادات الطلب
+        # 4. إعداد رؤوس الطلب (محدثة 2025)
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 Edg/125.0.0.0',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',
+            'Referer': 'https://www.tiktok.com/',
             'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
             'Sec-Fetch-Dest': 'document',
             'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-            'Cache-Control': 'max-age=0',
-            'Referer': 'https://www.tiktok.com/',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Ch-Ua': '"Microsoft Edge";v="125"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Upgrade-Insecure-Requests': '1',
         }
         
-        # قراءة الكوكيز من الملف
+        # 5. تحميل الكوكيز بطريقة محسنة
         cookies = {}
+        cookie_file = 'tekcook.txt'
+        if os.path.exists(cookie_file):
+            try:
+                with open(cookie_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            parts = line.split('\t')
+                            if len(parts) >= 7 and 'tiktok.com' in parts[0]:
+                                cookies[parts[5]] = parts[6]
+            except Exception as e:
+                print(f"خطأ في قراءة الكوكيز: {e}")
+        
+        # 6. إضافة تأخير عشوائي لتجنب الحظر
+        time.sleep(random.uniform(1, 3))
+        
+        # 7. إرسال الطلب مع إدارة الأخطاء
         try:
-            with open(cookie_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
-                    parts = line.split('\t')
-                    if len(parts) >= 7:
-                        domain = parts[0]
-                        name = parts[5]
-                        value = parts[6]
-                        if 'tiktok.com' in domain:
-                            cookies[name] = value
-        except Exception as e:
-            print(f"خطأ في قراءة الكوكيز: {e}")
-        
-        # جلب صفحة TikTok
-        response = requests.get(url, headers=headers, cookies=cookies, timeout=30)
-        
-        if response.status_code != 200:
-            if response.status_code == 404:
-                await processing_msg.edit("**⚠️ الحساب غير موجود أو الرابط غير صحيح**")
-                return
-            elif response.status_code == 403:
-                await processing_msg.edit("**⚠️ تم حظر الوصول، تحقق من الكوكيز**")
-                return
-            else:
-                await processing_msg.edit(f"**⚠️ خطأ في الطلب: {response.status_code}**")
-                return
-        
-        # تحليل HTML للعثور على JSON المخفي
-        from bs4 import BeautifulSoup
-        import json
-        import re
-        from datetime import datetime
-        
+            session = requests.Session()
+            session.max_redirects = 3
+            session.timeout = 15
+            response = session.get(url, headers=headers, cookies=cookies)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            await processing_msg.edit(f"**⚠️ خطأ في الاتصال: {str(e)}**")
+            return
+
+        # 8. التحقق من وجود كابشا
+        if "كابشا" in response.text or "CAPTCHA" in response.text.upper():
+            await processing_msg.edit("**⚠️ تم اكتشاف كابشا، يلزم تحديث الكوكيز**")
+            return
+            
+        # 9. البحث عن البيانات باستخدام أنماط متعددة
+        json_data = None
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # البحث عن سكريبت JSON المخفي
-        json_data = None
-        script_selectors = [
-            'script[id="__UNIVERSAL_DATA_FOR_REHYDRATION__"]',
-            'script:contains("__UNIVERSAL_DATA_FOR_REHYDRATION__")',
-            'script:contains("webapp.user-detail")',
-            'script:contains("userInfo")'
+        # النمط الأساسي (2025)
+        script_tag = soup.find('script', id='__UNIVERSAL_DATA_FOR_REHYDRATION__')
+        if script_tag:
+            try:
+                json_data = json.loads(script_tag.string)
+                if '__DEFAULT_SCOPE__' in json_data:
+                    user_info = json_data['__DEFAULT_SCOPE__'].get('webapp.user-detail', {}).get('userInfo', {})
+                    if user_info:
+                        return await parse_user_info(event, user_info, response.text)
+            except Exception as e:
+                print(f"خطأ في تحليل JSON الأساسي: {e}")
+
+        # النمط الثانوي (إذا فشل النمط الأساسي)
+        alternative_patterns = [
+            r'<script[^>]*>window\.__INITIAL_PROPS__\s*=\s*({.+?})</script>',
+            r'"UserModule":\s*({.+?})\s*,\s*"',
+            r'"userInfo":\s*({.+?})\s*,\s*"stats"',
+            r'"user":\s*({.+?})\s*,\s*"stats"'
         ]
         
-        for selector in script_selectors:
-            scripts = soup.select(selector)
-            for script in scripts:
-                script_content = script.get_text() if script.get_text() else script.string
-                if script_content and 'userInfo' in script_content:
-                    try:
-                        # استخراج JSON من النص
-                        json_match = re.search(r'<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', response.text, re.DOTALL)
-                        if json_match:
-                            json_str = json_match.group(1).strip()
-                            json_data = json.loads(json_str)
-                            break
-                        
-                        # محاولة أخرى لاستخراج JSON
-                        if script_content.startswith('{') or 'window.__INITIAL_STATE__' in script_content:
-                            # تنظيف النص واستخراج JSON
-                            clean_content = re.sub(r'window\.__INITIAL_STATE__\s*=\s*', '', script_content)
-                            clean_content = clean_content.strip().rstrip(';')
-                            json_data = json.loads(clean_content)
-                            break
-                    except json.JSONDecodeError:
-                        continue
-            
-            if json_data:
-                break
-        
-        # إذا لم نجد JSON في script tags، نبحث في النص مباشرة
-        if not json_data:
-            # البحث عن JSON patterns في HTML
-            json_patterns = [
-                r'"webapp\.user-detail":\s*({.+?})\s*,\s*"webapp',
-                r'__INITIAL_STATE__\s*=\s*({.+?});',
-                r'window\.__INITIAL_STATE__\s*=\s*({.+?});',
-                r'"userInfo":\s*({.+?})\s*,',
-            ]
-            
-            for pattern in json_patterns:
-                matches = re.findall(pattern, response.text, re.DOTALL)
-                for match in matches:
-                    try:
-                        temp_json = json.loads(match)
-                        if 'userInfo' in str(temp_json) or 'user' in temp_json:
-                            json_data = temp_json
-                            break
-                    except:
-                        continue
-                if json_data:
-                    break
-        
-        if not json_data:
-            await processing_msg.edit("**⚠️ لم يتم العثور على بيانات المستخدم في الصفحة**")
-            return
-        
-        # استخراج معلومات المستخدم من JSON
-        user_info = {}
-        
-        try:
-            # المسارات المختلفة لاستخراج البيانات
-            user_data = None
-            stats_data = None
-            
-            # محاولة 1: المسار الكلاسيكي
-            if '__DEFAULT_SCOPE__' in json_data:
-                scope_data = json_data['__DEFAULT_SCOPE__']
-                if 'webapp.user-detail' in scope_data:
-                    detail_data = scope_data['webapp.user-detail']
-                    if 'userInfo' in detail_data:
-                        user_info_data = detail_data['userInfo']
-                        user_data = user_info_data.get('user', {})
-                        stats_data = user_info_data.get('stats', {})
-            
-            # محاولة 2: البحث المباشر في البيانات
-            if not user_data:
-                def find_user_data(obj, depth=0):
-                    if depth > 10:  # تجنب اللانهاية
-                        return None, None
-                    
-                    if isinstance(obj, dict):
-                        if 'user' in obj and 'stats' in obj:
-                            return obj.get('user'), obj.get('stats')
-                        if 'userInfo' in obj:
-                            info = obj['userInfo']
-                            if isinstance(info, dict) and 'user' in info:
-                                return info.get('user'), info.get('stats')
-                        
-                        # البحث في المفاتيح الفرعية
-                        for key, value in obj.items():
-                            result_user, result_stats = find_user_data(value, depth + 1)
-                            if result_user:
-                                return result_user, result_stats
-                    
-                    return None, None
-                
-                user_data, stats_data = find_user_data(json_data)
-            
-            if not user_data:
-                await processing_msg.edit("**⚠️ لم يتم العثور على بيانات المستخدم**")
-                return
-            
-            # دالة لتحويل timestamp إلى تاريخ
-            def timestamp_to_date(timestamp):
-                if timestamp and timestamp != 0:
-                    try:
-                        return datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
-                    except:
-                        return 'غير محدد'
-                return 'غير محدد'
-            
-            # دالة لتنسيق الأرقام
-            def format_number(number):
-                if isinstance(number, (int, float)) and number > 0:
-                    return f"{int(number):,}"
-                return "0"
-            
-            # دالة للحصول على رمز العلم من كود البلد
-            def get_flag_emoji(country_code):
-                if not country_code or len(country_code) != 2:
-                    return ""
-                # تحويل كود البلد إلى رموز العلم Unicode
-                return ''.join(chr(ord(c) + 127397) for c in country_code.upper())
-            
-            # استخراج المعلومات الأساسية
-            username = user_data.get('uniqueId', user_data.get('id', 'غير محدد'))
-            display_name = user_data.get('nickname', user_data.get('displayName', 'غير محدد'))
-            verified = user_data.get('verified', False)
-            create_time = user_data.get('createTime', 0)
-            unique_id_modify_time = user_data.get('uniqueIdModifyTime', 0)
-            nickname_modify_time = user_data.get('nickNameModifyTime', 0)
-            following_visibility = user_data.get('followingVisibility', 1)
-            bio_link = user_data.get('bioLink', {})
-            bio_link_url = bio_link.get('link') if isinstance(bio_link, dict) else None
-            private_account = user_data.get('privateAccount', False)
-            region = user_data.get('region', '')
-            language = user_data.get('language', '')
-            user_id = user_data.get('id', 'غير محدد')
-            sec_uid = user_data.get('secUid', 'غير محدد')
-            signature = user_data.get('signature', '')
-            
-            # استخراج الإحصائيات
-            if stats_data:
-                follower_count = stats_data.get('followerCount', 0)
-                following_count = stats_data.get('followingCount', 0)
-                heart_count = stats_data.get('heartCount', stats_data.get('heart', 0))
-                video_count = stats_data.get('videoCount', 0)
-                friend_count = stats_data.get('friendCount', 0)
-            else:
-                follower_count = following_count = heart_count = video_count = friend_count = 0
-            
-            # استخراج إعدادات الحساب
-            comment_setting = user_data.get('commentSetting', 0)
-            download_setting = user_data.get('downloadSetting', 0)
-            live_room_id = user_data.get('roomId', '')
-            
-            # استخراج صورة البروفايل
-            avatar_url = user_data.get('avatarLarger', user_data.get('avatarMedium', user_data.get('avatarThumb', '')))
-            
-            # تحميل صورة البروفايل
-            avatar_path = None
-            if avatar_url:
+        for pattern in alternative_patterns:
+            match = re.search(pattern, response.text, re.DOTALL)
+            if match:
                 try:
-                    img_response = requests.get(avatar_url, headers=headers, timeout=10)
-                    if img_response.status_code == 200:
-                        avatar_path = f"temp_avatar_{event.chat_id}.jpg"
-                        with open(avatar_path, 'wb') as f:
-                            f.write(img_response.content)
+                    json_data = json.loads(match.group(1))
+                    if 'user' in json_data or 'userInfo' in json_data:
+                        return await parse_user_info(event, json_data, response.text)
                 except Exception as e:
-                    print(f"خطأ في تحميل صورة البروفايل: {e}")
-            
-            # صياغة الرسالة النهائية
-            flag_emoji = get_flag_emoji(region)
-            country_text = f"{region} {flag_emoji}" if region and flag_emoji else (region if region else "غير محدد")
-            
-            message = f"""
-**📱 معلومـات المسـتخدم 📱**
+                    print(f"خطأ في تحليل JSON الثانوي: {e}")
+        
+        # 10. إذا فشل كل شيء
+        await processing_msg.edit("**⚠️ تعذر العثور على بيانات المستخدم. قد يكون الهيكل قد تغير**")
 
-**🔹 يـوزر الحسـاب:** `{username}`
-**🔸 اسـم الحسـاب:** `{display_name}`
-**✅ التوثيـق:** `{'موثق' if verified else 'غير موثق'}`
-**📆 تاريخ إنشاء الحساب:** `{timestamp_to_date(create_time)}`
-**⌚ آخر تعديل للاسم:** `{timestamp_to_date(max(unique_id_modify_time, nickname_modify_time))}`
-**👀 رؤية اللذين يتابعهم:** `{'نعم' if following_visibility == 1 else 'لا'}`
-**🔗 رابط البايو:** `{bio_link_url if bio_link_url else 'لايوجد'}`
-**🔒 حساب خاص:** `{'نعم' if private_account else 'لا'}`
-**📍 دولة المستخدم:** `{country_text}`
-**💬 لغة الحساب:** `{language if language else 'غير محدد'}`
-**👤 إجمالي المتابعين:** `{format_number(follower_count)}`
-**👥 إجمالي الذين يتابعهم:** `{format_number(following_count)}`
-**👫 عدد الأصدقاء:** `{format_number(friend_count)}`
-**👍 إجمالي الايكات:** `{format_number(heart_count)}`
-**📺 إجمالي المقاطع:** `{format_number(video_count)}`
-**❤️ مفضلة:** `لا يمكنك رؤية المفضلات`
-**💬 التعليقات:** `{'تعليقات مفعلة' if comment_setting == 0 else 'تعليقات معطلة'}`
-**📥 التحميلات:** `{'يسمح بتحميل المقاطع' if download_setting == 0 else 'لا يسمح بالتحميل'}`
-**🔴 البث المباشر:** `{'يوجد بث مباشر' if live_room_id else 'لا يوجد بث حالياً'}`
-**🥇 مستوى الدعم في البثوث:** `0`
-**🔢 روم ايدي البث:** `{live_room_id if live_room_id else 'لايوجد بث مباشر'}`
-**👀 عدد مشاهدين البث الان:** `🔴`
-**🌟 عدد المشتركين في النجمة:** `0`
-**🎟️ عدد المشتركين في الفريق:** `0`
-**📛 ايـدي الحسـاب:** `{user_id}`
-**🔑 الايـدي الثانـوي:** `{sec_uid}`
-"""
-            
-            # إضافة الوصف إذا وُجد
-            if signature:
-                message += f"\n**📝 الوصف:** `{signature}`"
-            
-            # إرسال النتائج
-            await processing_msg.delete()
-            
-            if avatar_path and os.path.exists(avatar_path):
-                await client.send_file(
-                    event.chat_id,
-                    avatar_path,
-                    caption=message,
-                    reply_to=event.reply_to_msg_id
-                )
-                # حذف الصورة المؤقتة
-                try:
-                    os.remove(avatar_path)
-                except:
-                    pass
-            else:
-                await event.respond(message)
-            
-        except Exception as e:
-            print(f"خطأ في تحليل البيانات: {e}")
-            await processing_msg.edit("**⚠️ خطأ في تحليل بيانات المستخدم**")
-            
-    except requests.exceptions.Timeout:
-        await processing_msg.edit("**⚠️ انتهى الوقت المحدد للاتصال**")
-    except requests.exceptions.RequestException as e:
-        await processing_msg.edit(f"**⚠️ خطأ في الاتصال:** {str(e)[:100]}...")
     except Exception as e:
-        print(f"خطأ عام: {e}")
-        await processing_msg.edit(f"**⚠️ حـدث خـطأ عـام:** {str(e)[:200]}...")
-    finally:
-        # تنظيف الملفات المؤقتة
-        temp_file = f"temp_avatar_{event.chat_id}.jpg"
-        if os.path.exists(temp_file):
+        await processing_msg.edit(f"**⚠️ خطأ غير متوقع: {str(e)[:200]}**")
+        print(f"Error: {traceback.format_exc()}")
+
+async def parse_user_info(event, user_data, html_content=""):
+    """دالة متكاملة لمعالجة بيانات المستخدم"""
+    try:
+        # استخراج البيانات الأساسية
+        user = user_data.get('user', user_data.get('userInfo', {}))
+        stats = user_data.get('stats', {})
+        
+        # معلومات الحساب
+        username = user.get('uniqueId', 'غير معروف')
+        display_name = user.get('nickname', user.get('displayName', 'غير معروف'))
+        verified = user.get('verified', False)
+        private = user.get('privateAccount', False)
+        sec_uid = user.get('secUid', 'غير معروف')
+        user_id = user.get('id', 'غير معروف')
+        signature = user.get('signature', 'لا يوجد وصف')
+        create_time = user.get('createTime', 0)
+        
+        # الإحصائيات
+        followers = stats.get('followerCount', 0)
+        following = stats.get('followingCount', 0)
+        likes = stats.get('heartCount', stats.get('diggCount', 0))
+        videos = stats.get('videoCount', 0)
+        
+        # روابط الصور
+        avatar_url = user.get('avatarLarger', user.get('avatarMedium', user.get('avatarThumb', '')))
+        
+        # تحويل التواريخ
+        def format_date(timestamp):
+            if timestamp and timestamp > 0:
+                try:
+                    return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    return 'غير معروف'
+            return 'غير معروف'
+        
+        # تنسيق الأرقام
+        def format_number(num):
             try:
-                os.remove(temp_file)
+                return f"{int(num):,}"
             except:
-                pass
+                return "0"
+        
+        # إنشاء الرسالة
+        message = f"""
+**📊 معلومات حساب تيك توك 📊**
+
+**👤 اسم المستخدم:** @{username}
+**📛 اسم العرض:** {display_name}
+**🆔 رقم الحساب:** {user_id}
+**🔑 المعرف السري:** {sec_uid}
+**✅ الحساب الموثق:** {'نعم' if verified else 'لا'}
+**🔒 الحساب الخاص:** {'نعم' if private else 'لا'}
+**📅 تاريخ الإنشاء:** {format_date(create_time)}
+
+**📈 الإحصائيات:**
+**👥 المتابعون:** {format_number(followers)}
+**👤 يتابع:** {format_number(following)}
+**❤️ الإعجابات:** {format_number(likes)}
+**🎬 عدد المقاطع:** {format_number(videos)}
+
+**📝 الوصف:** {signature}
+"""
+        # 11. محاولة جلب صورة البروفايل
+        avatar_path = None
+        if avatar_url:
+            try:
+                img_response = requests.get(avatar_url, timeout=10)
+                if img_response.status_code == 200:
+                    avatar_path = f"temp_avatar_{event.chat_id}.jpg"
+                    with open(avatar_path, 'wb') as f:
+                        f.write(img_response.content)
+            except Exception as e:
+                print(f"خطأ في تحميل صورة البروفايل: {e}")
+
+        # 12. إرسال النتائج
+        await event.delete()
+        
+        if avatar_path and os.path.exists(avatar_path):
+            await event.client.send_file(
+                event.chat_id,
+                avatar_path,
+                caption=message,
+                reply_to=event.reply_to_msg_id
+            )
+            os.remove(avatar_path)
+        else:
+            await event.respond(message)
+            
+    except Exception as e:
+        await event.edit(f"**⚠️ خطأ في معالجة البيانات: {str(e)}**")
+
+# تسجيل الأمر في الكلينت
+@client.on(events.NewMessage(pattern=r'^\.معلومات تيك(?:\s+)(@[\w\.-]+|https?://[^\s]+)$', outgoing=True))
+async def tiktok_info_handler(event):
+    await get_tiktok_user_info(event)
                 
 ##########################
 
