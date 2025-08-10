@@ -7089,7 +7089,7 @@ async def get_tiktok_user_info(event):
         
         # تنظيف وإعداد الرابط
         if input_text.startswith('http'):
-            url = input_text.split('?')[0]  # إزالة أي متغيرات في الرابط
+            url = input_text.split('?')[0]
         else:
             username = input_text.replace('@', '')
             url = f"https://www.tiktok.com/@{username}"
@@ -7100,211 +7100,317 @@ async def get_tiktok_user_info(event):
             await processing_msg.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
             return
         
-        # إعدادات yt-dlp محسنة لجلب معلومات الحساب
-        ydl_opts = {
-            'cookiefile': cookie_file,
-            'extract_flat': True,  # نعيده إلى True لجلب معلومات الحساب فقط
-            'quiet': True,
-            'no_warnings': True,
-            'socket_timeout': 30,
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Referer': 'https://www.tiktok.com/',
-                'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
-            },
+        # إعدادات الطلب
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
+            'Referer': 'https://www.tiktok.com/',
         }
         
-        with YoutubeDL(ydl_opts) as ydl:
-            try:
-                info = ydl.extract_info(url, download=False)
-                
-                if not info:
-                    raise Exception("لم يتم العثور على معلومات الحساب")
-                
-                print("Info structure:", info.keys() if isinstance(info, dict) else "Not a dict")
-                
-                # استخراج معلومات المستخدم بشكل صحيح
-                user_info = {}
-                
-                # الحصول على اسم المستخدم من الرابط
-                username_from_url = url.split('@')[-1].strip('/')
-                user_info['username'] = username_from_url
-                
-                # استخراج البيانات من info مباشرة (معلومات الحساب)
-                if 'entries' in info and info['entries']:
-                    # جمع إحصائيات من جميع الفيديوهات
-                    total_views = 0
-                    total_likes = 0
-                    total_comments = 0
-                    videos_count = len(info['entries'])
-                    
-                    # الحصول على معلومات المستخدم من أول فيديو
-                    first_entry = info['entries'][0] if info['entries'] else {}
-                    
-                    # بيانات المستخدم الأساسية
-                    user_info.update({
-                        'display_name': first_entry.get('uploader', first_entry.get('creator', username_from_url)),
-                        'uploader_id': first_entry.get('uploader_id'),
-                        'uploader_url': first_entry.get('uploader_url', url),
-                        'verified': first_entry.get('uploader_verified', False),
-                        'avatar_url': first_entry.get('thumbnail', ''),  # سنحاول الحصول على صورة البروفايل
-                    })
-                    
-                    # جمع الإحصائيات من جميع الفيديوهات
-                    for entry in info['entries']:
-                        total_views += entry.get('view_count', 0)
-                        total_likes += entry.get('like_count', 0) 
-                        total_comments += entry.get('comment_count', 0)
-                    
-                    user_info.update({
-                        'total_videos': videos_count,
-                        'total_views': total_views,
-                        'total_likes': total_likes,
-                        'total_comments': total_comments,
-                    })
-                
-                # الحصول على باقي المعلومات
-                user_info.update({
-                    'title': info.get('title', ''),
-                    'description': info.get('description', ''),
-                    'webpage_url': info.get('webpage_url', url),
-                })
-                
-                # محاولة جلب صورة البروفايل الحقيقية
-                avatar_path = None
-                
-                # استخدام requests لجلب صفحة TikTok مباشرة للحصول على صورة البروفايل
-                try:
-                    headers = {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                        'Accept-Language': 'en-US,en;q=0.5',
-                        'Referer': 'https://www.tiktok.com/',
-                    }
-                    
-                    # قراءة الكوكيز لـ requests
-                    cookies = {}
+        # قراءة الكوكيز من الملف
+        cookies = {}
+        try:
+            with open(cookie_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    parts = line.split('\t')
+                    if len(parts) >= 7:
+                        domain = parts[0]
+                        name = parts[5]
+                        value = parts[6]
+                        if 'tiktok.com' in domain:
+                            cookies[name] = value
+        except Exception as e:
+            print(f"خطأ في قراءة الكوكيز: {e}")
+        
+        # جلب صفحة TikTok
+        response = requests.get(url, headers=headers, cookies=cookies, timeout=30)
+        
+        if response.status_code != 200:
+            if response.status_code == 404:
+                await processing_msg.edit("**⚠️ الحساب غير موجود أو الرابط غير صحيح**")
+                return
+            elif response.status_code == 403:
+                await processing_msg.edit("**⚠️ تم حظر الوصول، تحقق من الكوكيز**")
+                return
+            else:
+                await processing_msg.edit(f"**⚠️ خطأ في الطلب: {response.status_code}**")
+                return
+        
+        # تحليل HTML للعثور على JSON المخفي
+        from bs4 import BeautifulSoup
+        import json
+        import re
+        from datetime import datetime
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # البحث عن سكريبت JSON المخفي
+        json_data = None
+        script_selectors = [
+            'script[id="__UNIVERSAL_DATA_FOR_REHYDRATION__"]',
+            'script:contains("__UNIVERSAL_DATA_FOR_REHYDRATION__")',
+            'script:contains("webapp.user-detail")',
+            'script:contains("userInfo")'
+        ]
+        
+        for selector in script_selectors:
+            scripts = soup.select(selector)
+            for script in scripts:
+                script_content = script.get_text() if script.get_text() else script.string
+                if script_content and 'userInfo' in script_content:
                     try:
-                        with open(cookie_file, 'r') as f:
-                            for line in f:
-                                line = line.strip()
-                                if not line or line.startswith('#'):
-                                    continue
-                                parts = line.split('\t')
-                                if len(parts) >= 7:
-                                    domain = parts[0]
-                                    name = parts[5]
-                                    value = parts[6]
-                                    if 'tiktok.com' in domain:
-                                        cookies[name] = value
+                        # استخراج JSON من النص
+                        json_match = re.search(r'<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', response.text, re.DOTALL)
+                        if json_match:
+                            json_str = json_match.group(1).strip()
+                            json_data = json.loads(json_str)
+                            break
+                        
+                        # محاولة أخرى لاستخراج JSON
+                        if script_content.startswith('{') or 'window.__INITIAL_STATE__' in script_content:
+                            # تنظيف النص واستخراج JSON
+                            clean_content = re.sub(r'window\.__INITIAL_STATE__\s*=\s*', '', script_content)
+                            clean_content = clean_content.strip().rstrip(';')
+                            json_data = json.loads(clean_content)
+                            break
+                    except json.JSONDecodeError:
+                        continue
+            
+            if json_data:
+                break
+        
+        # إذا لم نجد JSON في script tags، نبحث في النص مباشرة
+        if not json_data:
+            # البحث عن JSON patterns في HTML
+            json_patterns = [
+                r'"webapp\.user-detail":\s*({.+?})\s*,\s*"webapp',
+                r'__INITIAL_STATE__\s*=\s*({.+?});',
+                r'window\.__INITIAL_STATE__\s*=\s*({.+?});',
+                r'"userInfo":\s*({.+?})\s*,',
+            ]
+            
+            for pattern in json_patterns:
+                matches = re.findall(pattern, response.text, re.DOTALL)
+                for match in matches:
+                    try:
+                        temp_json = json.loads(match)
+                        if 'userInfo' in str(temp_json) or 'user' in temp_json:
+                            json_data = temp_json
+                            break
                     except:
-                        pass
+                        continue
+                if json_data:
+                    break
+        
+        if not json_data:
+            await processing_msg.edit("**⚠️ لم يتم العثور على بيانات المستخدم في الصفحة**")
+            return
+        
+        # استخراج معلومات المستخدم من JSON
+        user_info = {}
+        
+        try:
+            # المسارات المختلفة لاستخراج البيانات
+            user_data = None
+            stats_data = None
+            
+            # محاولة 1: المسار الكلاسيكي
+            if '__DEFAULT_SCOPE__' in json_data:
+                scope_data = json_data['__DEFAULT_SCOPE__']
+                if 'webapp.user-detail' in scope_data:
+                    detail_data = scope_data['webapp.user-detail']
+                    if 'userInfo' in detail_data:
+                        user_info_data = detail_data['userInfo']
+                        user_data = user_info_data.get('user', {})
+                        stats_data = user_info_data.get('stats', {})
+            
+            # محاولة 2: البحث المباشر في البيانات
+            if not user_data:
+                def find_user_data(obj, depth=0):
+                    if depth > 10:  # تجنب اللانهاية
+                        return None, None
                     
-                    response = requests.get(url, headers=headers, cookies=cookies, timeout=10)
-                    if response.status_code == 200:
-                        from bs4 import BeautifulSoup
-                        soup = BeautifulSoup(response.text, 'html.parser')
+                    if isinstance(obj, dict):
+                        if 'user' in obj and 'stats' in obj:
+                            return obj.get('user'), obj.get('stats')
+                        if 'userInfo' in obj:
+                            info = obj['userInfo']
+                            if isinstance(info, dict) and 'user' in info:
+                                return info.get('user'), info.get('stats')
                         
-                        # البحث عن صورة البروفايل في الصفحة
-                        profile_img_selectors = [
-                            'img[data-e2e="user-avatar"]',
-                            'img[alt*="avatar"]',
-                            'span[data-e2e="user-avatar"] img',
-                            'div[data-e2e="user-avatar"] img',
-                        ]
-                        
-                        profile_img_url = None
-                        for selector in profile_img_selectors:
-                            img_tag = soup.select_one(selector)
-                            if img_tag:
-                                profile_img_url = img_tag.get('src')
-                                if profile_img_url:
-                                    break
-                        
-                        # إذا لم نجد صورة البروفايل، نبحث في meta tags
-                        if not profile_img_url:
-                            og_image = soup.find('meta', property='og:image')
-                            if og_image:
-                                profile_img_url = og_image.get('content')
-                        
-                        # تحسين جودة الصورة
-                        if profile_img_url:
-                            profile_img_url = profile_img_url.replace('100x100', '720x720').replace('150x150', '720x720')
-                            
-                            # تحميل صورة البروفايل
-                            img_response = requests.get(profile_img_url, headers=headers, timeout=10)
-                            if img_response.status_code == 200:
-                                avatar_path = f"temp_avatar_{event.chat_id}.jpg"
-                                with open(avatar_path, 'wb') as f:
-                                    f.write(img_response.content)
+                        # البحث في المفاتيح الفرعية
+                        for key, value in obj.items():
+                            result_user, result_stats = find_user_data(value, depth + 1)
+                            if result_user:
+                                return result_user, result_stats
+                    
+                    return None, None
                 
+                user_data, stats_data = find_user_data(json_data)
+            
+            if not user_data:
+                await processing_msg.edit("**⚠️ لم يتم العثور على بيانات المستخدم**")
+                return
+            
+            # دالة لتحويل timestamp إلى تاريخ
+            def timestamp_to_date(timestamp):
+                if timestamp and timestamp != 0:
+                    try:
+                        return datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
+                    except:
+                        return 'غير محدد'
+                return 'غير محدد'
+            
+            # دالة لتنسيق الأرقام
+            def format_number(number):
+                if isinstance(number, (int, float)) and number > 0:
+                    return f"{int(number):,}"
+                return "0"
+            
+            # دالة للحصول على رمز العلم من كود البلد
+            def get_flag_emoji(country_code):
+                if not country_code or len(country_code) != 2:
+                    return ""
+                # تحويل كود البلد إلى رموز العلم Unicode
+                return ''.join(chr(ord(c) + 127397) for c in country_code.upper())
+            
+            # استخراج المعلومات الأساسية
+            username = user_data.get('uniqueId', user_data.get('id', 'غير محدد'))
+            display_name = user_data.get('nickname', user_data.get('displayName', 'غير محدد'))
+            verified = user_data.get('verified', False)
+            create_time = user_data.get('createTime', 0)
+            unique_id_modify_time = user_data.get('uniqueIdModifyTime', 0)
+            nickname_modify_time = user_data.get('nickNameModifyTime', 0)
+            following_visibility = user_data.get('followingVisibility', 1)
+            bio_link = user_data.get('bioLink', {})
+            bio_link_url = bio_link.get('link') if isinstance(bio_link, dict) else None
+            private_account = user_data.get('privateAccount', False)
+            region = user_data.get('region', '')
+            language = user_data.get('language', '')
+            user_id = user_data.get('id', 'غير محدد')
+            sec_uid = user_data.get('secUid', 'غير محدد')
+            signature = user_data.get('signature', '')
+            
+            # استخراج الإحصائيات
+            if stats_data:
+                follower_count = stats_data.get('followerCount', 0)
+                following_count = stats_data.get('followingCount', 0)
+                heart_count = stats_data.get('heartCount', stats_data.get('heart', 0))
+                video_count = stats_data.get('videoCount', 0)
+                friend_count = stats_data.get('friendCount', 0)
+            else:
+                follower_count = following_count = heart_count = video_count = friend_count = 0
+            
+            # استخراج إعدادات الحساب
+            comment_setting = user_data.get('commentSetting', 0)
+            download_setting = user_data.get('downloadSetting', 0)
+            live_room_id = user_data.get('roomId', '')
+            
+            # استخراج صورة البروفايل
+            avatar_url = user_data.get('avatarLarger', user_data.get('avatarMedium', user_data.get('avatarThumb', '')))
+            
+            # تحميل صورة البروفايل
+            avatar_path = None
+            if avatar_url:
+                try:
+                    img_response = requests.get(avatar_url, headers=headers, timeout=10)
+                    if img_response.status_code == 200:
+                        avatar_path = f"temp_avatar_{event.chat_id}.jpg"
+                        with open(avatar_path, 'wb') as f:
+                            f.write(img_response.content)
                 except Exception as e:
-                    print(f"خطأ في جلب صورة البروفايل: {e}")
-                
-                # صياغة الرسالة مع معالجة القيم الفارغة
-                def format_value(value, default='غير معروف'):
-                    if value is None:
-                        return default
-                    if isinstance(value, bool):
-                        return 'نعم' if value else 'لا'
-                    if isinstance(value, int) and value > 0:
-                        return f"{value:,}"
-                    return str(value) if value else default
-                
-                message = f"""
+                    print(f"خطأ في تحميل صورة البروفايل: {e}")
+            
+            # صياغة الرسالة النهائية
+            flag_emoji = get_flag_emoji(region)
+            country_text = f"{region} {flag_emoji}" if region and flag_emoji else (region if region else "غير محدد")
+            
+            message = f"""
 **📱 معلومـات المسـتخدم 📱**
 
-**🔹 يـوزر الحسـاب:** `@{user_info.get('username', 'غير معروف')}`
-**🔸 اسـم الحسـاب:** `{format_value(user_info.get('display_name'))}`
-**✅ التوثيـق:** `{format_value(user_info.get('verified'))}`
-**📺 عـدد المقاطع:** `{format_value(user_info.get('total_videos'))}`
-**👁️ إجمالي المشاهدات:** `{format_value(user_info.get('total_views'))}`
-**👍 إجمالي الإعجابات:** `{format_value(user_info.get('total_likes'))}`
-**💬 إجمالي التعليقات:** `{format_value(user_info.get('total_comments'))}`
-**📛 ايـدي الحسـاب:** `{format_value(user_info.get('uploader_id'))}`
-**🔗 رابط الحساب:** `{format_value(user_info.get('webpage_url'))}`
+**🔹 يـوزر الحسـاب:** `{username}`
+**🔸 اسـم الحسـاب:** `{display_name}`
+**✅ التوثيـق:** `{'موثق' if verified else 'غير موثق'}`
+**📆 تاريخ إنشاء الحساب:** `{timestamp_to_date(create_time)}`
+**⌚ آخر تعديل للاسم:** `{timestamp_to_date(max(unique_id_modify_time, nickname_modify_time))}`
+**👀 رؤية اللذين يتابعهم:** `{'نعم' if following_visibility == 1 else 'لا'}`
+**🔗 رابط البايو:** `{bio_link_url if bio_link_url else 'لايوجد'}`
+**🔒 حساب خاص:** `{'نعم' if private_account else 'لا'}`
+**📍 دولة المستخدم:** `{country_text}`
+**💬 لغة الحساب:** `{language if language else 'غير محدد'}`
+**👤 إجمالي المتابعين:** `{format_number(follower_count)}`
+**👥 إجمالي الذين يتابعهم:** `{format_number(following_count)}`
+**👫 عدد الأصدقاء:** `{format_number(friend_count)}`
+**👍 إجمالي الايكات:** `{format_number(heart_count)}`
+**📺 إجمالي المقاطع:** `{format_number(video_count)}`
+**❤️ مفضلة:** `لا يمكنك رؤية المفضلات`
+**💬 التعليقات:** `{'تعليقات مفعلة' if comment_setting == 0 else 'تعليقات معطلة'}`
+**📥 التحميلات:** `{'يسمح بتحميل المقاطع' if download_setting == 0 else 'لا يسمح بالتحميل'}`
+**🔴 البث المباشر:** `{'يوجد بث مباشر' if live_room_id else 'لا يوجد بث حالياً'}`
+**🥇 مستوى الدعم في البثوث:** `0`
+**🔢 روم ايدي البث:** `{live_room_id if live_room_id else 'لايوجد بث مباشر'}`
+**👀 عدد مشاهدين البث الان:** `🔴`
+**🌟 عدد المشتركين في النجمة:** `0`
+**🎟️ عدد المشتركين في الفريق:** `0`
+**📛 ايـدي الحسـاب:** `{user_id}`
+**🔑 الايـدي الثانـوي:** `{sec_uid}`
 """
-                
-                # إضافة الوصف إذا وُجد
-                if user_info.get('description'):
-                    message += f"\n**📝 الوصف:** `{format_value(user_info.get('description'))}`"
-                
-                # إرسال النتائج
-                await processing_msg.delete()
-                
-                if avatar_path and os.path.exists(avatar_path):
-                    await client.send_file(
-                        event.chat_id,
-                        avatar_path,
-                        caption=message,
-                        reply_to=event.reply_to_msg_id
-                    )
+            
+            # إضافة الوصف إذا وُجد
+            if signature:
+                message += f"\n**📝 الوصف:** `{signature}`"
+            
+            # إرسال النتائج
+            await processing_msg.delete()
+            
+            if avatar_path and os.path.exists(avatar_path):
+                await client.send_file(
+                    event.chat_id,
+                    avatar_path,
+                    caption=message,
+                    reply_to=event.reply_to_msg_id
+                )
+                # حذف الصورة المؤقتة
+                try:
                     os.remove(avatar_path)
-                else:
-                    await event.respond(message)
-                
-            except Exception as e:
-                error_msg = str(e)
-                print(f"خطأ مفصل: {error_msg}")  # للتشخيص
-                
-                if "Private account" in error_msg:
-                    await processing_msg.edit("**⚠️ الحساب خاص ولا يمكن عرض معلوماته**")
-                elif "Not found" in error_msg or "404" in error_msg:
-                    await processing_msg.edit("**⚠️ الحساب غير موجود أو الرابط غير صحيح**")
-                elif "Rate limit" in error_msg:
-                    await processing_msg.edit("**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**")
-                else:
-                    await processing_msg.edit(f"**⚠️ حـدث خـطأ:** {error_msg[:200]}...")
-                
-    except asyncio.TimeoutError:
+                except:
+                    pass
+            else:
+                await event.respond(message)
+            
+        except Exception as e:
+            print(f"خطأ في تحليل البيانات: {e}")
+            await processing_msg.edit("**⚠️ خطأ في تحليل بيانات المستخدم**")
+            
+    except requests.exceptions.Timeout:
         await processing_msg.edit("**⚠️ انتهى الوقت المحدد للاتصال**")
+    except requests.exceptions.RequestException as e:
+        await processing_msg.edit(f"**⚠️ خطأ في الاتصال:** {str(e)[:100]}...")
     except Exception as e:
-        await processing_msg.edit(f"**⚠️ حـدث خـطأ عـام:** {str(e)[:200]}")
+        print(f"خطأ عام: {e}")
+        await processing_msg.edit(f"**⚠️ حـدث خـطأ عـام:** {str(e)[:200]}...")
     finally:
-        # تنظيف الملفات المؤقتة في حالة وجود أي خطأ
+        # تنظيف الملفات المؤقتة
         temp_file = f"temp_avatar_{event.chat_id}.jpg"
         if os.path.exists(temp_file):
-            os.remove(temp_file)
+            try:
+                os.remove(temp_file)
+            except:
+                pass
+                
 ##########################
 
 # تجاهل تحذيرات SSL
