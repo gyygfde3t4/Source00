@@ -2,6 +2,7 @@
 requests
 httpx
 aiohttp
+beautifulsoup4
 
 # ========== مكتبة Telegram ==========
 telethon
