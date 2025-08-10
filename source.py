@@ -7030,13 +7030,21 @@ async def get_tiktok_user_info(event):
                         return f"{value:,}"
                     return str(value) if value else default
                 
+                # إصلاح تاريخ الإنشاء
+                creation_date = 'غير معروف'
+                if user_info.get('timestamp'):
+                    try:
+                        creation_date = datetime.fromtimestamp(user_info.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S')
+                    except:
+                        creation_date = 'غير معروف'
+                
                 message = f"""
 **📱 معلومـات المسـتخدم 📱**
 
 **🔹 يـوزر الحسـاب:** `{format_value(user_info.get('id'))}`
 **🔸 اسـم الحسـاب:** `{format_value(user_info.get('uploader'))}`
 **✅ التوثيـق:** `{format_value(user_info.get('verified'))}`
-**📆 تـاريخ إنشـاء الحسـاب:** `{format_value(datetime.fromtimestamp(user_info.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if user_info.get('timestamp') else 'غير معروف'}`
+**📆 تـاريخ إنشـاء الحسـاب:** `{creation_date}`
 **📍 دولـة المسـتخدم:** `{format_value(user_info.get('region'))}`
 **💬 لغـة الحسـاب:** `{format_value(user_info.get('language'))}`
 **👤 المتابعون:** `{format_value(user_info.get('follower_count'))}`
