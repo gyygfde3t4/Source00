@@ -6710,62 +6710,177 @@ async def get_instagram_info(event):
             await processing_msg.edit("**⚠️ خطأ: ملف الكوكيز غير موجود!**")
             return
         
+        # تحليل ملف الكوكيز بشكل صحيح
+        def parse_cookie_file(file_path):
+            cookies = {}
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        # تجاهل التعليقات والأسطر الفارغة
+                        if not line or line.startswith('#'):
+                            continue
+                        
+                        # تحليل سطر الكوكي
+                        parts = line.split('\t')
+                        if len(parts) >= 7:
+                            domain = parts[0]
+                            name = parts[5]
+                            value = parts[6]
+                            
+                            # التحقق من أن الكوكي خاص بإنستجرام
+                            if 'instagram.com' in domain:
+                                cookies[name] = value
+                
+                # تحويل الكوكيز إلى نص للهيدر
+                cookie_string = '; '.join([f"{name}={value}" for name, value in cookies.items()])
+                return cookie_string
+            except Exception as e:
+                print(f"خطأ في تحليل ملف الكوكيز: {e}")
+                return ""
+        
+        # جلب الكوكيز
+        cookie_string = parse_cookie_file(cookie_file)
+        if not cookie_string:
+            await processing_msg.edit("**⚠️ خطأ: فشل في تحليل ملف الكوكيز!**")
+            return
+        
         # جلب المعلومات باستخدام الكوكيز
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Cookie': open(cookie_file, 'r').read()
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Cookie': cookie_string
         }
         
         try:
-            response = requests.get(url, headers=headers, timeout=15)
-            response.raise_for_status()
+            # إضافة session للتعامل مع الريدايركت
+            session = requests.Session()
+            session.headers.update(headers)
+            
+            response = session.get(url, timeout=15, allow_redirects=True)
             
             if response.status_code == 404:
                 raise Exception("الحساب غير موجود")
+            elif response.status_code != 200:
+                raise Exception(f"خطأ في الوصول للصفحة: {response.status_code}")
                 
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # استخراج البيانات
-            script_tag = soup.find('script', text=re.compile('window._sharedData'))
-            if not script_tag:
-                raise Exception("فشل في استخراج البيانات")
+            # البحث عن البيانات في أماكن مختلفة
+            user_data = None
             
-            json_data = script_tag.string.split(' = ', 1)[1].rstrip(';')
-            user_data = eval(json_data)['entry_data']['ProfilePage'][0]['graphql']['user']
+            # الطريقة الأولى: البحث عن window._sharedData
+            script_tags = soup.find_all('script', text=re.compile('window._sharedData'))
+            if script_tags:
+                try:
+                    script_content = script_tags[0].string
+                    json_start = script_content.find('{')
+                    json_end = script_content.rfind(';')
+                    json_data_str = script_content[json_start:json_end]
+                    
+                    # استبدال eval بـ json.loads للأمان
+                    import json
+                    json_data = json.loads(json_data_str)
+                    user_data = json_data['entry_data']['ProfilePage'][0]['graphql']['user']
+                except Exception as e:
+                    print(f"فشل في الطريقة الأولى: {e}")
+            
+            # الطريقة الثانية: البحث عن meta tags
+            if not user_data:
+                try:
+                    # استخراج البيانات من meta tags
+                    og_title = soup.find('meta', property='og:title')
+                    og_description = soup.find('meta', property='og:description')
+                    og_image = soup.find('meta', property='og:image')
+                    
+                    if og_title and og_description:
+                        title_content = og_title.get('content', '')
+                        desc_content = og_description.get('content', '')
+                        
+                        # استخراج الأرقام من الوصف
+                        numbers = re.findall(r'([\d,]+)', desc_content)
+                        
+                        user_data = {
+                            'username': username,
+                            'full_name': title_content.split('(')[0].strip(),
+                            'biography': desc_content,
+                            'profile_pic_url_hd': og_image.get('content', '') if og_image else '',
+                            'edge_owner_to_timeline_media': {'count': int(numbers[0].replace(',', '')) if len(numbers) > 0 else 0},
+                            'edge_followed_by': {'count': int(numbers[1].replace(',', '')) if len(numbers) > 1 else 0},
+                            'edge_follow': {'count': int(numbers[2].replace(',', '')) if len(numbers) > 2 else 0},
+                            'is_private': 'private' in desc_content.lower(),
+                            'is_verified': False  # لا يمكن معرفته من meta tags
+                        }
+                except Exception as e:
+                    print(f"فشل في الطريقة الثانية: {e}")
+            
+            if not user_data:
+                raise Exception("فشل في استخراج البيانات من الصفحة")
             
             # جلب صورة البروفايل
-            profile_pic_url = user_data['profile_pic_url_hd']
-            profile_pic_path = f"temp_insta_{event.chat_id}.jpg"
+            profile_pic_path = None
+            profile_pic_url = user_data.get('profile_pic_url_hd', '')
             
-            try:
-                pic_response = requests.get(profile_pic_url, headers=headers, timeout=10)
-                if pic_response.status_code == 200:
-                    with open(profile_pic_path, 'wb') as f:
-                        f.write(pic_response.content)
-            except Exception as pic_error:
-                print(f"خطأ في تحميل الصورة: {pic_error}")
-                profile_pic_path = None
+            if profile_pic_url:
+                try:
+                    profile_pic_path = f"temp_insta_{event.chat_id}.jpg"
+                    pic_response = session.get(profile_pic_url, timeout=10)
+                    if pic_response.status_code == 200:
+                        with open(profile_pic_path, 'wb') as f:
+                            f.write(pic_response.content)
+                    else:
+                        profile_pic_path = None
+                except Exception as pic_error:
+                    print(f"خطأ في تحميل الصورة: {pic_error}")
+                    profile_pic_path = None
             
             # تنسيق الأرقام
             def format_num(num):
-                if num >= 1000000:
-                    return f"{num/1000000:.1f}M"
-                elif num >= 1000:
-                    return f"{num/1000:.1f}K"
-                return str(num)
+                try:
+                    num = int(num)
+                    if num >= 1000000:
+                        return f"{num/1000000:.1f}M"
+                    elif num >= 1000:
+                        return f"{num/1000:.1f}K"
+                    return f"{num:,}"
+                except:
+                    return str(num)
+            
+            # الحصول على القيم بشكل آمن
+            def safe_get(data, key, default='غير متاح'):
+                try:
+                    value = data.get(key, default)
+                    return value if value else default
+                except:
+                    return default
+            
+            def safe_get_count(data, key, default=0):
+                try:
+                    return data.get(key, {}).get('count', default)
+                except:
+                    return default
             
             # إنشاء الرسالة
             message = f"""
 **⌁︙معلومات المستخدم 📸.**
 
-**⌁︙حساب المستخدم:** `{user_data.get('username', 'غير متاح')}`
-**⌁︙اسم المستخدم:** `{user_data.get('full_name', 'غير متاح')}`
-**⌁︙عدد المنشورات:** `{format_num(user_data.get('edge_owner_to_timeline_media', {}).get('count', 0))}`
-**⌁︙عدد المتابعين:** `{format_num(user_data.get('edge_followed_by', {}).get('count', 0))}`
-**⌁︙عدد الذين يتابعهم:** `{format_num(user_data.get('edge_follow', {}).get('count', 0))}`
-**⌁︙البايو:** `{user_data.get('biography', 'لا يوجد')}`
+**⌁︙حساب المستخدم:** `{safe_get(user_data, 'username')}`
+**⌁︙اسم المستخدم:** `{safe_get(user_data, 'full_name')}`
+**⌁︙عدد المنشورات:** `{format_num(safe_get_count(user_data, 'edge_owner_to_timeline_media'))}`
+**⌁︙عدد المتابعين:** `{format_num(safe_get_count(user_data, 'edge_followed_by'))}`
+**⌁︙عدد الذين يتابعهم:** `{format_num(safe_get_count(user_data, 'edge_follow'))}`
+**⌁︙البايو:** `{safe_get(user_data, 'biography', 'لا يوجد')}`
 **⌁︙حساب خاص:** `{'نعم' if user_data.get('is_private') else 'لا'}`
 **⌁︙حساب موثق:** `{'نعم' if user_data.get('is_verified') else 'لا'}`
+**⌁︙رابط الحساب:** `{url}`
 """
             
             await processing_msg.delete()
@@ -6784,14 +6899,20 @@ async def get_instagram_info(event):
         except requests.HTTPError as http_err:
             if http_err.response.status_code == 404:
                 await processing_msg.edit("**⚠️ الحساب غير موجود أو الرابط خاطئ**")
+            elif http_err.response.status_code == 429:
+                await processing_msg.edit("**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**")
             else:
                 await processing_msg.edit(f"**⚠️ خطأ HTTP: {http_err.response.status_code}**")
+        except json.JSONDecodeError:
+            await processing_msg.edit("**⚠️ خطأ في تحليل البيانات، قد تحتاج لتحديث الكوكيز**")
         except Exception as e:
             error_msg = str(e)
             if "private" in error_msg.lower():
                 await processing_msg.edit("**⚠️ الحساب خاص ولا يمكن عرض معلوماته**")
             elif "rate limit" in error_msg.lower():
                 await processing_msg.edit("**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**")
+            elif "login" in error_msg.lower():
+                await processing_msg.edit("**⚠️ تحتاج لتسجيل دخول، تحقق من ملف الكوكيز**")
             else:
                 await processing_msg.edit(f"**⚠️ حدث خطأ: {error_msg[:200]}**")
                 
@@ -6981,7 +7102,7 @@ async def get_tiktok_user_info(event):
         # إعدادات yt-dlp محسنة
         ydl_opts = {
             'cookiefile': cookie_file,
-            'extract_flat': True,
+            'extract_flat': False,  # تغيير إلى False للحصول على معلومات كاملة
             'quiet': True,
             'no_warnings': True,
             'socket_timeout': 30,
@@ -7004,12 +7125,66 @@ async def get_tiktok_user_info(event):
                 if not info:
                     raise Exception("لم يتم العثور على معلومات الحساب")
                 
-                user_info = info.get('uploader', {})
+                # طباعة البيانات للتحقق من الهيكل (يمكن حذفها لاحقاً)
+                print("Info keys:", info.keys() if isinstance(info, dict) else "Not a dict")
+                
+                # البحث عن معلومات المستخدم في أماكن مختلفة
+                user_info = {}
+                
+                # محاولة جلب البيانات من مصادر مختلفة
+                if 'uploader_id' in info:
+                    user_info['id'] = info.get('uploader_id')
+                if 'uploader' in info:
+                    user_info['uploader'] = info.get('uploader')
+                if 'uploader_url' in info:
+                    user_info['uploader_url'] = info.get('uploader_url')
+                if 'channel' in info:
+                    user_info['uploader'] = info.get('channel')
+                if 'channel_id' in info:
+                    user_info['id'] = info.get('channel_id')
+                if 'channel_url' in info:
+                    user_info['uploader_url'] = info.get('channel_url')
+                
+                # البحث في البيانات الداخلية
+                if 'entries' in info and info['entries']:
+                    first_entry = info['entries'][0]
+                    user_info.update({
+                        'id': first_entry.get('uploader_id', user_info.get('id')),
+                        'uploader': first_entry.get('uploader', user_info.get('uploader')),
+                        'uploader_url': first_entry.get('uploader_url', user_info.get('uploader_url')),
+                        'follower_count': first_entry.get('uploader_follower_count'),
+                        'verified': first_entry.get('uploader_verified'),
+                        'upload_date': first_entry.get('upload_date'),
+                        'view_count': first_entry.get('view_count'),
+                        'like_count': first_entry.get('like_count'),
+                        'comment_count': first_entry.get('comment_count'),
+                        'thumbnail': first_entry.get('thumbnail'),
+                    })
+                
+                # جلب البيانات الإضافية مباشرة من info
+                additional_fields = [
+                    'follower_count', 'following_count', 'heart_count', 'video_count',
+                    'verified', 'timestamp', 'region', 'language', 'uid', 'sec_uid',
+                    'avatar', 'thumbnail', 'description'
+                ]
+                
+                for field in additional_fields:
+                    if field in info and field not in user_info:
+                        user_info[field] = info[field]
+                
+                # محاولة استخراج اسم المستخدم من الرابط إذا لم يتم العثور عليه
+                if not user_info.get('id') and not user_info.get('uploader'):
+                    if '@' in url:
+                        username_from_url = url.split('@')[-1].split('/')[0]
+                        user_info['id'] = username_from_url
+                        user_info['uploader'] = username_from_url
                 
                 # جلب صورة البروفايل بأعلى دقة
-                avatar_url = user_info.get('avatar', '').replace('100x100', '1080x1080')
-                avatar_path = None
+                avatar_url = user_info.get('avatar') or user_info.get('thumbnail', '')
+                if avatar_url:
+                    avatar_url = avatar_url.replace('100x100', '1080x1080').replace('150x150', '1080x1080')
                 
+                avatar_path = None
                 if avatar_url:
                     try:
                         response = requests.get(avatar_url, headers={'User-Agent': ydl_opts['http_headers']['User-Agent']}, timeout=10)
@@ -7037,6 +7212,17 @@ async def get_tiktok_user_info(event):
                         creation_date = datetime.fromtimestamp(user_info.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S')
                     except:
                         creation_date = 'غير معروف'
+                elif user_info.get('upload_date'):
+                    try:
+                        # تحويل تاريخ الرفع من تنسيق YYYYMMDD
+                        date_str = str(user_info.get('upload_date'))
+                        if len(date_str) == 8:
+                            year = date_str[:4]
+                            month = date_str[4:6]
+                            day = date_str[6:8]
+                            creation_date = f"{year}-{month}-{day}"
+                    except:
+                        creation_date = 'غير معروف'
                 
                 message = f"""
 **📱 معلومـات المسـتخدم 📱**
@@ -7049,11 +7235,18 @@ async def get_tiktok_user_info(event):
 **💬 لغـة الحسـاب:** `{format_value(user_info.get('language'))}`
 **👤 المتابعون:** `{format_value(user_info.get('follower_count'))}`
 **👥 يتابع:** `{format_value(user_info.get('following_count'))}`
-**👍 الإعجابات:** `{format_value(user_info.get('heart_count'))}`
+**👍 الإعجابات:** `{format_value(user_info.get('heart_count') or user_info.get('like_count'))}`
 **📺 المقاطع:** `{format_value(user_info.get('video_count'))}`
+**👁️ المشاهدات:** `{format_value(user_info.get('view_count'))}`
+**💬 التعليقات:** `{format_value(user_info.get('comment_count'))}`
 **📛 ايـدي الحسـاب:** `{format_value(user_info.get('uid'))}`
 **🔑 الأيـدي الثانـوي:** `{format_value(user_info.get('sec_uid'))}`
+**🔗 رابط الحساب:** `{format_value(user_info.get('uploader_url'))}`
 """
+                
+                # إضافة الوصف إذا وُجد
+                if user_info.get('description'):
+                    message += f"\n**📝 الوصف:** `{format_value(user_info.get('description'))}`"
                 
                 # إرسال النتائج
                 await processing_msg.delete()
@@ -7071,6 +7264,8 @@ async def get_tiktok_user_info(event):
                 
             except Exception as e:
                 error_msg = str(e)
+                print(f"خطأ مفصل: {error_msg}")  # للتشخيص
+                
                 if "Private account" in error_msg:
                     await processing_msg.edit("**⚠️ الحساب خاص ولا يمكن عرض معلوماته**")
                 elif "Not found" in error_msg or "404" in error_msg:
