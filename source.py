@@ -6688,251 +6688,10 @@ def humanbytes(size):
             return f"{size:.2f}{unit}"
         size /= 1024
     return f"{size:.2f}PB"
-
-import json
-import re
-
-@client.on(events.NewMessage(pattern=r'^\.معلومات انستا(?:\s+)(@[\w\.-]+|https?://[^\s]+)$', outgoing=True))
-    processing_msg = await event.edit("**⌁︙جاري جلب المعلومات من الإنستجرام...**")
     
-    try:
-        input_text = event.pattern_match.group(1).strip()
-        
-        # تنظيف المدخلات
-        if input_text.startswith('http'):
-            url = input_text.split('?')[0]
-            username = url.split('/')[-1]
-        else:
-            username = input_text.replace('@', '')
-            url = f"https://www.instagram.com/{username}/"
-        
-        # التحقق من ملف الكوكيز
-        cookie_file = 'cks.txt'
-        if not os.path.exists(cookie_file):
-            await processing_msg.edit("**⚠️ خطأ: ملف الكوكيز غير موجود!**")
-            return
-        
-        # تحليل ملف الكوكيز بشكل صحيح
-        def parse_cookie_file(file_path):
-            cookies = {}
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        line = line.strip()
-                        # تجاهل التعليقات والأسطر الفارغة
-                        if not line or line.startswith('#'):
-                            continue
-                        
-                        # تحليل سطر الكوكي
-                        parts = line.split('\t')
-                        if len(parts) >= 7:
-                            domain = parts[0]
-                            name = parts[5]
-                            value = parts[6]
-                            
-                            # التحقق من أن الكوكي خاص بإنستجرام
-                            if 'instagram.com' in domain:
-                                cookies[name] = value
-                
-                # تحويل الكوكيز إلى نص للهيدر
-                cookie_string = '; '.join([f"{name}={value}" for name, value in cookies.items()])
-                return cookie_string
-            except Exception as e:
-                print(f"خطأ في تحليل ملف الكوكيز: {e}")
-                return ""
-        
-        # جلب الكوكيز
-        cookie_string = parse_cookie_file(cookie_file)
-        if not cookie_string:
-            await processing_msg.edit("**⚠️ خطأ: فشل في تحليل ملف الكوكيز!**")
-            return
-        
-        # جلب المعلومات باستخدام الكوكيز
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Cookie': cookie_string
-        }
-        
-        try:
-            # إضافة session للتعامل مع الريدايركت
-            session = requests.Session()
-            session.headers.update(headers)
-            
-            response = session.get(url, timeout=15, allow_redirects=True)
-            
-            if response.status_code == 404:
-                raise Exception("الحساب غير موجود")
-            elif response.status_code != 200:
-                raise Exception(f"خطأ في الوصول للصفحة: {response.status_code}")
-                
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # البحث عن البيانات في أماكن مختلفة
-            user_data = None
-            
-            # الطريقة الأولى: البحث عن window._sharedData
-            script_tags = soup.find_all('script', string=re.compile('window._sharedData'))
-            if script_tags:
-                try:
-                    script_content = script_tags[0].string
-                    json_start = script_content.find('{')
-                    json_end = script_content.rfind(';')
-                    json_data_str = script_content[json_start:json_end]
-                    
-                    # استبدال eval بـ json.loads للأمان
-                    json_data = json.loads(json_data_str)
-                    user_data = json_data['entry_data']['ProfilePage'][0]['graphql']['user']
-                except Exception as e:
-                    print(f"فشل في الطريقة الأولى: {e}")
-            
-            # الطريقة الثانية: البحث عن meta tags
-            if not user_data:
-                try:
-                    # استخراج البيانات من meta tags
-                    og_title = soup.find('meta', property='og:title')
-                    og_description = soup.find('meta', property='og:description')
-                    og_image = soup.find('meta', property='og:image')
-                    
-                    if og_title and og_description:
-                        title_content = og_title.get('content', '')
-                        desc_content = og_description.get('content', '')
-                        
-                        # استخراج الأرقام من الوصف
-                        numbers = re.findall(r'([\d,]+)', desc_content)
-                        
-                        # تحويل الأرقام بشكل آمن
-                        def safe_int_convert(num_str, default=0):
-                            try:
-                                return int(num_str.replace(',', '')) if num_str else default
-                            except (ValueError, AttributeError):
-                                return default
-                        
-                        user_data = {
-                            'username': username,
-                            'full_name': title_content.split('(')[0].strip(),
-                            'biography': desc_content,
-                            'profile_pic_url_hd': og_image.get('content', '') if og_image else '',
-                            'edge_owner_to_timeline_media': {'count': safe_int_convert(numbers[0]) if len(numbers) > 0 else 0},
-                            'edge_followed_by': {'count': safe_int_convert(numbers[1]) if len(numbers) > 1 else 0},
-                            'edge_follow': {'count': safe_int_convert(numbers[2]) if len(numbers) > 2 else 0},
-                            'is_private': 'private' in desc_content.lower(),
-                            'is_verified': False  # لا يمكن معرفته من meta tags
-                        }
-                except Exception as e:
-                    print(f"فشل في الطريقة الثانية: {e}")
-            
-            if not user_data:
-                raise Exception("فشل في استخراج البيانات من الصفحة")
-            
-            # جلب صورة البروفايل
-            profile_pic_path = None
-            profile_pic_url = user_data.get('profile_pic_url_hd', '')
-            
-            if profile_pic_url:
-                try:
-                    profile_pic_path = f"temp_insta_{event.chat_id}.jpg"
-                    pic_response = session.get(profile_pic_url, timeout=10)
-                    if pic_response.status_code == 200:
-                        with open(profile_pic_path, 'wb') as f:
-                            f.write(pic_response.content)
-                    else:
-                        profile_pic_path = None
-                except Exception as pic_error:
-                    print(f"خطأ في تحميل الصورة: {pic_error}")
-                    profile_pic_path = None
-            
-            # تنسيق الأرقام
-            def format_num(num):
-                try:
-                    num = int(num)
-                    if num >= 1000000:
-                        return f"{num/1000000:.1f}M"
-                    elif num >= 1000:
-                        return f"{num/1000:.1f}K"
-                    return f"{num:,}"
-                except:
-                    return str(num)
-            
-            # الحصول على القيم بشكل آمن
-            def safe_get(data, key, default='غير متاح'):
-                try:
-                    value = data.get(key, default)
-                    return value if value else default
-                except:
-                    return default
-            
-            def safe_get_count(data, key, default=0):
-                try:
-                    return data.get(key, {}).get('count', default)
-                except:
-                    return default
-            
-            # إنشاء الرسالة
-            message = f"""
-**⌁︙معلومات المستخدم 📸.**
+import json
 
-**⌁︙حساب المستخدم:** `{safe_get(user_data, 'username')}`
-**⌁︙اسم المستخدم:** `{safe_get(user_data, 'full_name')}`
-**⌁︙عدد المنشورات:** `{format_num(safe_get_count(user_data, 'edge_owner_to_timeline_media'))}`
-**⌁︙عدد المتابعين:** `{format_num(safe_get_count(user_data, 'edge_followed_by'))}`
-**⌁︙عدد الذين يتابعهم:** `{format_num(safe_get_count(user_data, 'edge_follow'))}`
-**⌁︙البايو:** `{safe_get(user_data, 'biography', 'لا يوجد')}`
-**⌁︙حساب خاص:** `{'نعم' if user_data.get('is_private') else 'لا'}`
-**⌁︙حساب موثق:** `{'نعم' if user_data.get('is_verified') else 'لا'}`
-**⌁︙رابط الحساب:** `{url}`
-"""
-            
-            await processing_msg.delete()
-            
-            if profile_pic_path and os.path.exists(profile_pic_path):
-                await client.send_file(
-                    event.chat_id,
-                    profile_pic_path,
-                    caption=message,
-                    reply_to=event.reply_to_msg_id
-                )
-                os.remove(profile_pic_path)
-            else:
-                await event.respond(message)
-                
-        except requests.HTTPError as http_err:
-            if http_err.response.status_code == 404:
-                await processing_msg.edit("**⚠️ الحساب غير موجود أو الرابط خاطئ**")
-            elif http_err.response.status_code == 429:
-                await processing_msg.edit("**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**")
-            else:
-                await processing_msg.edit(f"**⚠️ خطأ HTTP: {http_err.response.status_code}**")
-        except json.JSONDecodeError:
-            await processing_msg.edit("**⚠️ خطأ في تحليل البيانات، قد تحتاج لتحديث الكوكيز**")
-        except Exception as e:
-            error_msg = str(e)
-            if "private" in error_msg.lower():
-                await processing_msg.edit("**⚠️ الحساب خاص ولا يمكن عرض معلوماته**")
-            elif "rate limit" in error_msg.lower():
-                await processing_msg.edit("**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**")
-            elif "login" in error_msg.lower():
-                await processing_msg.edit("**⚠️ تحتاج لتسجيل دخول، تحقق من ملف الكوكيز**")
-            else:
-                await processing_msg.edit(f"**⚠️ حدث خطأ: {error_msg[:200]}**")
-                
-    except asyncio.TimeoutError:
-        await processing_msg.edit("**⚠️ انتهى وقت الانتظار للاتصال**")
-    except Exception as e:
-        await processing_msg.edit(f"**⚠️ خطأ عام: {str(e)[:200]}**")
-    finally:
-        # تنظيف الملف المؤقت
-        temp_file = f"temp_insta_{event.chat_id}.jpg"
-        if os.path.exists(temp_file):
-            os.remove(temp_file), outgoing=True))
+@client.on(events.NewMessage(pattern=r'^\.معلومات انستا(?:\s+)(@[\w\.-]+|https?://[^\s]+)$'))
 async def get_instagram_info(event):
     processing_msg = await event.edit("**⌁︙جاري جلب المعلومات من الإنستجرام...**")
     
@@ -7026,11 +6785,9 @@ async def get_instagram_info(event):
                 try:
                     script_content = script_tags[0].string
                     json_start = script_content.find('{')
-                    json_end = script_content.rfind(';')
+                    json_end = script_content.rfind('}') + 1
                     json_data_str = script_content[json_start:json_end]
                     
-                    # استبدال eval بـ json.loads للأمان
-                    import json
                     json_data = json.loads(json_data_str)
                     user_data = json_data['entry_data']['ProfilePage'][0]['graphql']['user']
                 except Exception as e:
@@ -7060,7 +6817,7 @@ async def get_instagram_info(event):
                             'edge_followed_by': {'count': int(numbers[1].replace(',', '')) if len(numbers) > 1 else 0},
                             'edge_follow': {'count': int(numbers[2].replace(',', '')) if len(numbers) > 2 else 0},
                             'is_private': 'private' in desc_content.lower(),
-                            'is_verified': False  # لا يمكن معرفته من meta tags
+                            'is_verified': False
                         }
                 except Exception as e:
                     print(f"فشل في الطريقة الثانية: {e}")
@@ -7129,7 +6886,7 @@ async def get_instagram_info(event):
             await processing_msg.delete()
             
             if profile_pic_path and os.path.exists(profile_pic_path):
-                await client.send_file(
+                await event.client.send_file(
                     event.chat_id,
                     profile_pic_path,
                     caption=message,
@@ -7168,8 +6925,6 @@ async def get_instagram_info(event):
         temp_file = f"temp_insta_{event.chat_id}.jpg"
         if os.path.exists(temp_file):
             os.remove(temp_file)
-
-
 
         
 ######################
