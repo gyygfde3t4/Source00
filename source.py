@@ -40,6 +40,7 @@ import gc
 import requests
 import httpx
 import aiohttp
+from bs4 import BeautifulSoup
 
 # ========== مكتبات الجهات الخارجية ==========
 import yt_dlp
@@ -84,6 +85,20 @@ from telethon.tl.types import (
     MessageEntityTextUrl,
     DocumentAttributeVideo
 )
+
+from telethon.tl.types import (
+    InputPeerUser,
+    InputPeerChannel,
+    MessageMediaPhoto,
+    MessageMediaDocument
+)
+from telethon.errors import (
+    PeerIdInvalidError,
+    ChannelPrivateError,
+    AuthKeyError,
+    FloodWaitError,
+    RPCError
+)	
 
 # ========== Telethon - الأخطاء ==========
 from telethon.errors import (
@@ -334,8 +349,9 @@ async def show_search_commands(event):
 3- ☆ `.انستا` + رابط - **تحميل من إنستجرام** ☆
 4- ☆ `.يوت` + رابط - **تحميل من يوتيوب** ☆
 5- ☆ `.بنترست` + رابط - **تحميل من بنترست** ☆
-6- ☆ `.عربي` - **ترجمة النص للإنجليزية (بالرد)** ☆
-7- ☆ `.انجلش` - **ترجمة النص للعربية (بالرد)** ☆
+6- ☆ `.ستوريات` - **تحميل استوريات مستخدم (بالرد أو معرف)** ☆
+7- ☆ `.معلومات تيك` + يوزر/رابط - **عرض معلومات حساب تيك توك** ☆
+8- ☆ `.معلومات انستا` + يوزر/رابط - **عرض معلومات حساب إنستجرام** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
@@ -405,7 +421,6 @@ async def show_media_commands(event):
 2- ☆ `.حول صوت` - **تحويل فيديو إلى ملف صوتي (بالرد)** ☆
 3- ☆ `.لمتحركه` - **تحويل صورة/ملصق إلى متحركة (بالرد)** ☆
 4- ☆ `.لمتحرك` - **تحويل فيديو إلى متحركة (بالرد)** ☆
-5- ☆ `.ستوريات` - **تحميل استوريات مستخدم (بالرد أو معرف)** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
@@ -2634,104 +2649,7 @@ async def delete_all_bots(event):
         
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ أثناء حذف البوتات:** {str(e)}") 
-        
 
-
-
-@client.on(events.NewMessage(pattern=r'^\.ستوريات(?:\s+(.+))?'))
-async def download_stories(event):
-    # الحصول على المعرف من الرسالة أو الرد
-    input_arg = event.pattern_match.group(1)
-    reply_msg = await event.get_reply_message()
-    
-    if not input_arg and not reply_msg:
-        await event.edit("**⚠️ يرجى تحديد المستخدم (معرف، آيدي، أو رابط) أو الرد على رسالة تحتوي عليها**")
-        return
-    
-    target = input_arg if input_arg else reply_msg.text
-    target = target.strip()
-    
-    await event.edit("**🔍 جاري البحث عن المستخدم...**")
-    
-    try:
-        # الحصول على الكيان مع معالجة أنواع Peer المختلفة
-        try:
-            if target.isdigit():
-                user = await client.get_entity(int(target))
-            else:
-                if target.startswith('@'):
-                    target = target[1:]
-                if 't.me/' in target:
-                    target = target.split('t.me/')[-1].split('/')[0]
-                user = await client.get_entity(target)
-        except Exception as e:
-            await event.edit(f"**⚠️ لا يمكن العثور على المستخدم: {str(e)}**")
-            return
-        
-        # إنشاء Peer صالح للطلب
-        if hasattr(user, 'user_id'):
-            peer = InputPeerUser(user.user_id, user.access_hash)
-        elif hasattr(user, 'channel_id'):
-            peer = InputPeerChannel(user.channel_id, user.access_hash)
-        else:
-            await event.edit("**⚠️ نوع الحساب غير مدعوم**")
-            return
-        
-        await event.edit(f"**📥 جاري جلب استوريات @{getattr(user, 'username', '')}...**")
-        
-        # إنشاء مجلد لحفظ الاستوريات
-        folder_name = f"stories_{user.id}_{datetime.now().strftime('%Y%m%d')}"
-        os.makedirs(folder_name, exist_ok=True)
-        
-        # استرداد الاستوريات
-        try:
-            stories = await client(GetStoriesArchiveRequest(
-                offset_id=0,
-                limit=100,
-                peer=peer
-            ))
-        except Exception as e:
-            await event.edit(f"**⚠️ لا يمكن جلب الستوريات: {str(e)}**")
-            return
-        
-        if not stories.stories:
-            await event.edit("**❌ لا توجد استوريات متاحة لهذا المستخدم**")
-            return
-            
-        total_stories = len(stories.stories)
-        downloaded_count = 0
-        failed_count = 0
-        
-        await event.edit(f"**⏳ جاري تحميل {total_stories} استوري...**")
-        
-        for i, story in enumerate(stories.stories, 1):
-            try:
-                if hasattr(story, 'media'):
-                    file_ext = '.jpg' if isinstance(story.media, types.MessageMediaPhoto) else '.mp4'
-                    file_name = f"{folder_name}/story_{story.id}_{i}{file_ext}"
-                    await client.download_media(story.media, file=file_name)
-                    downloaded_count += 1
-                    
-                if i % 5 == 0:
-                    await event.edit(f"**📥 جاري التحميل... {i}/{total_stories}**")
-                    
-            except Exception as e:
-                print(f"خطأ في تحميل الاستوري {story.id}: {str(e)}")
-                failed_count += 1
-                continue
-        
-        # النتيجة النهائية
-        result_msg = f"""
-✅ **تم الانتهاء من التحميل!**
-📂 **المجلد:** `{folder_name}`
-📊 **العدد الكلي:** {total_stories}
-📥 **المحملة:** {downloaded_count}
-❌ **الفاشلة:** {failed_count}
-        """
-        await event.edit(result_msg)
-        
-    except Exception as e:
-        await event.edit(f"**⚠️ حدث خطأ غير متوقع: {str(e)}**")
 
 @client.on(events.NewMessage(pattern=r'^\.إنشاء صورة (.+)'))
 async def generate_ai_image(event):
@@ -6631,6 +6549,8 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}PB"      
 
+#######################
+
 @client.on(events.NewMessage(pattern=r'\.انستا(?: |$)(.*)'))
 async def download_and_send_instagram(event):
     # التحقق مما إذا كان هناك رابط في الرسالة أو الرد على رسالة تحتوي على رابط
@@ -6768,6 +6688,124 @@ def humanbytes(size):
             return f"{size:.2f}{unit}"
         size /= 1024
     return f"{size:.2f}PB"
+
+@client.on(events.NewMessage(pattern=r'^\.معلومات انستا(?:\s+)(@[\w\.-]+|https?://[^\s]+)$', outgoing=True))
+async def get_instagram_info(event):
+    processing_msg = await event.edit("**⌁︙جاري جلب المعلومات من الإنستجرام...**")
+    
+    try:
+        input_text = event.pattern_match.group(1).strip()
+        
+        # تنظيف المدخلات
+        if input_text.startswith('http'):
+            url = input_text.split('?')[0]
+            username = url.split('/')[-1]
+        else:
+            username = input_text.replace('@', '')
+            url = f"https://www.instagram.com/{username}/"
+        
+        # التحقق من ملف الكوكيز
+        cookie_file = 'cks.txt'
+        if not os.path.exists(cookie_file):
+            await processing_msg.edit("**⚠️ خطأ: ملف الكوكيز غير موجود!**")
+            return
+        
+        # جلب المعلومات باستخدام الكوكيز
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Cookie': open(cookie_file, 'r').read()
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            
+            if response.status_code == 404:
+                raise Exception("الحساب غير موجود")
+                
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # استخراج البيانات
+            script_tag = soup.find('script', text=re.compile('window._sharedData'))
+            if not script_tag:
+                raise Exception("فشل في استخراج البيانات")
+            
+            json_data = script_tag.string.split(' = ', 1)[1].rstrip(';')
+            user_data = eval(json_data)['entry_data']['ProfilePage'][0]['graphql']['user']
+            
+            # جلب صورة البروفايل
+            profile_pic_url = user_data['profile_pic_url_hd']
+            profile_pic_path = f"temp_insta_{event.chat_id}.jpg"
+            
+            try:
+                pic_response = requests.get(profile_pic_url, headers=headers, timeout=10)
+                if pic_response.status_code == 200:
+                    with open(profile_pic_path, 'wb') as f:
+                        f.write(pic_response.content)
+            except Exception as pic_error:
+                print(f"خطأ في تحميل الصورة: {pic_error}")
+                profile_pic_path = None
+            
+            # تنسيق الأرقام
+            def format_num(num):
+                if num >= 1000000:
+                    return f"{num/1000000:.1f}M"
+                elif num >= 1000:
+                    return f"{num/1000:.1f}K"
+                return str(num)
+            
+            # إنشاء الرسالة
+            message = f"""
+**⌁︙معلومات المستخدم 📸.**
+
+**⌁︙حساب المستخدم:** `{user_data.get('username', 'غير متاح')}`
+**⌁︙اسم المستخدم:** `{user_data.get('full_name', 'غير متاح')}`
+**⌁︙عدد المنشورات:** `{format_num(user_data.get('edge_owner_to_timeline_media', {}).get('count', 0))}`
+**⌁︙عدد المتابعين:** `{format_num(user_data.get('edge_followed_by', {}).get('count', 0))}`
+**⌁︙عدد الذين يتابعهم:** `{format_num(user_data.get('edge_follow', {}).get('count', 0))}`
+**⌁︙البايو:** `{user_data.get('biography', 'لا يوجد')}`
+**⌁︙حساب خاص:** `{'نعم' if user_data.get('is_private') else 'لا'}`
+**⌁︙حساب موثق:** `{'نعم' if user_data.get('is_verified') else 'لا'}`
+"""
+            
+            await processing_msg.delete()
+            
+            if profile_pic_path and os.path.exists(profile_pic_path):
+                await client.send_file(
+                    event.chat_id,
+                    profile_pic_path,
+                    caption=message,
+                    reply_to=event.reply_to_msg_id
+                )
+                os.remove(profile_pic_path)
+            else:
+                await event.respond(message)
+                
+        except requests.HTTPError as http_err:
+            if http_err.response.status_code == 404:
+                await processing_msg.edit("**⚠️ الحساب غير موجود أو الرابط خاطئ**")
+            else:
+                await processing_msg.edit(f"**⚠️ خطأ HTTP: {http_err.response.status_code}**")
+        except Exception as e:
+            error_msg = str(e)
+            if "private" in error_msg.lower():
+                await processing_msg.edit("**⚠️ الحساب خاص ولا يمكن عرض معلوماته**")
+            elif "rate limit" in error_msg.lower():
+                await processing_msg.edit("**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**")
+            else:
+                await processing_msg.edit(f"**⚠️ حدث خطأ: {error_msg[:200]}**")
+                
+    except asyncio.TimeoutError:
+        await processing_msg.edit("**⚠️ انتهى وقت الانتظار للاتصال**")
+    except Exception as e:
+        await processing_msg.edit(f"**⚠️ خطأ عام: {str(e)[:200]}**")
+    finally:
+        # تنظيف الملف المؤقت
+        temp_file = f"temp_insta_{event.chat_id}.jpg"
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+        
+######################
 
 @client.on(events.NewMessage(pattern=r'\.تيك(?: |$)(.*)'))
 async def download_and_send_tiktok(event):
@@ -6920,6 +6958,129 @@ def humanbytes(size):
         size /= 1024
     return f"{size:.2f}PB"                        
 
+@client.on(events.NewMessage(pattern=r'^\.معلومات تيك(?:\s+)(@[\w\.-]+|https?://[^\s]+)$', outgoing=True))
+async def get_tiktok_user_info(event):
+    processing_msg = await event.edit("**╮ جـارِ جـلب المعلومـات مـن تيـك تـوك... 📡╰**")
+    
+    try:
+        input_text = event.pattern_match.group(1).strip()
+        
+        # تنظيف وإعداد الرابط
+        if input_text.startswith('http'):
+            url = input_text.split('?')[0]  # إزالة أي متغيرات في الرابط
+        else:
+            username = input_text.replace('@', '')
+            url = f"https://www.tiktok.com/@{username}"
+        
+        # التحقق من ملف الكوكيز
+        cookie_file = 'tekcook.txt'
+        if not os.path.exists(cookie_file):
+            await processing_msg.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
+            return
+        
+        # إعدادات yt-dlp محسنة
+        ydl_opts = {
+            'cookiefile': cookie_file,
+            'extract_flat': True,
+            'quiet': True,
+            'no_warnings': True,
+            'socket_timeout': 30,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Referer': 'https://www.tiktok.com/',
+                'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+            },
+            'extractor_args': {
+                'tiktok': {
+                    'skip': ['watermark'],
+                }
+            }
+        }
+        
+        with YoutubeDL(ydl_opts) as ydl:
+            try:
+                info = ydl.extract_info(url, download=False)
+                
+                if not info:
+                    raise Exception("لم يتم العثور على معلومات الحساب")
+                
+                user_info = info.get('uploader', {})
+                
+                # جلب صورة البروفايل بأعلى دقة
+                avatar_url = user_info.get('avatar', '').replace('100x100', '1080x1080')
+                avatar_path = None
+                
+                if avatar_url:
+                    try:
+                        response = requests.get(avatar_url, headers={'User-Agent': ydl_opts['http_headers']['User-Agent']}, timeout=10)
+                        if response.status_code == 200:
+                            avatar_path = f"temp_avatar_{event.chat_id}.jpg"
+                            with open(avatar_path, 'wb') as f:
+                                f.write(response.content)
+                    except Exception as avatar_error:
+                        print(f"خطأ في تحميل الصورة: {avatar_error}")
+                
+                # صياغة الرسالة مع معالجة القيم الفارغة
+                def format_value(value, default='غير معروف'):
+                    if value is None:
+                        return default
+                    if isinstance(value, bool):
+                        return 'نعم' if value else 'لا'
+                    if isinstance(value, int):
+                        return f"{value:,}"
+                    return str(value) if value else default
+                
+                message = f"""
+**📱 معلومـات المسـتخدم 📱**
+
+**🔹 يـوزر الحسـاب:** `{format_value(user_info.get('id'))}`
+**🔸 اسـم الحسـاب:** `{format_value(user_info.get('uploader'))}`
+**✅ التوثيـق:** `{format_value(user_info.get('verified'))}`
+**📆 تـاريخ إنشـاء الحسـاب:** `{format_value(datetime.fromtimestamp(user_info.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if user_info.get('timestamp') else 'غير معروف'}`
+**📍 دولـة المسـتخدم:** `{format_value(user_info.get('region'))}`
+**💬 لغـة الحسـاب:** `{format_value(user_info.get('language'))}`
+**👤 المتابعون:** `{format_value(user_info.get('follower_count'))}`
+**👥 يتابع:** `{format_value(user_info.get('following_count'))}`
+**👍 الإعجابات:** `{format_value(user_info.get('heart_count'))}`
+**📺 المقاطع:** `{format_value(user_info.get('video_count'))}`
+**📛 ايـدي الحسـاب:** `{format_value(user_info.get('uid'))}`
+**🔑 الأيـدي الثانـوي:** `{format_value(user_info.get('sec_uid'))}`
+"""
+                
+                # إرسال النتائج
+                await processing_msg.delete()
+                
+                if avatar_path and os.path.exists(avatar_path):
+                    await client.send_file(
+                        event.chat_id,
+                        avatar_path,
+                        caption=message,
+                        reply_to=event.reply_to_msg_id
+                    )
+                    os.remove(avatar_path)
+                else:
+                    await event.respond(message)
+                
+            except Exception as e:
+                error_msg = str(e)
+                if "Private account" in error_msg:
+                    await processing_msg.edit("**⚠️ الحساب خاص ولا يمكن عرض معلوماته**")
+                elif "Not found" in error_msg or "404" in error_msg:
+                    await processing_msg.edit("**⚠️ الحساب غير موجود أو الرابط غير صحيح**")
+                elif "Rate limit" in error_msg:
+                    await processing_msg.edit("**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**")
+                else:
+                    await processing_msg.edit(f"**⚠️ حـدث خـطأ:** {error_msg[:200]}...")
+                
+    except asyncio.TimeoutError:
+        await processing_msg.edit("**⚠️ انتهى الوقت المحدد للاتصال**")
+    except Exception as e:
+        await processing_msg.edit(f"**⚠️ حـدث خـطأ عـام:** {str(e)[:200]}")
+    finally:
+        # تنظيف الملفات المؤقتة في حالة وجود أي خطأ
+        temp_file = f"temp_avatar_{event.chat_id}.jpg"
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
 
 ##########################
 
@@ -7194,6 +7355,280 @@ async def download_pinterest(event):
             await event.edit("**⚠️ الرابط غير صحيح أو غير مدعوم**")
         else:
             await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
+            
+#######################
+
+# مجلد التحميلات
+DOWNLOAD_DIR = "downloaded_stories"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+async def get_correct_peer(entity):
+    """الحصول على Peer صحيح سواء كان مستخدم أو قناة"""
+    if isinstance(entity, types.User):
+        return InputPeerUser(user_id=entity.id, access_hash=entity.access_hash)
+    elif isinstance(entity, types.Channel):
+        return InputPeerChannel(channel_id=entity.id, access_hash=entity.access_hash)
+    raise ValueError("نوع Peer غير مدعوم")
+
+@client.on(events.NewMessage(pattern=r'^\.ستوريات(?:\s+(.+))?$', outgoing=True))
+async def download_stories(event):
+    if not event.pattern_match.group(1):
+        await event.edit("**⚠️ يرجى تحديد معرف المستخدم أو رابط الاستوري**\nمثال:\n`.ستوريات username` أو `.ستوريات t.me/username/s/123`")
+        return
+
+    text = event.pattern_match.group(1).strip()
+    await event.edit("**╮ جـارِ البحث عن القصص... 📱♥️╰**")
+
+    try:
+        story_links = re.findall(r't\.me/([^/]+)/s/(\d+)', text)
+        
+        if story_links:
+            await download_stories_from_links(event, story_links)
+        else:
+            username = text.replace('@', '').strip()
+            if username.isdigit():
+                await download_all_user_stories_by_id(event, int(username))
+            else:
+                await download_all_user_stories(event, username)
+    
+    except FloodWaitError as e:
+        await event.edit(f"**⏳ يرجى الانتظار {e.seconds} ثانية قبل المحاولة مرة أخرى**")
+    except Exception as e:
+        error_msg = f"**🔴 حدث خطأ:** `{str(e)[:100]}`"
+        await event.edit(error_msg)
+
+async def download_stories_from_links(event, story_links):
+    """تحميل قصص من روابط محددة"""
+    try:
+        total_links = len(story_links)
+        success_count = 0
+        
+        await event.edit(f"**✅ تم العثور على {total_links} رابط قصة**\n**╮ جـارِ التحميل... 📥╰**")
+        
+        for i, (username, story_id) in enumerate(story_links, 1):
+            try:
+                await event.edit(f"**╮ جـارِ تحميل القصة {i}/{total_links}... 📱╰**\n**╰ ❐ من:** `@{username}`")
+                
+                entity = await client.get_entity(username)
+                peer = await get_correct_peer(entity)
+                
+                # جلب القصة المحددة
+                stories = await client(functions.stories.GetStoriesByIDRequest(
+                    peer=peer,
+                    id=[int(story_id)]
+                ))
+                
+                if stories and stories.stories:
+                    story = stories.stories[0]
+                    files = await download_single_story_media(story, username, event)
+                    if files:
+                        await send_story_files(event, files, username, story_id)
+                        success_count += 1
+                else:
+                    print(f"Story {story_id} not found for {username}")
+                    
+            except Exception as e:
+                print(f"Error downloading story {story_id} from {username}: {e}")
+                continue
+        
+        await event.edit(f"**✅ تم الانتهاء من تحميل {success_count}/{total_links} قصة**")
+        
+    except Exception as e:
+        await event.edit(f"**🔴 خطأ في تحميل القصص: {str(e)[:100]}**")
+
+async def download_all_user_stories_by_id(event, user_id):
+    """تحميل جميع قصص المستخدم باستخدام المعرف الرقمي"""
+    try:
+        await event.edit(f"**╮ جـارِ البحث عن قصص المستخدم {user_id}... 🔍╰**")
+        
+        entity = await client.get_entity(user_id)
+        username = entity.username or f"user_{user_id}"
+        
+        await download_user_active_stories(event, entity, username)
+        
+    except Exception as e:
+        await event.edit(f"**❌ لا يمكن العثور على المستخدم {user_id}: {str(e)[:100]}**")
+
+async def download_all_user_stories(event, username):
+    """تحميل جميع قصص المستخدم (النشطة فقط)"""
+    try:
+        await event.edit(f"**╮ جـارِ البحث عن قصص @{username}... 🔍╰**")
+        
+        try:
+            entity = await client.get_entity(username)
+            
+            # التحقق من نوع الكيان
+            if not isinstance(entity, (types.User, types.Channel)):
+                await event.edit(f"**❌ هذا الكيان ليس مستخدمًا أو قناة**")
+                return
+                
+        except (ValueError, TypeError) as e:
+            await event.edit(f"**❌ لا يمكن العثور على المستخدم @{username}**")
+            return
+        except Exception as e:
+            await event.edit(f"**⚠️ خطأ في جلب معلومات الحساب: {str(e)[:100]}**")
+            return
+
+        await download_user_active_stories(event, entity, username)
+        
+    except Exception as e:
+        await event.edit(f"**🔴 خطأ غير متوقع: {str(e)[:100]}**")
+
+async def download_user_active_stories(event, entity, username):
+    """تحميل القصص النشطة للمستخدم"""
+    try:
+        peer = await get_correct_peer(entity)
+        
+        # جلب القصص النشطة فقط
+        active_stories = []
+        try:
+            stories = await client(functions.stories.GetPeerStoriesRequest(peer=peer))
+            if stories and hasattr(stories, 'stories') and stories.stories:
+                active_stories = stories.stories.stories
+        except RPCError as e:
+            print(f"Error getting active stories: {e}")
+            # محاولة طريقة أخرى
+            try:
+                all_stories = await client(functions.stories.GetAllStoriesRequest())
+                if all_stories and hasattr(all_stories, 'peer_stories'):
+                    for peer_story in all_stories.peer_stories:
+                        if (isinstance(entity, types.User) and 
+                            hasattr(peer_story, 'peer') and 
+                            isinstance(peer_story.peer, types.PeerUser) and
+                            peer_story.peer.user_id == entity.id):
+                            active_stories = peer_story.stories
+                            break
+                        elif (isinstance(entity, types.Channel) and 
+                              hasattr(peer_story, 'peer') and 
+                              isinstance(peer_story.peer, types.PeerChannel) and
+                              peer_story.peer.channel_id == entity.id):
+                            active_stories = peer_story.stories
+                            break
+            except Exception as e2:
+                print(f"Alternative method also failed: {e2}")
+
+        total_stories = len(active_stories)
+
+        if total_stories == 0:
+            await event.edit(f"**❌ لا توجد قصص نشطة متاحة لـ @{username}**")
+            return
+
+        await event.edit(f"**✅ تم العثور على {total_stories} قصة نشطة لـ @{username}**\n**╮ جـارِ التحميل... 📥╰**")
+
+        success_count = 0
+        for i, story in enumerate(active_stories, 1):
+            try:
+                await event.edit(f"**╮ جـارِ تحميل القصة {i}/{total_stories}... 📱╰**\n**╰ ❐ من:** `@{username}`")
+                
+                if not hasattr(story, 'media') or not story.media:
+                    continue
+                
+                files = await download_single_story_media(story, username, event)
+                if files:
+                    await send_story_files(event, files, username, str(story.id))
+                    success_count += 1
+                    
+            except FloodWaitError as e:
+                await event.edit(f"**⏳ يرجى الانتظار {e.seconds} ثانية قبل المتابعة**")
+                await asyncio.sleep(e.seconds)
+                continue
+            except Exception as e:
+                print(f"Error processing story {i}: {e}")
+                continue
+        
+        await event.edit(f"**✅ تم الانتهاء من تحميل {success_count}/{total_stories} قصة لـ @{username}**")
+        
+    except Exception as e:
+        await event.edit(f"**🔴 خطأ في تحميل القصص: {str(e)[:100]}**")
+
+async def download_single_story_media(story, username, event):
+    """تحميل وسائط قصة واحدة"""
+    try:
+        if not hasattr(story, 'media') or not story.media:
+            return None
+        
+        # تحديد امتداد الملف
+        if isinstance(story.media, types.MessageMediaPhoto):
+            file_ext = 'jpg'
+        elif hasattr(story.media, 'document') and isinstance(story.media.document, types.Document):
+            mime_type = story.media.document.mime_type.lower()
+            if 'image' in mime_type:
+                file_ext = 'jpg'
+            elif 'video' in mime_type:
+                file_ext = 'mp4'
+            else:
+                file_ext = 'mp4'
+        else:
+            file_ext = 'mp4'
+
+        file_path = os.path.join(DOWNLOAD_DIR, f"{username}_{story.id}.{file_ext}")
+        
+        await client.download_media(
+            story.media, 
+            file=file_path,
+            progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
+                progress(d, t, event, f"**╮ جـارِ تحميل من @{username}... 📥╰**")
+            )
+        )
+        
+        return [file_path] if os.path.exists(file_path) else None
+    
+    except Exception as e:
+        print(f"Error downloading story media: {e}")
+        return None
+
+async def send_story_files(event, files, username, story_id):
+    """إرسال ملفات القصة"""
+    try:
+        for file_path in files:
+            if os.path.exists(file_path):
+                await client.send_file(
+                    event.chat_id,
+                    file_path,
+                    caption=f"**📱╎قصة من:** `@{username}`\n**🆔╎معرف القصة:** `{story_id}`",
+                    supports_streaming=True,
+                    progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
+                        progress(d, t, event, f"**╮ ❐ جـارِ رفع قصة @{username}... 📤╰**")
+                    )
+                )
+                
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+                    
+    except Exception as e:
+        print(f"Error sending story files: {e}")
+        for file_path in files:
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except:
+                pass
+
+async def progress(current, total, event, text):
+    """شريط التقدم"""
+    try:
+        if total > 0:
+            progress_percent = (current * 100) / total
+            progress_bar = "█" * int(progress_percent // 5) + "░" * (20 - int(progress_percent // 5))
+            
+            progress_text = f"{text}\n\n**╮ ❐ التقدم:** `{progress_percent:.1f}%`\n**╰ ❐ [{progress_bar}]**\n**📊 الحجـم:** `{humanbytes(current)} / {humanbytes(total)}`"
+            
+            await event.edit(progress_text)
+    except:
+        pass
+
+def humanbytes(size):
+    """تحويل الحجم إلى صيغة مقروءة"""
+    if not size:
+        return "0B"
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024:
+            return f"{size:.2f}{unit}"
+        size /= 1024
+    return f"{size:.2f}PB"
+
 
 #######################
 
@@ -7504,9 +7939,13 @@ $$$$$$$$\ $$ |  $$ |$$$$$$$$\ $$ | \$$ |
 تـم تـنـصـيـب ســورس ايـريـن بنـجـاح✔️
 """)
 
+async def start_client():
+    """بدء العميل"""
+    await client.start()
+
 async def main():
     await start_client()
     await client.run_until_disconnected()
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())
