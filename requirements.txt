@@ -5,7 +5,7 @@ aiohttp
 beautifulsoup4
 
 # ========== مكتبة Telegram ==========
-telethon
+telethon[cryptg]
 
 # ========== معالجة الصور ==========
 Pillow
