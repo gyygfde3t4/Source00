@@ -6284,14 +6284,14 @@ async def download_and_send_audio(event):
         is_url = False
 
     try:
-        # إعدادات yt-dlp محسنة للسرعة القصوى
+        # إعدادات yt-dlp محسنة لأقصى سرعة
         ydl_opts = {
-            'format': 'bestaudio[ext=m4a]/bestaudio/best',
+            'format': 'bestaudio[ext=m4a]',  # استخدام m4a مباشرة بدون تحويل
             'outtmpl': 'downloads/%(id)s.%(ext)s',
             'quiet': True,
             'no_warnings': True,
             'ignoreerrors': True,
-            'extract_flat': False,  # تم التعديل هنا
+            'extract_flat': False,
             'skip_download': False,
             'writeinfojson': False,
             'writethumbnail': False,
@@ -6303,11 +6303,7 @@ async def download_and_send_audio(event):
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
             },
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '128',
-            }],
+            # إزالة postprocessors لأننا نستخدم m4a مباشرة
         }
 
         # إضافة الكوكيز إذا موجودة
@@ -6356,7 +6352,7 @@ async def download_and_send_audio(event):
 
                 # تحميل الصورة المصغرة بشكل متوازي مع بدء التحميل
                 thumb_path = None
-                audio_path = f'downloads/{video_id}.mp3'
+                audio_path = f'downloads/{video_id}.m4a'  # تغيير الامتداد إلى m4a
                 
                 # تشغيل المهام المتوازية
                 download_task = asyncio.create_task(
@@ -6432,7 +6428,7 @@ async def download_thumbnail(thumbnail_url, video_id):
 def add_metadata(audio_path, title, artist, thumb_path):
     """إضافة البيانات الوصفية والغلاف"""
     try:
-        # إضافة بيانات ID3
+        # إضافة بيانات ID3 (تعمل مع m4a أيضاً)
         try:
             audio = EasyID3(audio_path)
         except:
