@@ -6258,10 +6258,30 @@ async def update_command(event):
     # تنفيذ التحديث
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
+
+def is_youtube_url(text):
+    """التعرف على روابط يوتيوب"""
+    youtube_patterns = [
+        r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/',
+        r'youtube\.com/watch\?v=',
+        r'youtu\.be/',
+        r'youtube\.com/shorts/'
+    ]
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in youtube_patterns)
+
 @client.on(events.NewMessage(pattern=r'\.بحث (.+)'))
 async def download_and_send_audio(event):
-    query = event.pattern_match.group(1)
-    await event.edit("**╮ جـارِ البحث ؏ـن المقطـٓع الصٓوتـي... 🎧♥️╰**")
+    query = event.pattern_match.group(1).strip()
+    
+    # تحديد إذا كان البحث برابط أو نص
+    if is_youtube_url(query):
+        await event.edit("**╮ جـارِ معالجة الرابط... 🎧♥️╰**")
+        video_url = query
+        is_url = True
+    else:
+        await event.edit("**╮ جـارِ البحث ؏ـن المقطـٓع الصٓوتـي... 🎧♥️╰**")
+        video_url = None
+        is_url = False
 
     try:
         # إعدادات yt-dlp محسنة للسرعة القصوى
@@ -6271,7 +6291,7 @@ async def download_and_send_audio(event):
             'quiet': True,
             'no_warnings': True,
             'ignoreerrors': True,
-            'extract_flat': True,
+            'extract_flat': False,  # تم التعديل هنا
             'skip_download': False,
             'writeinfojson': False,
             'writethumbnail': False,
@@ -6279,7 +6299,7 @@ async def download_and_send_audio(event):
             'socket_timeout': 15,
             'retries': 2,
             'fragment_retries': 2,
-            'concurrent_fragment_downloads': 8,  # زيادة التحميل المتوازي
+            'concurrent_fragment_downloads': 8,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
             },
@@ -6299,24 +6319,34 @@ async def download_and_send_audio(event):
 
         with YoutubeDL(ydl_opts) as ydl:
             try:
-                # البحث السريع مع extract_flat
-                info = await asyncio.to_thread(
-                    ydl.extract_info, 
-                    f"ytsearch1:{query}", 
-                    download=False
-                )
-                
-                if not info or not info.get('entries'):
-                    await event.edit("**⚠️ لم يتم العثور على نتائج**")
-                    return
+                if is_url:
+                    # معالجة الرابط مباشرة
+                    info = await asyncio.to_thread(
+                        ydl.extract_info, 
+                        video_url, 
+                        download=False
+                    )
+                else:
+                    # البحث بالنص
+                    info = await asyncio.to_thread(
+                        ydl.extract_info, 
+                        f"ytsearch1:{query}", 
+                        download=False
+                    )
+                    
+                    if not info or not info.get('entries'):
+                        await event.edit("**⚠️ لم يتم العثور على نتائج**")
+                        return
 
-                video = info['entries'][0]
-                video_id = video.get('id')
-                video_url = video.get('webpage_url')
-                title = video.get('title', 'Unknown Title')
-                artist = video.get('uploader', 'Unknown Artist')
-                duration = video.get('duration', 0)
-                thumbnail = video.get('thumbnail')
+                    info = info['entries'][0]
+
+                # استخراج معلومات الفيديو
+                video_id = info.get('id')
+                video_url = info.get('webpage_url') or f"https://www.youtube.com/watch?v={video_id}"
+                title = info.get('title', 'Unknown Title')
+                artist = info.get('uploader', 'Unknown Artist')
+                duration = info.get('duration', 0)
+                thumbnail = info.get('thumbnail')
 
                 if not video_url:
                     await event.edit("**⚠️ لا يوجد رابط للفيديو**")
@@ -6355,7 +6385,7 @@ async def download_and_send_audio(event):
                 await event.client.send_file(
                     event.chat_id,
                     audio_path,
-                    caption=f"**⌔╎البحث:** `{artist} - {title}`",
+                    caption=f"**⌔╎تم التحميل:** `{artist} - {title}`" if is_url else f"**⌔╎البحث:** `{artist} - {title}`",
                     thumb=thumb_path if thumb_path and os.path.exists(thumb_path) else None,
                     attributes=[
                         DocumentAttributeAudio(
@@ -6366,7 +6396,7 @@ async def download_and_send_audio(event):
                         )
                     ],
                     supports_streaming=True,
-                    part_size_kb=512,  # الحجم الأمثل للأجزاء
+                    part_size_kb=512,
                 )
                 
                 await event.delete()
