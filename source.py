@@ -6284,9 +6284,9 @@ async def download_and_send_audio(event):
         is_url = False
 
     try:
-        # إعدادات yt-dlp محسنة لأقصى سرعة
+        # إعدادات yt-dlp محسنة للسرعة القصوى
         ydl_opts = {
-            'format': 'bestaudio[ext=m4a]',  # استخدام m4a مباشرة بدون تحويل
+            'format': 'bestaudio[abr<=96]/bestaudio/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
             'quiet': True,
             'no_warnings': True,
@@ -6303,7 +6303,7 @@ async def download_and_send_audio(event):
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
             },
-            # إزالة postprocessors لأننا نستخدم m4a مباشرة
+            # إزالة معالج ما بعد التحميل لتجنب التحويل إلى MP3
         }
 
         # إضافة الكوكيز إذا موجودة
@@ -6323,10 +6323,11 @@ async def download_and_send_audio(event):
                         download=False
                     )
                 else:
-                    # البحث بالنص
+                    # البحث بالنص مع تحسين الأداء
+                    search_query = f"ytsearch1:{query}"
                     info = await asyncio.to_thread(
                         ydl.extract_info, 
-                        f"ytsearch1:{query}", 
+                        search_query, 
                         download=False
                     )
                     
@@ -6352,7 +6353,6 @@ async def download_and_send_audio(event):
 
                 # تحميل الصورة المصغرة بشكل متوازي مع بدء التحميل
                 thumb_path = None
-                audio_path = f'downloads/{video_id}.m4a'  # تغيير الامتداد إلى m4a
                 
                 # تشغيل المهام المتوازية
                 download_task = asyncio.create_task(
@@ -6428,12 +6428,13 @@ async def download_thumbnail(thumbnail_url, video_id):
 def add_metadata(audio_path, title, artist, thumb_path):
     """إضافة البيانات الوصفية والغلاف"""
     try:
-        # إضافة بيانات ID3 (تعمل مع m4a أيضاً)
+        # إضافة بيانات ID3 (فقط إذا كان الملف يدعمها)
         try:
             audio = EasyID3(audio_path)
         except:
-            audio = EasyID3()
-        
+            # إذا لم يكن الملف يدعم ID3، تخطي هذه الخطوة
+            return
+            
         audio['title'] = title
         audio['artist'] = artist
         audio.save()
@@ -6462,9 +6463,12 @@ async def cleanup_files(video_id):
     cleanup_tasks = []
     for pattern in [f'downloads/{video_id}*', 'downloads/*.part']:
         for file_path in glob.glob(pattern):
-            cleanup_tasks.append(asyncio.create_task(
-                asyncio.to_thread(os.remove, file_path)
-            ))
+            try:
+                cleanup_tasks.append(asyncio.create_task(
+                    asyncio.to_thread(os.remove, file_path)
+                ))
+            except:
+                pass
     
     if cleanup_tasks:
         await asyncio.gather(*cleanup_tasks, return_exceptions=True)
