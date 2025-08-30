@@ -6259,6 +6259,7 @@ async def update_command(event):
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
 
+
 def is_youtube_url(text):
     """التعرف على روابط يوتيوب"""
     youtube_patterns = [
@@ -6273,7 +6274,6 @@ def is_youtube_url(text):
 async def download_and_send_audio(event):
     query = event.pattern_match.group(1).strip()
     
-    # تحديد إذا كان البحث برابط أو نص
     if is_youtube_url(query):
         await event.edit("**╮ جـارِ معالجة الرابط... 🎧♥️╰**")
         video_url = query
@@ -6284,17 +6284,15 @@ async def download_and_send_audio(event):
         is_url = False
 
     try:
-        # إعدادات yt-dlp محسنة للسرعة القصوى
+        # إعدادات yt-dlp محسنة للسرعة مع تحويل إلى MP3
         ydl_opts = {
-            'format': 'bestaudio[abr<=96]/bestaudio/best',
+            'format': 'bestaudio/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
             'quiet': True,
             'no_warnings': True,
             'ignoreerrors': True,
             'extract_flat': False,
             'skip_download': False,
-            'writeinfojson': False,
-            'writethumbnail': False,
             'noplaylist': True,
             'socket_timeout': 15,
             'retries': 2,
@@ -6303,33 +6301,24 @@ async def download_and_send_audio(event):
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
             },
-            # إزالة معالج ما بعد التحميل لتجنب التحويل إلى MP3
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '96',
+            }],
         }
 
-        # إضافة الكوكيز إذا موجودة
         if os.path.exists('cookies.txt'):
             ydl_opts['cookiefile'] = 'cookies.txt'
 
-        # إنشاء مجلد التحميل
         os.makedirs('downloads', exist_ok=True)
 
         with YoutubeDL(ydl_opts) as ydl:
             try:
                 if is_url:
-                    # معالجة الرابط مباشرة
-                    info = await asyncio.to_thread(
-                        ydl.extract_info, 
-                        video_url, 
-                        download=False
-                    )
+                    info = await asyncio.to_thread(ydl.extract_info, video_url, download=False)
                 else:
-                    # البحث بالنص مع تحسين الأداء
-                    search_query = f"ytsearch1:{query}"
-                    info = await asyncio.to_thread(
-                        ydl.extract_info, 
-                        search_query, 
-                        download=False
-                    )
+                    info = await asyncio.to_thread(ydl.extract_info, f"ytsearch1:{query}", download=False)
                     
                     if not info or not info.get('entries'):
                         await event.edit("**⚠️ لم يتم العثور على نتائج**")
@@ -6337,7 +6326,6 @@ async def download_and_send_audio(event):
 
                     info = info['entries'][0]
 
-                # استخراج معلومات الفيديو
                 video_id = info.get('id')
                 video_url = info.get('webpage_url') or f"https://www.youtube.com/watch?v={video_id}"
                 title = info.get('title', 'Unknown Title')
@@ -6351,28 +6339,19 @@ async def download_and_send_audio(event):
 
                 await event.edit("**╮ جـارِ التحميل... 🎧♥️╰**")
 
-                # تحميل الصورة المصغرة بشكل متوازي مع بدء التحميل
-                thumb_path = None
+                # تحميل الملف
+                await asyncio.to_thread(ydl.download, [video_url])
                 
-                # تشغيل المهام المتوازية
-                download_task = asyncio.create_task(
-                    asyncio.to_thread(ydl.download, [video_url])
-                )
-                
-                thumb_task = asyncio.create_task(download_thumbnail(thumbnail, video_id))
-                
-                # انتظار انتهاء التحميل
-                await download_task
-                thumb_path = await thumb_task
+                # تحميل الصورة المصغرة
+                thumb_path = await download_thumbnail(thumbnail, video_id)
 
-                # البحث عن الملف المحمل (بأي امتداد)
-                existing_files = glob.glob(f'downloads/{video_id}.*')
-                if existing_files:
-                    audio_path = existing_files[0]
-                else:
-                    raise Exception("فشل في إنشاء ملف الصوت")
+                # البحث عن الملف المحمل بصيغة MP3
+                audio_path = f'downloads/{video_id}.mp3'
+                if not os.path.exists(audio_path):
+                    await event.edit("**⚠️ فشل في تحويل الملف إلى MP3**")
+                    return
 
-                # إضافة البيانات الوصفية (في thread منفصل)
+                # إضافة البيانات الوصفية
                 await asyncio.to_thread(add_metadata, audio_path, title, artist, thumb_path)
 
                 # إرسال الملف
@@ -6405,7 +6384,6 @@ async def download_and_send_audio(event):
         await event.edit(f"**⚠️ خطأ عام:** {str(e)[:500]}")
     
     finally:
-        # تنظيف الملفات المؤقتة بشكل غير متزامن
         if 'video_id' in locals():
             await cleanup_files(video_id)
 
@@ -6428,18 +6406,11 @@ async def download_thumbnail(thumbnail_url, video_id):
 def add_metadata(audio_path, title, artist, thumb_path):
     """إضافة البيانات الوصفية والغلاف"""
     try:
-        # إضافة بيانات ID3 (فقط إذا كان الملف يدعمها)
-        try:
-            audio = EasyID3(audio_path)
-        except:
-            # إذا لم يكن الملف يدعم ID3، تخطي هذه الخطوة
-            return
-            
+        audio = EasyID3(audio_path)
         audio['title'] = title
         audio['artist'] = artist
         audio.save()
 
-        # إضافة صورة الغلاف
         if thumb_path and os.path.exists(thumb_path):
             try:
                 audio = ID3(audio_path)
@@ -6454,24 +6425,24 @@ def add_metadata(audio_path, title, artist, thumb_path):
                 audio.save()
             except Exception:
                 pass
-                
     except Exception:
-        pass
+        # إنشاء بيانات ID3 جديدة إذا لم تكن موجودة
+        try:
+            audio = EasyID3()
+            audio['title'] = title
+            audio['artist'] = artist
+            audio.save(audio_path)
+        except Exception:
+            pass
 
 async def cleanup_files(video_id):
     """تنظيف الملفات المؤقتة بشكل غير متزامن"""
-    cleanup_tasks = []
     for pattern in [f'downloads/{video_id}*', 'downloads/*.part']:
         for file_path in glob.glob(pattern):
             try:
-                cleanup_tasks.append(asyncio.create_task(
-                    asyncio.to_thread(os.remove, file_path)
-                ))
+                os.remove(file_path)
             except:
                 pass
-    
-    if cleanup_tasks:
-        await asyncio.gather(*cleanup_tasks, return_exceptions=True)
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
