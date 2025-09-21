@@ -1,7 +1,7 @@
 # ========== مكتبات طلبات HTTP ==========
 requests
 httpx
-aiohttp
+aiohttp[speedups]
 beautifulsoup4
 
 # ========== مكتبة Telegram ==========
@@ -20,6 +20,7 @@ gallery-dl
 aiofiles
 aria2p
 tqdm
+aiofiles
 
 # ========== الترجمة ==========
 googletrans
