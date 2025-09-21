@@ -18,6 +18,8 @@ yt-dlp
 youtube_dl
 gallery-dl
 aiofiles
+aria2p
+tqdm
 
 # ========== الترجمة ==========
 googletrans
