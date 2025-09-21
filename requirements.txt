@@ -1,6 +1,6 @@
 # ========== مكتبات طلبات HTTP ==========
 requests
-httpx
+httpx[http2]
 aiohttp[speedups]
 beautifulsoup4
 
