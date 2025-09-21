@@ -219,6 +219,7 @@ MAX_WARNINGS = 7
 accepted_users     = {}      # المستخدمون الذين تم قبولهم
 warned_users       = {}      # المستخدمون الذين تم تحذيرهم
 muted_users        = set()   # المستخدمون المكتومون
+original_profile = {}
 
 # ========== ألعاب الأرقام ==========
 number_games             = {}     # تخزين جلسات ألعاب الأرقام
@@ -6259,7 +6260,6 @@ async def update_command(event):
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
 
-
 def is_youtube_url(text):
     """التعرف على روابط يوتيوب"""
     youtube_patterns = [
@@ -6291,13 +6291,19 @@ async def download_and_send_audio(event):
             'quiet': True,
             'no_warnings': True,
             'ignoreerrors': True,
-            'extract_flat': False,
             'skip_download': False,
             'noplaylist': True,
             'socket_timeout': 15,
             'retries': 2,
             'fragment_retries': 2,
             'concurrent_fragment_downloads': 8,
+            'external_downloader': 'aria2c',
+            'external_downloader_args': [
+                '-x', '16',
+                '--max-connection-per-server=16',
+                '--min-split-size=1M',
+                '--allow-overwrite=true'
+            ],
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
             },
@@ -6318,24 +6324,43 @@ async def download_and_send_audio(event):
                 if is_url:
                     info = await asyncio.to_thread(ydl.extract_info, video_url, download=False)
                 else:
-                    info = await asyncio.to_thread(ydl.extract_info, f"ytsearch1:{query}", download=False)
+                    # بحث سريع باستخدام extract_flat للحصول على المعلومات الأساسية فقط
+                    search_opts = ydl_opts.copy()
+                    search_opts['extract_flat'] = True
+                    search_opts['skip_download'] = True
                     
-                    if not info or not info.get('entries'):
+                    with YoutubeDL(search_opts) as search_ydl:
+                        info = await asyncio.to_thread(search_ydl.extract_info, f"ytsearch1:{query}", download=False)
+                    
+                    if not info or not info.get('entries') or not info['entries']:
                         await event.edit("**⚠️ لم يتم العثور على نتائج**")
                         return
 
                     info = info['entries'][0]
+                    # الحصول على رابط الفيديو للمعالجة الكاملة
+                    video_url = info.get('url') or info.get('webpage_url')
+                    if not video_url:
+                        await event.edit("**⚠️ لا يمكن الحصول على رابط الفيديو**")
+                        return
+                    
+                    # الآن استخراج المعلومات الكاملة
+                    info = await asyncio.to_thread(ydl.extract_info, video_url, download=False)
 
-                video_id = info.get('id')
-                video_url = info.get('webpage_url') or f"https://www.youtube.com/watch?v={video_id}"
-                title = info.get('title', 'Unknown Title')
-                artist = info.get('uploader', 'Unknown Artist')
-                duration = info.get('duration', 0)
-                thumbnail = info.get('thumbnail')
-
-                if not video_url:
-                    await event.edit("**⚠️ لا يوجد رابط للفيديو**")
+                # التحقق من أن info ليس None
+                if not info:
+                    await event.edit("**⚠️ فشل في الحصول على معلومات الفيديو**")
                     return
+                    
+                video_id = info.get('id')
+                if not video_id:
+                    await event.edit("**⚠️ لا يمكن الحصول على معرف الفيديو**")
+                    return
+                    
+                video_url = info.get('webpage_url') or f"https://www.youtube.com/watch?v={video_id}"
+                title = info.get('title', 'Unknown Title') or 'Unknown Title'
+                artist = info.get('uploader', 'Unknown Artist') or 'Unknown Artist'
+                duration = info.get('duration', 0) or 0
+                thumbnail = info.get('thumbnail')
 
                 await event.edit("**╮ جـارِ التحميل... 🎧♥️╰**")
 
@@ -6348,8 +6373,15 @@ async def download_and_send_audio(event):
                 # البحث عن الملف المحمل بصيغة MP3
                 audio_path = f'downloads/{video_id}.mp3'
                 if not os.path.exists(audio_path):
-                    await event.edit("**⚠️ فشل في تحويل الملف إلى MP3**")
-                    return
+                    # محاولة العثور على الملف بأي صيغة صوتية
+                    for ext in ['mp3', 'm4a', 'webm', 'opus']:
+                        possible_path = f'downloads/{video_id}.{ext}'
+                        if os.path.exists(possible_path):
+                            audio_path = possible_path
+                            break
+                    else:
+                        await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
+                        return
 
                 # إضافة البيانات الوصفية
                 await asyncio.to_thread(add_metadata, audio_path, title, artist, thumb_path)
@@ -6371,7 +6403,7 @@ async def download_and_send_audio(event):
                         )
                     ],
                     supports_streaming=True,
-                    part_size_kb=512,
+                    part_size_kb=1024,  # زيادة حجم الجزء لتسريع الرفع
                 )
                 
                 await event.delete()
@@ -6406,34 +6438,33 @@ async def download_thumbnail(thumbnail_url, video_id):
 def add_metadata(audio_path, title, artist, thumb_path):
     """إضافة البيانات الوصفية والغلاف"""
     try:
-        audio = EasyID3(audio_path)
+        # محاولة تحميل البيانات الوصفية الحالية أو إنشاء جديدة
+        try:
+            audio = EasyID3(audio_path)
+        except:
+            audio = EasyID3()
+        
         audio['title'] = title
         audio['artist'] = artist
-        audio.save()
+        audio.save(audio_path)
 
         if thumb_path and os.path.exists(thumb_path):
             try:
                 audio = ID3(audio_path)
-                with open(thumb_path, 'rb') as f:
-                    audio.add(APIC(
-                        encoding=3,
-                        mime='image/jpeg',
-                        type=3,
-                        desc='Cover',
-                        data=f.read()
-                    ))
-                audio.save()
-            except Exception:
-                pass
-    except Exception:
-        # إنشاء بيانات ID3 جديدة إذا لم تكن موجودة
-        try:
-            audio = EasyID3()
-            audio['title'] = title
-            audio['artist'] = artist
+            except:
+                audio = ID3()
+                
+            with open(thumb_path, 'rb') as f:
+                audio.add(APIC(
+                    encoding=3,
+                    mime='image/jpeg',
+                    type=3,
+                    desc='Cover',
+                    data=f.read()
+                ))
             audio.save(audio_path)
-        except Exception:
-            pass
+    except Exception as e:
+        print(f"Error adding metadata: {e}")
 
 async def cleanup_files(video_id):
     """تنظيف الملفات المؤقتة بشكل غير متزامن"""
