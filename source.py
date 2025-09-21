@@ -6580,16 +6580,6 @@ async def cleanup_files(video_id: str) -> None:
             except Exception as e:
                 print(f"Cleanup error for {file_path}: {e}")
 
-# تنظيف الذاكرة المؤقتة بشكل دوري
-async def clear_cache_periodically():
-    """تنظيف الذاكرة المؤقتة كل ساعة"""
-    while True:
-        await asyncio.sleep(3600)  # كل ساعة
-        cached_search.cache_clear()
-        print("Cache cleared")
-
-# بدء مهمة التنظيف الدوري
-asyncio.create_task(clear_cache_periodically())
 
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
