@@ -1298,60 +1298,42 @@ async def manual_self_destruct_save(event):
         if os.path.exists("temp_media_file"):
             os.remove("temp_media_file")
 
-from telethon import TelegramClient, events
-from telethon.tl.functions.channels import CreateChannelRequest
-from telethon.tl.functions.messages import ExportChatInviteRequest
-from telethon.errors import FloodWaitError
 
-# متغير لتتبع إذا كانت هناك عملية جارية
-current_operation = None
 
-@client.on(events.NewMessage(pattern=r'^\.انشاء جروب (\d+)$', outgoing=True))
+@client.on(events.NewMessage(pattern=r'^\.انشاء جروب (\d+)$'))
 async def create_multiple_groups(event):
-    """إنشاء عدة جروبات خاصة مع منع تداخل الأوامر"""
+    """إنشاء عدة جروبات خاصة مع إدارة الأخطاء والتأخيرات"""
     
-    global current_operation
-    
-    # منع تشغيل أكثر من عملية في نفس الوقت
-    if current_operation is not None:
-        await event.edit("**⏳ هناك عملية إنشاء جارية بالفعل، انتظر حتى تنتهي**")
+    # استخراج العدد من الأمر
+    try:
+        num_groups = int(event.pattern_match.group(1))
+        if num_groups <= 0:
+            await event.edit("**⚠️ يرجى إدخال عدد صحيح أكبر من الصفر**")
+            return
+    except ValueError:
+        await event.edit("**⚠️ يرجى إدخال عدد صحيح صحيح**")
         return
     
-    try:
-        current_operation = "creating_groups"
-        
-        # التحقق من أن الرسالة من مستخدم مسموح له
-        if not event.is_private and not await event.get_sender().bot:
-            # استخراج العدد من الأمر
-            try:
-                num_groups = int(event.pattern_match.group(1))
-                if num_groups <= 0:
-                    await event.edit("**⚠️ يرجى إدخال عدد صحيح أكبر من الصفر**")
-                    return
-            except ValueError:
-                await event.edit("**⚠️ يرجى إدخال عدد صحيح صحيح**")
-                return
-            
-            # التحقق من أن العدد معقول
-            if num_groups > 50:  # تخفيض الحد لزيادة الأمان
-                await event.edit("**⚠️ الحد الأقصى المسموح به هو 50 جروب في المرة الواحدة**")
-                return
-            
-            # رسالة البداية
-            message = await event.edit("**🔄 جاري إعداد المجموعات . . .**")
-            
-            created_groups = 0
-            failed_groups = 0
-            group_links = []
-            
-            # إعدادات التأخير
-            BASE_DELAY = 10  # 10 ثواني بين كل جروب
-            JITTER = 3       # ±3 ثواني عشوائية
-            
-            for i in range(num_groups):
-                try:
-                    # تحديث الرسالة مع التقدم
-                    progress_text = f"""
+    # التحقق من أن العدد معقول
+    if num_groups > 100:
+        await event.edit("**⚠️ الحد الأقصى المسموح به هو 100 جروب في المرة الواحدة**")
+        return
+    
+    # رسالة البداية
+    message = await event.edit("**🔄 جاري إعداد المجموعات . . .**")
+    
+    created_groups = 0
+    failed_groups = 0
+    group_links = []
+    
+    # إعدادات التأخير
+    BASE_DELAY = 10  # 10 ثواني بين كل جروب
+    JITTER = 3       # ±3 ثواني عشوائية
+    
+    for i in range(num_groups):
+        try:
+            # تحديث الرسالة مع التقدم
+            progress_text = f"""
 **🔄 جاري إنشاء المجموعات . . .**
 
 **✅ تم إنشاء:** `{created_groups}`
@@ -1360,35 +1342,37 @@ async def create_multiple_groups(event):
 **📊 الإجمالي:** `{num_groups}`
 
 **🎯 الجاري:** إنشاء المجموعة رقم `{i + 1}`
-                    """
-                    await message.edit(progress_text)
-                    
-                    # إنشاء الجروب
-                    group_title = f"المجموعة {i + 1} - {random.randint(1000, 9999)}"
-                    group_description = f"هذه مجموعة تم إنشاؤها تلقائياً - {group_title}"
-                    
-                    # إنشاء الجروب باستخدام CreateChannelRequest
-                    result = await client(CreateChannelRequest(
-                        title=group_title,
-                        about=group_description,
-                        megagroup=True,  # جروب وليس قناة
-                        broadcast=False
-                    ))
-                    
-                    # الحصول على رابط الدعوة
-                    try:
-                        chat_id = result.chats[0].id
-                        invite_link = await client(ExportChatInviteRequest(peer=chat_id))
-                        group_link = invite_link.link
-                        group_links.append(f"• [{group_title}]({group_link})")
-                    except Exception as link_error:
-                        group_link = "❌ لم يتم إنشاء الرابط"
-                        group_links.append(f"• {group_title} - {group_link}")
-                    
-                    created_groups += 1
-                    
-                    # تحديث الرسالة بعد النجاح
-                    success_text = f"""
+            """
+            await message.edit(progress_text)
+            
+            # إنشاء الجروب
+            group_title = f"المجموعة {i + 1} - {random.randint(1000, 9999)}"
+            group_description = f"هذه مجموعة تم إنشاؤها تلقائياً - {group_title}"
+            
+            # إنشاء الجروب باستخدام CreateChannelRequest
+            result = await client(CreateChannelRequest(
+                title=group_title,
+                about=group_description,
+                megagroup=True,  # جروب وليس قناة
+                broadcast=False
+            ))
+            
+            # الحصول على رابط الدعوة
+            try:
+                chat_id = result.chats[0].id
+                invite_link = await client(
+                    functions.messages.ExportChatInviteRequest(peer=chat_id)
+                )
+                group_link = invite_link.link
+                group_links.append(f"• [{group_title}]({group_link})")
+            except Exception as link_error:
+                group_link = "❌ لم يتم إنشاء الرابط"
+                group_links.append(f"• {group_title} - {group_link}")
+            
+            created_groups += 1
+            
+            # تحديث الرسالة بعد النجاح
+            success_text = f"""
 **🔄 جاري إنشاء المجموعات . . .**
 
 **✅ تم إنشاء:** `{created_groups}` 🎉
@@ -1398,56 +1382,56 @@ async def create_multiple_groups(event):
 
 **✅ تم إنشاء المجموعة:** `{group_title}`
 **⏰ الانتظار:** `{BASE_DELAY}` ثانية للجروب التالي...
-                    """
-                    await message.edit(success_text)
-                    
-                    # تأخير ذكي بين الجروبات
-                    if i < num_groups - 1:  # لا تأخير بعد آخر جروب
-                        delay = BASE_DELAY + random.uniform(-JITTER, JITTER)
-                        await asyncio.sleep(max(7, delay))  # لا يقل عن 7 ثواني
-                    
-                except FloodWaitError as e:
-                    # التعامل مع FloodWait
-                    wait_time = e.seconds
-                    failed_groups += 1
-                    
-                    flood_text = f"""
+            """
+            await message.edit(success_text)
+            
+            # تأخير ذكي بين الجروبات
+            if i < num_groups - 1:  # لا تأخير بعد آخر جروب
+                delay = BASE_DELAY + random.uniform(-JITTER, JITTER)
+                await asyncio.sleep(max(5, delay))  # لا يقل عن 5 ثواني
+            
+        except FloodWaitError as e:
+            # التعامل مع FloodWait
+            wait_time = e.seconds
+            failed_groups += 1
+            
+            flood_text = f"""
 **⛔️ تم اكتشاف قيود FloodWait**
 
 **⏰ مدة الانتظار:** `{wait_time}` ثانية
 **📊 التقدم:** `{created_groups}/{num_groups}`
 
 **🔄 جاري الانتظار تلقائياً...**
-                    """
-                    await message.edit(flood_text)
-                    await asyncio.sleep(wait_time)
-                    
-                    # إعادة محاولة نفس الجروب
-                    continue
-                    
-                except Exception as e:
-                    # التعامل مع الأخطاء العامة
-                    failed_groups += 1
-                    error_type = type(e).__name__
-                    
-                    error_text = f"""
+            """
+            await message.edit(flood_text)
+            await asyncio.sleep(wait_time)
+            
+            # إعادة محاولة نفس الجروب
+            continue
+            
+        except Exception as e:
+            # التعامل مع الأخطاء العامة
+            failed_groups += 1
+            error_type = type(e).__name__
+            
+            error_text = f"""
 **❌ حدث خطأ في إنشاء المجموعة رقم {i + 1}**
 
 **📝 نوع الخطأ:** `{error_type}`
 **💬 التفاصيل:** `{str(e)}`
 
 **🔄 جاري المحاولة للجروب التالي...**
-                    """
-                    await message.edit(error_text)
-                    await asyncio.sleep(5)  # تأخير قصير قبل المحاولة التالية
-                    continue
-            
-            # رسالة النهاية النهائية
-            if created_groups > 0:
-                # تجميع روابط المجموعات الناجحة
-                links_text = "\n".join(group_links[:10])  # عرض أول 10 فقط لتجنب الطول
-                
-                final_success_text = f"""
+            """
+            await message.edit(error_text)
+            await asyncio.sleep(5)  # تأخير قصير قبل المحاولة التالية
+            continue
+    
+    # رسالة النهاية النهائية
+    if created_groups > 0:
+        # تجميع روابط المجموعات الناجحة
+        links_text = "\n".join(group_links[:10])  # عرض أول 10 فقط لتجنب الطول
+        
+        final_success_text = f"""
 **🎊 تم الانتهاء من إنشاء المجموعات بنجاح!**
 
 **✅ الناجحة:** `{created_groups}` مجموعة
@@ -1460,12 +1444,12 @@ async def create_multiple_groups(event):
 {'**📝 ملاحظة:** تم عرض أول 10 مجموعات فقط' if len(group_links) > 10 else ''}
 
 **⚡ تم الإنشاء بواسطة:** @{await client.get_me().username}
-                """
-                await message.edit(final_success_text)
-                
-            else:
-                # في حالة فشل جميع المحاولات
-                final_error_text = f"""
+        """
+        await message.edit(final_success_text)
+        
+    else:
+        # في حالة فشل جميع المحاولات
+        final_error_text = f"""
 **❌ فشل في إنشاء أي مجموعة!**
 
 **📊 المحاولات:** `{num_groups}` محاولة
@@ -1486,53 +1470,53 @@ async def create_multiple_groups(event):
 `عدد المجموعات: {num_groups}`
 `الأخطاء: {failed_groups}`
 `آخر خطأ: {error_type if 'error_type' in locals() else 'غير معروف'}`
-                """
-                await message.edit(final_error_text)
-        
-    except Exception as e:
-        await event.edit(f"**❌ حدث خطأ غير متوقع:** `{str(e)}`")
-    
-    finally:
-        # تحرير العملية الجارية
-        current_operation = None
+        """
+        await message.edit(final_error_text)
 
-# أمر لإلغاء العملية الجارية
-@client.on(events.NewMessage(pattern=r'^\.الغاء$', outgoing=True))
-async def cancel_operation(event):
-    """إلغاء أي عملية جارية"""
-    global current_operation
+# دالة مساعدة للحصول على معلومات الخطأ
+def get_error_details(error):
+    """الحصول على تفاصيل الخطأ بشكل منظم"""
+    error_type = type(error).__name__
+    error_message = str(error)
     
-    if current_operation is not None:
-        current_operation = None
-        await event.edit("**✅ تم إلغاء العملية الجارية**")
-    else:
-        await event.edit("**⚠️ لا توجد عمليات جارية لإلغائها**")
+    details = f"""
+**📋 تفاصيل الخطأ الكاملة:**
 
-# أمر للتحقق من الحالة
-@client.on(events.NewMessage(pattern=r'^\.حالة$', outgoing=True))
-async def check_status(event):
-    """التحقق من حالة النظام"""
-    global current_operation
-    
-    status = "🟢 **النظام:** لا توجد عمليات جارية" 
-    if current_operation is not None:
-        status = f"🟡 **النظام:** هناك عملية `{current_operation}` جارية"
-    
-    status_text = f"""
-{status}
+**📝 نوع الخطأ:** `{error_type}`
+**💬 الرسالة:** `{error_message}`
+**🔍 النمط:** `{error.__class__.__module__}.{error_type}`
 
-**⚙️ الإعدادات الحالية:**
-• التأخير بين الجروبات: 10 ثواني
-• الحد الأقصى: 50 جروب
-• الحماية من التداخل: 🟢 مفعلة
+**🛠 الإجراء المطلوب:**
+• أرسل هذه التفاصيل إلى المطور
+• حاول مرة أخرى بعد بضع دقائق
+• تأكد من أن الحساب لا يعاني من قيود
 
-**📋 الأوامر المتاحة:**
-`.انشاء جروب [عدد]` - إنشاء مجموعات
-`.الغاء` - إلغاء العملية
-`.حالة` - عرض هذه الرسالة
+**⏰ وقت الحدوث:** `{asyncio.get_event_loop().time()}`
+    """
+    return details
+
+# أمر مساعد للتحقق من حالة الحساب
+@client.on(events.NewMessage(pattern=r'\.حالة الجروبات'))
+async def check_groups_status(event):
+    """التحقق من حالة إنشاء الجروبات"""
+    status_text = """
+**📊 حالة نظام إنشاء الجروبات:**
+
+**✅ النظام:** 🟢 نشط وجاهز
+**🛡 الحماية:** 🔄 FloodWait مدعوم
+**⏰ التأخير:** 10 ثواني بين الجروبات
+**📈 الأداء:** 🚀 محسن للسرعة
+
+**📝 التعليمات:**
+استخدم `.انشاء جروب [عدد]` لإنشاء مجموعات
+مثال: `.انشاء جروب 5`
+
+**⚡ الحدود المقترحة:**
+• 5-10 جروبات لكل عملية (آمن)
+• 10-20 جروبات (متوسط المخاطرة)
+• 20+ جروبات (عالية المخاطرة)
     """
     await event.edit(status_text)
-
 # ✅ تشغيل الحفظ التلقائي
 @client.on(events.NewMessage(pattern=r'^\.الذاتيه تشغيل$'))
 async def enable_auto_saving(event):
