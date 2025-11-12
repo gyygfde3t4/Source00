@@ -6555,7 +6555,7 @@ async def download_and_send_audio(event):
         is_url = False
 
     try:
-        # إعدادات yt-dlp محسنة للسرعة مع تحويل إلى MP3 وتجاوز القيود
+        # إعدادات yt-dlp محسنة مع استخدام كوكيز مصر
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -6565,30 +6565,28 @@ async def download_and_send_audio(event):
             'extract_flat': False,
             'skip_download': False,
             'noplaylist': True,
-            'socket_timeout': 15,
+            'socket_timeout': 20,
             'retries': 3,
             'fragment_retries': 3,
-            'concurrent_fragment_downloads': 12,  # زيادة التنزيل المتوازي
+            'concurrent_fragment_downloads': 8,
+            # إعدادات مهمة لتجنب حظر اليوتيوب
+            'extractor_retries': 3,
+            'ignore_no_formats_error': True,
+            'no_check_certificate': True,
+            'prefer_insecure': True,
+            # إعدادات الهيدر لمصر
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
-                'Accept-Encoding': 'gzip,deflate',
-                'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+                'Accept-Language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7',
+                'Accept-Encoding': 'gzip, deflate',
                 'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
             },
-            # إعدادات تجاوز القيود الجغرافية
+            # إعدادات تجاوز القيود الجغرافية لمصر
             'geo_bypass': True,
-            'geo_bypass_country': 'EG',              # رمز مصر ISO alpha-2
-            'geo_bypass_ip_block': '41.0.0.0/8',     # مجموعة IP مصرية شائعة
-            # إعدادات إضافية لتجاوز القيود
-            'proxy': '',  # يمكن إضافة بروكسي إذا لزم الأمر
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'web'],
-                    'player_skip': ['configs', 'webpage'],
-                }
-            },
+            'geo_bypass_country': 'EG',
+            'geo_bypass_ip_block': '41.0.0.0/8',
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
@@ -6596,8 +6594,13 @@ async def download_and_send_audio(event):
             }],
         }
 
+        # استخدام كوكيز مصر بشكل إجباري
         if os.path.exists('cookies.txt'):
             ydl_opts['cookiefile'] = 'cookies.txt'
+            print("✅ تم تحميل كوكيز مصر بنجاح")
+        else:
+            await event.edit("**⚠️ ملف cookies.txt غير موجود - يرجى إضافته لمتابعة**")
+            return
 
         os.makedirs('downloads', exist_ok=True)
 
@@ -6605,25 +6608,50 @@ async def download_and_send_audio(event):
             try:
                 if is_url:
                     info = await asyncio.to_thread(ydl.extract_info, video_url, download=False)
+                    if not info:
+                        await event.edit("**⚠️ تعذر استخراج معلومات الرابط - جاري المحاولة بطريقة بديلة**")
+                        # محاولة بديلة بدون كوكيز إذا فشلت
+                        temp_opts = ydl_opts.copy()
+                        temp_opts.pop('cookiefile', None)
+                        with YoutubeDL(temp_opts) as ydl_temp:
+                            info = await asyncio.to_thread(ydl_temp.extract_info, video_url, download=False)
+                        
+                        if not info:
+                            await event.edit("**⚠️ فشل في تحميل الفيديو - قد يكون محمياً**")
+                            return
                 else:
-                    # البحث عن أول 3 نتائج لتحسين السرعة
-                    search_query = f"ytsearch3:{query}"
+                    # البحث مع استخدام كوكيز مصر
+                    search_query = f"ytsearch1:{query}"
                     info = await asyncio.to_thread(ydl.extract_info, search_query, download=False)
                     
-                    if not info or not info.get('entries'):
+                    if not info:
+                        await event.edit("**⚠️ فشل في البحث - جاري المحاولة بطريقة بديلة**")
+                        # محاولة بديلة بدون كوكيز
+                        temp_opts = ydl_opts.copy()
+                        temp_opts.pop('cookiefile', None)
+                        with YoutubeDL(temp_opts) as ydl_temp:
+                            info = await asyncio.to_thread(ydl_temp.extract_info, search_query, download=False)
+                        
+                        if not info:
+                            await event.edit("**⚠️ لم يتم العثور على نتائج**")
+                            return
+
+                # معالجة نتائج البحث
+                if not is_url:
+                    if not info.get('entries'):
                         await event.edit("**⚠️ لم يتم العثور على نتائج**")
                         return
-
-                    # اختيار أول نتيجة صالحة
-                    for entry in info['entries']:
-                        if entry and entry.get('id'):
-                            info = entry
-                            break
-                    else:
-                        await event.edit("**⚠️ لم يتم العثور على نتائج صالحة**")
+                    
+                    info = info['entries'][0]
+                    if not info:
+                        await event.edit("**⚠️ النتيجة فارغة**")
                         return
 
                 video_id = info.get('id')
+                if not video_id:
+                    await event.edit("**⚠️ لا يوجد معرف للفيديو**")
+                    return
+                    
                 video_url = info.get('webpage_url') or f"https://www.youtube.com/watch?v={video_id}"
                 title = info.get('title', 'Unknown Title')
                 artist = info.get('uploader', 'Unknown Artist')
@@ -6636,11 +6664,11 @@ async def download_and_send_audio(event):
 
                 await event.edit(f"**╮ جـارِ تحميل: {title} ... 🎧♥️╰**")
 
-                # تحميل الملف
+                # تحميل الملف مع كوكيز مصر
                 await asyncio.to_thread(ydl.download, [video_url])
                 
-                # تحميل الصورة المصغرة بشكل متوازي مع التحميل الرئيسي
-                thumb_task = asyncio.create_task(download_thumbnail(thumbnail, video_id))
+                # تحميل الصورة المصغرة
+                thumb_path = await download_thumbnail(thumbnail, video_id)
 
                 # البحث عن الملف المحمل بصيغة MP3
                 audio_path = f'downloads/{video_id}.mp3'
@@ -6649,15 +6677,11 @@ async def download_and_send_audio(event):
                     for ext in ['webm', 'm4a', 'opus']:
                         temp_path = f'downloads/{video_id}.{ext}'
                         if os.path.exists(temp_path):
-                            # تحويل الملف إلى MP3
-                            await convert_to_mp3(temp_path, audio_path)
+                            audio_path = temp_path
                             break
                     else:
-                        await event.edit("**⚠️ فشل في تحويل الملف إلى MP3**")
+                        await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
                         return
-
-                # انتظار اكتمال تحميل الصورة المصغرة
-                thumb_path = await thumb_task
 
                 # إضافة البيانات الوصفية
                 await asyncio.to_thread(add_metadata, audio_path, title, artist, thumb_path)
@@ -6690,7 +6714,11 @@ async def download_and_send_audio(event):
                 await event.delete()
 
             except Exception as e:
-                await event.edit(f"**⚠️ خطأ:** {str(e)[:500]}")
+                error_msg = str(e)
+                if "Sign in to confirm you're not a bot" in error_msg:
+                    await event.edit("**⚠️ مشكلة في الكوكيز - يرجى تحديث ملف cookies.txt**")
+                else:
+                    await event.edit(f"**⚠️ خطأ:** {error_msg[:500]}")
                 return
 
     except Exception as e:
@@ -6715,31 +6743,6 @@ async def download_thumbnail(thumbnail_url, video_id):
                 return thumb_path
     except Exception:
         return None
-
-async def convert_to_mp3(input_path, output_path):
-    """تحويل الملف إلى MP3 باستخدام FFmpeg"""
-    try:
-        cmd = [
-            'ffmpeg',
-            '-i', input_path,
-            '-codec:a', 'libmp3lame',
-            '-qscale:a', '2',
-            '-y',  # overwrite output file
-            output_path
-        ]
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        await process.communicate()
-        
-        # حذف الملف الأصلي بعد التحويل
-        if os.path.exists(output_path):
-            os.remove(input_path)
-            
-    except Exception as e:
-        print(f"تحويل MP3 فشل: {e}")
 
 def add_metadata(audio_path, title, artist, thumb_path):
     """إضافة البيانات الوصفية والغلاف"""
