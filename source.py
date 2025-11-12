@@ -326,6 +326,7 @@ async def show_account_commands(event):
 8- ☆ `.فحص` - **فحص البوت** ☆
 9- ☆ `.تحديث البوت` - **تحديث البوت من السورس** ☆
 10- ☆ `.حذف التنصيب` - **إيقاف البوت وحذف التنصيب** ☆
+11- ☆ `.انشاء جروب + عدد ` - **لأنشاء جروبات ** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     await event.edit(commands_message)
@@ -6540,42 +6541,6 @@ def is_youtube_url(text):
     ]
     return any(re.search(pattern, text, re.IGNORECASE) for pattern in youtube_patterns)
 
-# إعدادات التحميل المتوازي
-PARALLEL_CONNECTIONS = 10
-CHUNK_SIZE = 6 * 1024 * 1024  # 6 MB
-
-# إعدادات الرفع المحسنة
-UPLOAD_PART_SIZE_KB = 4096
-UPLOAD_WORKERS = 4
-
-async def parallel_download(url, path, headers=None):
-    """التحميل المتوازي باستخدام HTTP/2"""
-    async with httpx.AsyncClient(follow_redirects=True, timeout=None, http2=True) as client:
-        head = await client.head(url)
-        total = int(head.headers.get("content-length", 0))
-        chunk_size = total // PARALLEL_CONNECTIONS
-        with open(path, "wb") as f:
-            f.seek(total - 1)
-            f.write(b"\0")
-        tasks = []
-        for i in range(PARALLEL_CONNECTIONS):
-            start = i * chunk_size
-            end = total - 1 if i == PARALLEL_CONNECTIONS - 1 else start + chunk_size - 1
-            tasks.append(asyncio.create_task(
-                download_chunk(client, url, path, start, end, i, headers)
-            ))
-        await asyncio.gather(*tasks)
-
-async def download_chunk(client, url, path, start, end, index, headers):
-    """تحميل جزء من الملف"""
-    h = headers.copy() if headers else {}
-    h["Range"] = f"bytes={start}-{end}"
-    async with client.stream("GET", url, headers=h) as r:
-        with open(path, "r+b") as f:
-            f.seek(start)
-            async for chunk in r.aiter_bytes(chunk_size=CHUNK_SIZE):
-                f.write(chunk)
-
 @client.on(events.NewMessage(pattern=r'\.بحث (.+)'))
 async def download_and_send_audio(event):
     query = event.pattern_match.group(1).strip()
@@ -6590,59 +6555,45 @@ async def download_and_send_audio(event):
         is_url = False
 
     try:
-        # عناوين IP مصرية حقيقية
-        egyptian_ips = [
-            '41.0.0.1',  # نطاق IP مصري
-            '41.1.0.1',
-            '197.0.0.1',
-            '197.1.0.1',
-            '156.0.0.1'
-        ]
-        
-        import random
-        random_egyptian_ip = random.choice(egyptian_ips)
-
-        # إعدادات yt-dlp محسنة للسرعة مع تحويل إلى MP3 وتجاوز القيود الجغرافية
+        # إعدادات yt-dlp محسنة للسرعة مع تحويل إلى MP3 وتجاوز القيود
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
             'quiet': True,
             'no_warnings': True,
             'ignoreerrors': True,
+            'extract_flat': False,
             'skip_download': False,
             'noplaylist': True,
             'socket_timeout': 15,
             'retries': 3,
             'fragment_retries': 3,
-            'concurrent_fragment_downloads': 8,
-            'external_downloader': 'aria2c',
-            'external_downloader_args': [
-                '-x', '16',
-                '--max-connection-per-server=16',
-                '--min-split-size=1M',
-                '--allow-overwrite=true',
-                '--continue=true'
-            ],
+            'concurrent_fragment_downloads': 12,  # زيادة التنزيل المتوازي
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Accept-Encoding': 'gzip,deflate',
+                'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
                 'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'X-Forwarded-For': random_egyptian_ip,
-                'X-Real-IP': random_egyptian_ip,
+            },
+            # إعدادات تجاوز القيود الجغرافية
+            'geo_bypass': True,
+            'geo_bypass_country': 'EG',              # رمز مصر ISO alpha-2
+            'geo_bypass_ip_block': '41.0.0.0/8',     # مجموعة IP مصرية شائعة
+            # إعدادات إضافية لتجاوز القيود
+            'proxy': '',  # يمكن إضافة بروكسي إذا لزم الأمر
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                    'player_skip': ['configs', 'webpage'],
+                }
             },
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '96',
             }],
-            # إضافة خيارات تجاوز القيود الجغرافية
-            'geo_bypass': True,
-            'geo_bypass_country': 'EG',
-            'geo_bypass_ip_block': '41.0.0.0/8',
         }
 
         if os.path.exists('cookies.txt'):
@@ -6655,86 +6606,68 @@ async def download_and_send_audio(event):
                 if is_url:
                     info = await asyncio.to_thread(ydl.extract_info, video_url, download=False)
                 else:
-                    # تحسين البحث باستخدام ytsearch
-                    await event.edit("**╮ جـارِ البحث عن أفضل نتيجة... 🎧♥️╰**")
-                    
-                    # البحث باستخدام ytsearch مباشرة
+                    # البحث عن أول 3 نتائج لتحسين السرعة
                     search_query = f"ytsearch3:{query}"
                     info = await asyncio.to_thread(ydl.extract_info, search_query, download=False)
                     
-                    if not info or not info.get('entries') or not info['entries']:
+                    if not info or not info.get('entries'):
                         await event.edit("**⚠️ لم يتم العثور على نتائج**")
                         return
 
-                    info = info['entries'][0]
-                    # الحصول على رابط الفيديو للمعالجة الكاملة
-                    video_url = info.get('webpage_url')
-                    if not video_url:
-                        # إذا لم يكن هناك رابط، نحاول بناءه من ID
-                        video_id = info.get('id')
-                        if video_id:
-                            video_url = f"https://www.youtube.com/watch?v={video_id}"
-                        else:
-                            await event.edit("**⚠️ لا يمكن الحصول على رابط الفيديو**")
-                            return
-                    
-                    # الآن استخراج المعلومات الكاملة
-                    info = await asyncio.to_thread(ydl.extract_info, video_url, download=False)
+                    # اختيار أول نتيجة صالحة
+                    for entry in info['entries']:
+                        if entry and entry.get('id'):
+                            info = entry
+                            break
+                    else:
+                        await event.edit("**⚠️ لم يتم العثور على نتائج صالحة**")
+                        return
 
-                # التحقق من أن info ليس None
-                if not info:
-                    await event.edit("**⚠️ فشل في الحصول على معلومات الفيديو**")
-                    return
-                    
                 video_id = info.get('id')
-                if not video_id:
-                    await event.edit("**⚠️ لا يمكن الحصول على معرف الفيديو**")
-                    return
-                    
                 video_url = info.get('webpage_url') or f"https://www.youtube.com/watch?v={video_id}"
-                title = info.get('title', 'Unknown Title') or 'Unknown Title'
-                artist = info.get('uploader', 'Unknown Artist') or 'Unknown Artist'
-                duration = info.get('duration', 0) or 0
+                title = info.get('title', 'Unknown Title')
+                artist = info.get('uploader', 'Unknown Artist')
+                duration = info.get('duration', 0)
                 thumbnail = info.get('thumbnail')
 
-                await event.edit("**╮ جـارِ التحميل... 🎧♥️╰**")
+                if not video_url:
+                    await event.edit("**⚠️ لا يوجد رابط للفيديو**")
+                    return
 
-                # التحميل المتوازي بدل التحميل العادي
-                if 'url' in info:
-                    # استخدام التحميل المتوازي إذا كان الرابط المباشر متوفراً
-                    audio_path = f'downloads/{video_id}.mp3'
-                    download_url = info['url']
-                    
-                    # تحميل الملف باستخدام التحميل المتوازي
-                    await parallel_download(download_url, audio_path, headers=ydl_opts['http_headers'])
-                    
-                    # تحويل إلى MP3 إذا لزم الأمر
-                    if not audio_path.endswith('.mp3'):
-                        converted_path = f'downloads/{video_id}.mp3'
-                        await convert_to_mp3(audio_path, converted_path)
-                        audio_path = converted_path
-                else:
-                    # الرجوع إلى الطريقة العادية إذا لم يكن الرابط المباشر متوفراً
-                    await asyncio.to_thread(ydl.download, [video_url])
-                    audio_path = f'downloads/{video_id}.mp3'
-                    if not os.path.exists(audio_path):
-                        for ext in ['mp3', 'm4a', 'webm', 'opus']:
-                            possible_path = f'downloads/{video_id}.{ext}'
-                            if os.path.exists(possible_path):
-                                audio_path = possible_path
-                                break
-                        else:
-                            await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
-                            return
+                await event.edit(f"**╮ جـارِ تحميل: {title} ... 🎧♥️╰**")
 
-                # تحميل الصورة المصغرة باستخدام HTTP/2
-                thumb_path = await download_thumbnail(thumbnail, video_id)
+                # تحميل الملف
+                await asyncio.to_thread(ydl.download, [video_url])
+                
+                # تحميل الصورة المصغرة بشكل متوازي مع التحميل الرئيسي
+                thumb_task = asyncio.create_task(download_thumbnail(thumbnail, video_id))
+
+                # البحث عن الملف المحمل بصيغة MP3
+                audio_path = f'downloads/{video_id}.mp3'
+                if not os.path.exists(audio_path):
+                    # محاولة العثور على الملف بامتداد آخر
+                    for ext in ['webm', 'm4a', 'opus']:
+                        temp_path = f'downloads/{video_id}.{ext}'
+                        if os.path.exists(temp_path):
+                            # تحويل الملف إلى MP3
+                            await convert_to_mp3(temp_path, audio_path)
+                            break
+                    else:
+                        await event.edit("**⚠️ فشل في تحويل الملف إلى MP3**")
+                        return
+
+                # انتظار اكتمال تحميل الصورة المصغرة
+                thumb_path = await thumb_task
 
                 # إضافة البيانات الوصفية
                 await asyncio.to_thread(add_metadata, audio_path, title, artist, thumb_path)
 
-                # إرسال الملف باستخدام Telethon السريع
-                await event.edit("**╮ ❐ جـارِ الرفع...𓅫╰**")
+                # إرسال الملف بإعدادات Telethon السريعة
+                await event.edit("**╮ ❐ جـارِ الرفع السريع...𓅫╰**")
+                
+                # إعدادات الرفع السريع لتليثون
+                UPLOAD_PART_SIZE_KB = 4096
+                UPLOAD_WORKERS = 4
                 
                 await event.client.send_file(
                     event.chat_id,
@@ -6768,100 +6701,77 @@ async def download_and_send_audio(event):
             await cleanup_files(video_id)
 
 async def download_thumbnail(thumbnail_url, video_id):
-    """تحميل الصورة المصغرة بشكل غير متزامن باستخدام HTTP/2"""
+    """تحميل الصورة المصغرة بشكل غير متزامن"""
     if not thumbnail_url:
         return None
         
     try:
         thumb_path = f'downloads/{video_id}_thumb.jpg'
-        
-        # استخدام httpx مع HTTP/2 (الأسرع للطلبات الفردية)
-        async with httpx.AsyncClient(
-            http2=True,  # تمكين HTTP/2
-            timeout=10.0,
-            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'image/webp,image/*,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate, br',
-            }
-        ) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(thumbnail_url)
             if response.status_code == 200:
                 with open(thumb_path, 'wb') as f:
                     f.write(response.content)
                 return thumb_path
-                
-    except Exception as e:
-        # Fallback إلى aiohttp إذا فشل httpx
-        try:
-            async with aiohttp.ClientSession(
-                connector=aiohttp.TCPConnector(ssl=False, limit=20, enable_cleanup_closed=True),
-                timeout=aiohttp.ClientTimeout(total=10),
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Accept': 'image/webp,image/*,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                }
-            ) as session:
-                async with session.get(thumbnail_url) as response:
-                    if response.status == 200:
-                        with open(thumb_path, 'wb') as f:
-                            f.write(await response.read())
-                        return thumb_path
-        except Exception:
-            return None
-    
-    return None
+    except Exception:
+        return None
 
 async def convert_to_mp3(input_path, output_path):
-    """تحويل الملف إلى MP3"""
+    """تحويل الملف إلى MP3 باستخدام FFmpeg"""
     try:
-        import subprocess
         cmd = [
-            'ffmpeg', '-i', input_path,
+            'ffmpeg',
+            '-i', input_path,
             '-codec:a', 'libmp3lame',
-            '-b:a', '128k',
-            '-y', output_path
+            '-qscale:a', '2',
+            '-y',  # overwrite output file
+            output_path
         ]
-        process = await asyncio.create_subprocess_exec(*cmd)
-        await process.wait()
-        return True
-    except Exception:
-        return False
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await process.communicate()
+        
+        # حذف الملف الأصلي بعد التحويل
+        if os.path.exists(output_path):
+            os.remove(input_path)
+            
+    except Exception as e:
+        print(f"تحويل MP3 فشل: {e}")
 
 def add_metadata(audio_path, title, artist, thumb_path):
     """إضافة البيانات الوصفية والغلاف"""
     try:
-        # محاولة تحميل البيانات الوصفية الحالية أو إنشاء جديدة
-        try:
-            audio = EasyID3(audio_path)
-        except:
-            audio = EasyID3()
-        
+        audio = EasyID3(audio_path)
         audio['title'] = title
         audio['artist'] = artist
-        audio.save(audio_path)
+        audio.save()
 
         if thumb_path and os.path.exists(thumb_path):
             try:
                 audio = ID3(audio_path)
-            except:
-                audio = ID3()
-                
-            with open(thumb_path, 'rb') as f:
-                audio.add(APIC(
-                    encoding=3,
-                    mime='image/jpeg',
-                    type=3,
-                    desc='Cover',
-                    data=f.read()
-                ))
+                with open(thumb_path, 'rb') as f:
+                    audio.add(APIC(
+                        encoding=3,
+                        mime='image/jpeg',
+                        type=3,
+                        desc='Cover',
+                        data=f.read()
+                    ))
+                audio.save()
+            except Exception:
+                pass
+    except Exception:
+        # إنشاء بيانات ID3 جديدة إذا لم تكن موجودة
+        try:
+            audio = EasyID3()
+            audio['title'] = title
+            audio['artist'] = artist
             audio.save(audio_path)
-    except Exception as e:
-        print(f"Error adding metadata: {e}")
+        except Exception:
+            pass
 
 async def cleanup_files(video_id):
     """تنظيف الملفات المؤقتة بشكل غير متزامن"""
