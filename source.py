@@ -103,6 +103,14 @@ from telethon.errors import (
     RPCError
 )	
 
+from telethon import TelegramClient, events
+from telethon.tl.functions.channels import CreateChannelRequest
+from telethon.tl.types import Message
+from telethon.errors import (
+    FloodWaitError, ChannelInvalidError, ChannelPrivateError,
+    ChatAdminRequiredError, ChatIdInvalidError, ChatRestrictedError
+)
+
 # ========== Telethon - الأخطاء ==========
 from telethon.errors import (
     SessionPasswordNeededError,
@@ -1290,6 +1298,240 @@ async def manual_self_destruct_save(event):
         if os.path.exists("temp_media_file"):
             os.remove("temp_media_file")
 
+from telethon import TelegramClient, events
+from telethon.tl.functions.channels import CreateChannelRequest
+from telethon.tl.functions.messages import ExportChatInviteRequest
+from telethon.errors import FloodWaitError
+
+# متغير لتتبع إذا كانت هناك عملية جارية
+current_operation = None
+
+@client.on(events.NewMessage(pattern=r'^\.انشاء جروب (\d+)$', outgoing=True))
+async def create_multiple_groups(event):
+    """إنشاء عدة جروبات خاصة مع منع تداخل الأوامر"""
+    
+    global current_operation
+    
+    # منع تشغيل أكثر من عملية في نفس الوقت
+    if current_operation is not None:
+        await event.edit("**⏳ هناك عملية إنشاء جارية بالفعل، انتظر حتى تنتهي**")
+        return
+    
+    try:
+        current_operation = "creating_groups"
+        
+        # التحقق من أن الرسالة من مستخدم مسموح له
+        if not event.is_private and not await event.get_sender().bot:
+            # استخراج العدد من الأمر
+            try:
+                num_groups = int(event.pattern_match.group(1))
+                if num_groups <= 0:
+                    await event.edit("**⚠️ يرجى إدخال عدد صحيح أكبر من الصفر**")
+                    return
+            except ValueError:
+                await event.edit("**⚠️ يرجى إدخال عدد صحيح صحيح**")
+                return
+            
+            # التحقق من أن العدد معقول
+            if num_groups > 50:  # تخفيض الحد لزيادة الأمان
+                await event.edit("**⚠️ الحد الأقصى المسموح به هو 50 جروب في المرة الواحدة**")
+                return
+            
+            # رسالة البداية
+            message = await event.edit("**🔄 جاري إعداد المجموعات . . .**")
+            
+            created_groups = 0
+            failed_groups = 0
+            group_links = []
+            
+            # إعدادات التأخير
+            BASE_DELAY = 10  # 10 ثواني بين كل جروب
+            JITTER = 3       # ±3 ثواني عشوائية
+            
+            for i in range(num_groups):
+                try:
+                    # تحديث الرسالة مع التقدم
+                    progress_text = f"""
+**🔄 جاري إنشاء المجموعات . . .**
+
+**✅ تم إنشاء:** `{created_groups}`
+**⏳ المتبقي:** `{num_groups - created_groups - failed_groups}`
+**❌ الفاشلة:** `{failed_groups}`
+**📊 الإجمالي:** `{num_groups}`
+
+**🎯 الجاري:** إنشاء المجموعة رقم `{i + 1}`
+                    """
+                    await message.edit(progress_text)
+                    
+                    # إنشاء الجروب
+                    group_title = f"المجموعة {i + 1} - {random.randint(1000, 9999)}"
+                    group_description = f"هذه مجموعة تم إنشاؤها تلقائياً - {group_title}"
+                    
+                    # إنشاء الجروب باستخدام CreateChannelRequest
+                    result = await client(CreateChannelRequest(
+                        title=group_title,
+                        about=group_description,
+                        megagroup=True,  # جروب وليس قناة
+                        broadcast=False
+                    ))
+                    
+                    # الحصول على رابط الدعوة
+                    try:
+                        chat_id = result.chats[0].id
+                        invite_link = await client(ExportChatInviteRequest(peer=chat_id))
+                        group_link = invite_link.link
+                        group_links.append(f"• [{group_title}]({group_link})")
+                    except Exception as link_error:
+                        group_link = "❌ لم يتم إنشاء الرابط"
+                        group_links.append(f"• {group_title} - {group_link}")
+                    
+                    created_groups += 1
+                    
+                    # تحديث الرسالة بعد النجاح
+                    success_text = f"""
+**🔄 جاري إنشاء المجموعات . . .**
+
+**✅ تم إنشاء:** `{created_groups}` 🎉
+**⏳ المتبقي:** `{num_groups - created_groups - failed_groups}`
+**❌ الفاشلة:** `{failed_groups}`
+**📊 الإجمالي:** `{num_groups}`
+
+**✅ تم إنشاء المجموعة:** `{group_title}`
+**⏰ الانتظار:** `{BASE_DELAY}` ثانية للجروب التالي...
+                    """
+                    await message.edit(success_text)
+                    
+                    # تأخير ذكي بين الجروبات
+                    if i < num_groups - 1:  # لا تأخير بعد آخر جروب
+                        delay = BASE_DELAY + random.uniform(-JITTER, JITTER)
+                        await asyncio.sleep(max(7, delay))  # لا يقل عن 7 ثواني
+                    
+                except FloodWaitError as e:
+                    # التعامل مع FloodWait
+                    wait_time = e.seconds
+                    failed_groups += 1
+                    
+                    flood_text = f"""
+**⛔️ تم اكتشاف قيود FloodWait**
+
+**⏰ مدة الانتظار:** `{wait_time}` ثانية
+**📊 التقدم:** `{created_groups}/{num_groups}`
+
+**🔄 جاري الانتظار تلقائياً...**
+                    """
+                    await message.edit(flood_text)
+                    await asyncio.sleep(wait_time)
+                    
+                    # إعادة محاولة نفس الجروب
+                    continue
+                    
+                except Exception as e:
+                    # التعامل مع الأخطاء العامة
+                    failed_groups += 1
+                    error_type = type(e).__name__
+                    
+                    error_text = f"""
+**❌ حدث خطأ في إنشاء المجموعة رقم {i + 1}**
+
+**📝 نوع الخطأ:** `{error_type}`
+**💬 التفاصيل:** `{str(e)}`
+
+**🔄 جاري المحاولة للجروب التالي...**
+                    """
+                    await message.edit(error_text)
+                    await asyncio.sleep(5)  # تأخير قصير قبل المحاولة التالية
+                    continue
+            
+            # رسالة النهاية النهائية
+            if created_groups > 0:
+                # تجميع روابط المجموعات الناجحة
+                links_text = "\n".join(group_links[:10])  # عرض أول 10 فقط لتجنب الطول
+                
+                final_success_text = f"""
+**🎊 تم الانتهاء من إنشاء المجموعات بنجاح!**
+
+**✅ الناجحة:** `{created_groups}` مجموعة
+**❌ الفاشلة:** `{failed_groups}` مجموعة
+**📊 النجاح:** `{(created_groups/num_groups)*100:.1f}%`
+
+**🔗 المجموعات المنشأة:**
+{links_text}
+
+{'**📝 ملاحظة:** تم عرض أول 10 مجموعات فقط' if len(group_links) > 10 else ''}
+
+**⚡ تم الإنشاء بواسطة:** @{await client.get_me().username}
+                """
+                await message.edit(final_success_text)
+                
+            else:
+                # في حالة فشل جميع المحاولات
+                final_error_text = f"""
+**❌ فشل في إنشاء أي مجموعة!**
+
+**📊 المحاولات:** `{num_groups}` محاولة
+**✅ الناجحة:** `0` مجموعة
+**❌ الفاشلة:** `{failed_groups}` مجموعة
+
+**⚠️ الأسباب المحتملة:**
+• قيود FloodWait شديدة
+• مشكلة في اتصال الإنترنت
+• قيود على الحساب
+
+**🛠 الحلول المقترحة:**
+• الانتظار لبعض الوقت والمحاولة لاحقاً
+• التحقق من اتصال الإنترنت
+• تقليل عدد المجموعات في المرة الواحدة
+
+**📩 إذا استمرت المشكلة، أرسل هذه التفاصيل إلى المطور:**
+`عدد المجموعات: {num_groups}`
+`الأخطاء: {failed_groups}`
+`آخر خطأ: {error_type if 'error_type' in locals() else 'غير معروف'}`
+                """
+                await message.edit(final_error_text)
+        
+    except Exception as e:
+        await event.edit(f"**❌ حدث خطأ غير متوقع:** `{str(e)}`")
+    
+    finally:
+        # تحرير العملية الجارية
+        current_operation = None
+
+# أمر لإلغاء العملية الجارية
+@client.on(events.NewMessage(pattern=r'^\.الغاء$', outgoing=True))
+async def cancel_operation(event):
+    """إلغاء أي عملية جارية"""
+    global current_operation
+    
+    if current_operation is not None:
+        current_operation = None
+        await event.edit("**✅ تم إلغاء العملية الجارية**")
+    else:
+        await event.edit("**⚠️ لا توجد عمليات جارية لإلغائها**")
+
+# أمر للتحقق من الحالة
+@client.on(events.NewMessage(pattern=r'^\.حالة$', outgoing=True))
+async def check_status(event):
+    """التحقق من حالة النظام"""
+    global current_operation
+    
+    status = "🟢 **النظام:** لا توجد عمليات جارية" 
+    if current_operation is not None:
+        status = f"🟡 **النظام:** هناك عملية `{current_operation}` جارية"
+    
+    status_text = f"""
+{status}
+
+**⚙️ الإعدادات الحالية:**
+• التأخير بين الجروبات: 10 ثواني
+• الحد الأقصى: 50 جروب
+• الحماية من التداخل: 🟢 مفعلة
+
+**📋 الأوامر المتاحة:**
+`.انشاء جروب [عدد]` - إنشاء مجموعات
+`.الغاء` - إلغاء العملية
+`.حالة` - عرض هذه الرسالة
+    """
+    await event.edit(status_text)
 
 # ✅ تشغيل الحفظ التلقائي
 @client.on(events.NewMessage(pattern=r'^\.الذاتيه تشغيل$'))
@@ -6259,7 +6501,6 @@ async def update_command(event):
     # تنفيذ التحديث
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
-
 def is_youtube_url(text):
     """التعرف على روابط يوتيوب"""
     youtube_patterns = [
@@ -6269,6 +6510,42 @@ def is_youtube_url(text):
         r'youtube\.com/shorts/'
     ]
     return any(re.search(pattern, text, re.IGNORECASE) for pattern in youtube_patterns)
+
+# إعدادات التحميل المتوازي
+PARALLEL_CONNECTIONS = 10
+CHUNK_SIZE = 6 * 1024 * 1024  # 6 MB
+
+# إعدادات الرفع المحسنة
+UPLOAD_PART_SIZE_KB = 4096
+UPLOAD_WORKERS = 4
+
+async def parallel_download(url, path, headers=None):
+    """التحميل المتوازي باستخدام HTTP/2"""
+    async with httpx.AsyncClient(follow_redirects=True, timeout=None, http2=True) as client:
+        head = await client.head(url)
+        total = int(head.headers.get("content-length", 0))
+        chunk_size = total // PARALLEL_CONNECTIONS
+        with open(path, "wb") as f:
+            f.seek(total - 1)
+            f.write(b"\0")
+        tasks = []
+        for i in range(PARALLEL_CONNECTIONS):
+            start = i * chunk_size
+            end = total - 1 if i == PARALLEL_CONNECTIONS - 1 else start + chunk_size - 1
+            tasks.append(asyncio.create_task(
+                download_chunk(client, url, path, start, end, i, headers)
+            ))
+        await asyncio.gather(*tasks)
+
+async def download_chunk(client, url, path, start, end, index, headers):
+    """تحميل جزء من الملف"""
+    h = headers.copy() if headers else {}
+    h["Range"] = f"bytes={start}-{end}"
+    async with client.stream("GET", url, headers=h) as r:
+        with open(path, "r+b") as f:
+            f.seek(start)
+            async for chunk in r.aiter_bytes(chunk_size=CHUNK_SIZE):
+                f.write(chunk)
 
 @client.on(events.NewMessage(pattern=r'\.بحث (.+)'))
 async def download_and_send_audio(event):
@@ -6337,8 +6614,6 @@ async def download_and_send_audio(event):
             'geo_bypass': True,
             'geo_bypass_country': 'EG',
             'geo_bypass_ip_block': '41.0.0.0/8',
-            # إضافة البروكسي المصري
-            'proxy': 'http://82.129.237.67:1981',
         }
 
         if os.path.exists('cookies.txt'):
@@ -6355,7 +6630,7 @@ async def download_and_send_audio(event):
                     await event.edit("**╮ جـارِ البحث عن أفضل نتيجة... 🎧♥️╰**")
                     
                     # البحث باستخدام ytsearch مباشرة
-                    search_query = f"ytsearch1:{query}"
+                    search_query = f"ytsearch3:{query}"
                     info = await asyncio.to_thread(ydl.extract_info, search_query, download=False)
                     
                     if not info or not info.get('entries') or not info['entries']:
@@ -6395,29 +6670,41 @@ async def download_and_send_audio(event):
 
                 await event.edit("**╮ جـارِ التحميل... 🎧♥️╰**")
 
-                # تحميل الملف
-                await asyncio.to_thread(ydl.download, [video_url])
-                
+                # التحميل المتوازي بدل التحميل العادي
+                if 'url' in info:
+                    # استخدام التحميل المتوازي إذا كان الرابط المباشر متوفراً
+                    audio_path = f'downloads/{video_id}.mp3'
+                    download_url = info['url']
+                    
+                    # تحميل الملف باستخدام التحميل المتوازي
+                    await parallel_download(download_url, audio_path, headers=ydl_opts['http_headers'])
+                    
+                    # تحويل إلى MP3 إذا لزم الأمر
+                    if not audio_path.endswith('.mp3'):
+                        converted_path = f'downloads/{video_id}.mp3'
+                        await convert_to_mp3(audio_path, converted_path)
+                        audio_path = converted_path
+                else:
+                    # الرجوع إلى الطريقة العادية إذا لم يكن الرابط المباشر متوفراً
+                    await asyncio.to_thread(ydl.download, [video_url])
+                    audio_path = f'downloads/{video_id}.mp3'
+                    if not os.path.exists(audio_path):
+                        for ext in ['mp3', 'm4a', 'webm', 'opus']:
+                            possible_path = f'downloads/{video_id}.{ext}'
+                            if os.path.exists(possible_path):
+                                audio_path = possible_path
+                                break
+                        else:
+                            await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
+                            return
+
                 # تحميل الصورة المصغرة باستخدام HTTP/2
                 thumb_path = await download_thumbnail(thumbnail, video_id)
-
-                # البحث عن الملف المحمل بصيغة MP3
-                audio_path = f'downloads/{video_id}.mp3'
-                if not os.path.exists(audio_path):
-                    # محاولة العثور على الملف بأي صيغة صوتية
-                    for ext in ['mp3', 'm4a', 'webm', 'opus']:
-                        possible_path = f'downloads/{video_id}.{ext}'
-                        if os.path.exists(possible_path):
-                            audio_path = possible_path
-                            break
-                    else:
-                        await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
-                        return
 
                 # إضافة البيانات الوصفية
                 await asyncio.to_thread(add_metadata, audio_path, title, artist, thumb_path)
 
-                # إرسال الملف
+                # إرسال الملف باستخدام Telethon السريع
                 await event.edit("**╮ ❐ جـارِ الرفع...𓅫╰**")
                 
                 await event.client.send_file(
@@ -6434,7 +6721,8 @@ async def download_and_send_audio(event):
                         )
                     ],
                     supports_streaming=True,
-                    part_size_kb=1024,
+                    part_size_kb=UPLOAD_PART_SIZE_KB,
+                    workers=UPLOAD_WORKERS,
                 )
                 
                 await event.delete()
@@ -6498,6 +6786,22 @@ async def download_thumbnail(thumbnail_url, video_id):
             return None
     
     return None
+
+async def convert_to_mp3(input_path, output_path):
+    """تحويل الملف إلى MP3"""
+    try:
+        import subprocess
+        cmd = [
+            'ffmpeg', '-i', input_path,
+            '-codec:a', 'libmp3lame',
+            '-b:a', '128k',
+            '-y', output_path
+        ]
+        process = await asyncio.create_subprocess_exec(*cmd)
+        await process.wait()
+        return True
+    except Exception:
+        return False
 
 def add_metadata(audio_path, title, artist, thumb_path):
     """إضافة البيانات الوصفية والغلاف"""
