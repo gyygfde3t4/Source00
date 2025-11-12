@@ -6651,24 +6651,61 @@ async def download_and_send_audio(event):
 
                 await event.edit(f"**╮ جـارِ تحميل: {title} ... 🎧♥️╰**")
 
-                # الحصول على رابط التحميل المباشر
+                # الحصول على رابط التحميل المباشر - طريقة محسنة
                 audio_url = None
                 formats = info.get('formats', [])
+                
+                print(f"🔍 البحث عن رابط صوتي من بين {len(formats)} صيغة...")
+                
+                # ترتيب الأولويات للصيغ الصوتية
+                audio_formats = []
                 for f in formats:
-                    if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
-                        audio_url = f.get('url')
-                        if audio_url:
-                            break
+                    format_note = f.get('format_note', '')
+                    ext = f.get('ext', '')
+                    acodec = f.get('acodec', 'none')
+                    vcodec = f.get('vcodec', 'none')
+                    filesize = f.get('filesize', f.get('filesize_approx', 0))
+                    url = f.get('url')
+                    
+                    # فقط الصيغ التي تحتوي على صوت
+                    if acodec != 'none' and url:
+                        audio_formats.append({
+                            'format': f,
+                            'url': url,
+                            'quality_score': calculate_quality_score(format_note, ext, filesize, vcodec),
+                            'is_audio_only': vcodec == 'none'
+                        })
+                
+                # ترتيب الصيغ حسب الجودة والأفضلية للصوت فقط
+                audio_formats.sort(key=lambda x: (
+                    x['is_audio_only'],  # الصوت فقط أولاً
+                    x['quality_score'],  # ثم الجودة
+                ), reverse=True)
+                
+                if audio_formats:
+                    best_audio = audio_formats[0]
+                    audio_url = best_audio['url']
+                    selected_format = best_audio['format']
+                    print(f"✅ تم اختيار أفضل صيغة صوتية:")
+                    print(f"   📦 الصيغة: {selected_format.get('format_note', 'unknown')}")
+                    print(f"   🔗 الرابط: {audio_url[:100]}...")
+                    print(f"   🔊 نوع الصوت: {selected_format.get('acodec', 'unknown')}")
+                    print(f"   🎬 نوع الفيديو: {selected_format.get('vcodec', 'none')}")
+                    print(f"   💾 الحجم: {selected_format.get('filesize', selected_format.get('filesize_approx', 0))} bytes")
+                else:
+                    print("❌ لم يتم العثور على أي صيغة صوتية مناسبة")
+                    audio_url = None
                 
                 if audio_url:
                     # التحميل المتوازي باستخدام httpx مع تجاوز القيود
                     audio_path = f'downloads/{video_id}.mp3'
+                    print("🚀 بدء التحميل المتوازي...")
                     try:
                         await parallel_download(audio_url, audio_path, event, title, ydl_opts)
                         print(f"✅ تم التحميل المتوازي بنجاح: {audio_path}")
                     except Exception as e:
                         print(f"❌ فشل التحميل المتوازي: {str(e)}")
-                        await event.edit(f"**⚠️ فشل التحميل المتوازي: {str(e)[:200]} - جاري استخدام الطريقة العادية**")
+                        await event.edit(f"**⚠️ فشل التحميل المتوازي - جاري استخدام الطريقة العادية**")
                         # استخدام الطريقة العادية إذا فشل التحميل المتوازي
                         await asyncio.to_thread(ydl.download, [video_url])
                         audio_path = f'downloads/{video_id}.mp3'
@@ -6682,6 +6719,7 @@ async def download_and_send_audio(event):
                                 await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
                                 return
                 else:
+                    print("🔧 استخدام الطريقة العادية (لم يتم العثور على رابط صوتي مباشر)")
                     # استخدام الطريقة العادية إذا لم يوجد رابط مباشر
                     await asyncio.to_thread(ydl.download, [video_url])
                     audio_path = f'downloads/{video_id}.mp3'
@@ -6742,20 +6780,56 @@ async def download_and_send_audio(event):
         if 'video_id' in locals():
             await cleanup_files(video_id)
 
+def calculate_quality_score(format_note, ext, filesize, vcodec):
+    """حساب درجة الجودة للصيغ الصوتية"""
+    score = 0
+    
+    # تفضيل الصيغ عالية الجودة
+    if 'tiny' in format_note.lower(): score += 10
+    if 'verylow' in format_note.lower(): score += 20
+    if 'low' in format_note.lower(): score += 30
+    if 'medium' in format_note.lower(): score += 40
+    if 'high' in format_note.lower(): score += 50
+    if 'veryhigh' in format_note.lower(): score += 60
+    if 'hd' in format_note.lower(): score += 70
+    if 'fhd' in format_note.lower(): score += 80
+    
+    # تفضيل الامتدادات الصوتية الجيدة
+    if ext in ['m4a', 'mp4']: score += 30
+    if ext in ['webm', 'opus']: score += 20
+    if ext == 'mp3': score += 10
+    
+    # تفضيل الملفات الأكبر (جودة أعلى)
+    if filesize and filesize > 0:
+        size_mb = filesize / (1024 * 1024)
+        if size_mb > 10: score += 40
+        elif size_mb > 5: score += 30
+        elif size_mb > 2: score += 20
+        elif size_mb > 1: score += 10
+    
+    # تفضيل الصوت فقط (بدون فيديو)
+    if vcodec == 'none': score += 100
+    
+    return score
+
 async def parallel_download(url, file_path, event, title, ydl_opts=None):
     """التحميل المتوازي باستخدام httpx مع تجاوز القيود"""
     PARALLEL_CONNECTIONS = 10
     CHUNK_SIZE = 6 * 1024 * 1024  # 6MB
     
+    print("🚀 ===== بدء التحميل المتوازي =====")
+    print(f"🎯 الهدف: {title}")
+    print(f"🔗 الرابط: {url[:150]}...")
+    print(f"💾 سيتم الحفظ في: {file_path}")
+    
     try:
         # تحضير الهيدرات من إعدادات yt-dlp
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept': '*/*',
             'Accept-Language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7',
-            'Accept-Encoding': 'gzip, deflate',
+            'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
             'Referer': 'https://www.youtube.com/',
             'Origin': 'https://www.youtube.com',
             'Sec-Fetch-Dest': 'audio',
@@ -6771,33 +6845,22 @@ async def parallel_download(url, file_path, event, title, ydl_opts=None):
         cookies = None
         if ydl_opts and ydl_opts.get('cookiefile') and os.path.exists(ydl_opts['cookiefile']):
             try:
-                # تحميل الكوكيز من ملف yt-dlp
-                import http.cookies
                 cookies = {}
                 with open(ydl_opts['cookiefile'], 'r') as f:
                     for line in f:
-                        if line.strip() and not line.startswith('#'):
-                            try:
-                                if '\t' in line:
-                                    # تنسيق Netscape cookie
-                                    parts = line.strip().split('\t')
-                                    if len(parts) >= 7:
-                                        domain, include_subdomains, path, secure, expiry, name, value = parts[:7]
-                                        cookies[name] = value
-                                elif '=' in line:
-                                    # تنسيق بسيط name=value
-                                    name, value = line.strip().split('=', 1)
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            if '\t' in line:
+                                parts = line.split('\t')
+                                if len(parts) >= 7:
+                                    name, value = parts[5], parts[6]
                                     cookies[name] = value
-                            except Exception as e:
-                                print(f"⚠️ خطأ في تحميل الكوكي: {e}")
-                                continue
+                            elif '=' in line:
+                                name, value = line.split('=', 1)
+                                cookies[name] = value
+                print(f"🍪 تم تحميل {len(cookies)} كوكيز")
             except Exception as e:
                 print(f"⚠️ فشل تحميل الكوكيز: {e}")
-
-        print(f"🔗 بدء التحميل المتوازي من: {url[:100]}...")
-        print(f"📁 سيتم الحفظ في: {file_path}")
-        if cookies:
-            print(f"🍪 تم تحميل {len(cookies)} كوكيز")
 
         async with httpx.AsyncClient(
             timeout=60.0,
@@ -6815,26 +6878,27 @@ async def parallel_download(url, file_path, event, title, ydl_opts=None):
                 print(f"📊 حجم الملف: {total_size} bytes")
                 
                 if total_size == 0:
-                    # محاولة باستخدام GET إذا فشل HEAD
-                    print("⚠️ HEAD فشل، جاري المحاولة بـ GET...")
+                    print("⚠️ HEAD لم يعط حجمًا، جاري المحاولة بـ GET...")
                     async with client.stream('GET', url) as test_response:
                         total_size = int(test_response.headers.get('content-length', 0))
                         print(f"📊 حجم الملف (بعد GET): {total_size} bytes")
                         
                 if total_size == 0:
-                    raise Exception(f"تعذر تحديد حجم الملف - كود الحالة: {head_response.status_code}")
+                    # إذا لم نستطع الحصول على الحجم، نتابع بدون تحديث التقدم
+                    print("⚠️ تعذر تحديد حجم الملف، جاري التحميل بدون شريط التقدم...")
+                    total_size = None
                     
             except Exception as e:
-                print(f"❌ فشل في الحصول على معلومات الملف: {e}")
-                raise Exception(f"فشل في الحصول على معلومات الملف: {str(e)}")
+                print(f"⚠️ فشل في الحصول على معلومات الملف: {e}")
+                total_size = None
             
             # التحميل المتوازي
             downloaded = 0
-            print("⬇️ بدء التحميل...")
+            print("⬇️ بدء التحميل الفعلي...")
             with open(file_path, 'wb') as file:
                 async with client.stream('GET', url) as response:
-                    response.raise_for_status()
                     print(f"✅ اتصال ناجح - كود الحالة: {response.status_code}")
+                    response.raise_for_status()
                     
                     async for chunk in response.aiter_bytes(CHUNK_SIZE):
                         if not chunk:
@@ -6843,25 +6907,30 @@ async def parallel_download(url, file_path, event, title, ydl_opts=None):
                         file.write(chunk)
                         downloaded += len(chunk)
                         
-                        # تحديث التقدم
-                        if total_size > 0:
+                        # تحديث التقدم إذا عرفنا الحجم الكلي
+                        if total_size and total_size > 0:
                             progress = (downloaded / total_size) * 100
                             if int(progress) % 10 == 0:  # تحديث كل 10%
                                 print(f"📈 التقدم: {progress:.1f}% ({downloaded}/{total_size})")
                                 await event.edit(f"**╮ جـارِ التحميل: {title} - {progress:.1f}% ... 🎧♥️╰**")
+                        else:
+                            # إذا لم نعرف الحجم، نعرض حجم التحميل فقط
+                            if downloaded % (10 * 1024 * 1024) == 0:  # كل 10MB
+                                print(f"📥 تم تحميل: {downloaded / (1024 * 1024):.1f} MB")
+                                await event.edit(f"**╮ جـارِ التحميل: {title} - {downloaded / (1024 * 1024):.1f} MB ... 🎧♥️╰**")
             
             # التحقق من اكتمال التحميل
             final_size = os.path.getsize(file_path)
             print(f"✅ التحميل مكتمل - الحجم النهائي: {final_size} bytes")
             
-            if total_size > 0 and final_size != total_size:
+            if total_size and total_size > 0 and final_size != total_size:
                 raise Exception(f"التحميل غير مكتمل: {final_size} من {total_size} bytes")
                 
             print("🎉 التحميل المتوازي تم بنجاح!")
                 
     except httpx.HTTPStatusError as e:
-        error_msg = f"خطأ HTTP {e.response.status_code}: {e.response.text[:200]}"
-        print(f"❌ HTTP Error: {error_msg}")
+        error_msg = f"خطأ HTTP {e.response.status_code}"
+        print(f"❌ HTTP Error {e.response.status_code}: {e.response.text[:200]}")
         raise Exception(error_msg)
     except httpx.RequestError as e:
         error_msg = f"خطأ في الاتصال: {str(e)}"
@@ -6870,6 +6939,7 @@ async def parallel_download(url, file_path, event, title, ydl_opts=None):
     except Exception as e:
         error_msg = f"خطأ غير متوقع: {str(e)}"
         print(f"❌ Unexpected Error: {error_msg}")
+        print(f"🔍 تفاصيل الخطأ: {type(e).__name__}")
         raise e
 
 async def download_thumbnail(thumbnail_url, video_id):
