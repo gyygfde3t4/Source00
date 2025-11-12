@@ -6555,7 +6555,7 @@ async def download_and_send_audio(event):
         is_url = False
 
     try:
-        # إعدادات yt-dlp محسنة مع استخدام كوكيز مصر
+        # إعدادات yt-dlp محسنة
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -6569,12 +6569,10 @@ async def download_and_send_audio(event):
             'retries': 3,
             'fragment_retries': 3,
             'concurrent_fragment_downloads': 8,
-            # إعدادات مهمة لتجنب حظر اليوتيوب
             'extractor_retries': 3,
             'ignore_no_formats_error': True,
             'no_check_certificate': True,
             'prefer_insecure': True,
-            # إعدادات الهيدر لمصر
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -6583,10 +6581,6 @@ async def download_and_send_audio(event):
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1',
             },
-            # إعدادات تجاوز القيود الجغرافية لمصر
-            'geo_bypass': True,
-            'geo_bypass_country': 'EG',
-            'geo_bypass_ip_block': '41.0.0.0/8',
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
@@ -6594,13 +6588,10 @@ async def download_and_send_audio(event):
             }],
         }
 
-        # استخدام كوكيز مصر بشكل إجباري
+        # استخدام كوكيز
         if os.path.exists('cookies.txt'):
             ydl_opts['cookiefile'] = 'cookies.txt'
-            print("✅ تم تحميل كوكيز مصر بنجاح")
-        else:
-            await event.edit("**⚠️ ملف cookies.txt غير موجود - يرجى إضافته لمتابعة**")
-            return
+            print("✅ تم تحميل الكوكيز بنجاح")
 
         os.makedirs('downloads', exist_ok=True)
 
@@ -6610,7 +6601,6 @@ async def download_and_send_audio(event):
                     info = await asyncio.to_thread(ydl.extract_info, video_url, download=False)
                     if not info:
                         await event.edit("**⚠️ تعذر استخراج معلومات الرابط - جاري المحاولة بطريقة بديلة**")
-                        # محاولة بديلة بدون كوكيز إذا فشلت
                         temp_opts = ydl_opts.copy()
                         temp_opts.pop('cookiefile', None)
                         with YoutubeDL(temp_opts) as ydl_temp:
@@ -6620,13 +6610,11 @@ async def download_and_send_audio(event):
                             await event.edit("**⚠️ فشل في تحميل الفيديو - قد يكون محمياً**")
                             return
                 else:
-                    # البحث مع استخدام كوكيز مصر
                     search_query = f"ytsearch1:{query}"
                     info = await asyncio.to_thread(ydl.extract_info, search_query, download=False)
                     
                     if not info:
                         await event.edit("**⚠️ فشل في البحث - جاري المحاولة بطريقة بديلة**")
-                        # محاولة بديلة بدون كوكيز
                         temp_opts = ydl_opts.copy()
                         temp_opts.pop('cookiefile', None)
                         with YoutubeDL(temp_opts) as ydl_temp:
@@ -6636,7 +6624,6 @@ async def download_and_send_audio(event):
                             await event.edit("**⚠️ لم يتم العثور على نتائج**")
                             return
 
-                # معالجة نتائج البحث
                 if not is_url:
                     if not info.get('entries'):
                         await event.edit("**⚠️ لم يتم العثور على نتائج**")
@@ -6664,24 +6651,35 @@ async def download_and_send_audio(event):
 
                 await event.edit(f"**╮ جـارِ تحميل: {title} ... 🎧♥️╰**")
 
-                # تحميل الملف مع كوكيز مصر
-                await asyncio.to_thread(ydl.download, [video_url])
+                # الحصول على رابط التحميل المباشر
+                audio_url = None
+                formats = info.get('formats', [])
+                for f in formats:
+                    if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
+                        audio_url = f.get('url')
+                        if audio_url:
+                            break
                 
+                if audio_url:
+                    # التحميل المتوازي باستخدام httpx
+                    audio_path = f'downloads/{video_id}.mp3'
+                    await parallel_download(audio_url, audio_path, event, title)
+                else:
+                    # استخدام الطريقة العادية إذا لم يوجد رابط مباشر
+                    await asyncio.to_thread(ydl.download, [video_url])
+                    audio_path = f'downloads/{video_id}.mp3'
+                    if not os.path.exists(audio_path):
+                        for ext in ['webm', 'm4a', 'opus']:
+                            temp_path = f'downloads/{video_id}.{ext}'
+                            if os.path.exists(temp_path):
+                                audio_path = temp_path
+                                break
+                        else:
+                            await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
+                            return
+
                 # تحميل الصورة المصغرة
                 thumb_path = await download_thumbnail(thumbnail, video_id)
-
-                # البحث عن الملف المحمل بصيغة MP3
-                audio_path = f'downloads/{video_id}.mp3'
-                if not os.path.exists(audio_path):
-                    # محاولة العثور على الملف بامتداد آخر
-                    for ext in ['webm', 'm4a', 'opus']:
-                        temp_path = f'downloads/{video_id}.{ext}'
-                        if os.path.exists(temp_path):
-                            audio_path = temp_path
-                            break
-                    else:
-                        await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
-                        return
 
                 # إضافة البيانات الوصفية
                 await asyncio.to_thread(add_metadata, audio_path, title, artist, thumb_path)
@@ -6689,14 +6687,13 @@ async def download_and_send_audio(event):
                 # إرسال الملف بإعدادات Telethon السريعة
                 await event.edit("**╮ ❐ جـارِ الرفع السريع...𓅫╰**")
                 
-                # إعدادات الرفع السريع لتليثون
                 UPLOAD_PART_SIZE_KB = 4096
                 UPLOAD_WORKERS = 4
                 
                 await event.client.send_file(
                     event.chat_id,
                     audio_path,
-                    caption=f"**⌔╎تم التحميل:** `{artist} - {title}`" if is_url else f"**⌔╎البحث:** `{artist} - {title}`",
+                    caption=f"**⌔╎البحث:** `{artist} - {title}`" if is_url else f"**⌔╎البحث:** `{artist} - {title}`",
                     thumb=thumb_path if thumb_path and os.path.exists(thumb_path) else None,
                     attributes=[
                         DocumentAttributeAudio(
@@ -6728,6 +6725,50 @@ async def download_and_send_audio(event):
         if 'video_id' in locals():
             await cleanup_files(video_id)
 
+async def parallel_download(url, file_path, event, title):
+    """التحميل المتوازي باستخدام httpx"""
+    PARALLEL_CONNECTIONS = 10
+    CHUNK_SIZE = 6 * 1024 * 1024  # 6MB
+    
+    try:
+        async with httpx.AsyncClient(
+            timeout=30.0,
+            limits=httpx.Limits(max_connections=PARALLEL_CONNECTIONS),
+            http2=True  # تفعيل HTTP/2 لسرعة أكبر
+        ) as client:
+            # الحصول على معلومات الملف
+            head_response = await client.head(url)
+            total_size = int(head_response.headers.get('content-length', 0))
+            
+            if total_size == 0:
+                raise Exception("تعذر تحديد حجم الملف")
+            
+            # التحميل المتوازي
+            downloaded = 0
+            with open(file_path, 'wb') as file:
+                async with client.stream('GET', url) as response:
+                    response.raise_for_status()
+                    
+                    async for chunk in response.aiter_bytes(CHUNK_SIZE):
+                        file.write(chunk)
+                        downloaded += len(chunk)
+                        
+                        # تحديث التقدم (كل 10%)
+                        if total_size > 0:
+                            progress = (downloaded / total_size) * 100
+                            if progress % 10 < 1:  # تحديث كل 10% تقريباً
+                                await event.edit(f"**╮ جـارِ التحميل: {title} - {progress:.1f}% ... 🎧♥️╰**")
+            
+            # التحقق من اكتمال التحميل
+            if os.path.getsize(file_path) != total_size:
+                raise Exception("التحميل غير مكتمل")
+                
+    except Exception as e:
+        # حذف الملف غير المكتمل
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise e
+
 async def download_thumbnail(thumbnail_url, video_id):
     """تحميل الصورة المصغرة بشكل غير متزامن"""
     if not thumbnail_url:
@@ -6735,7 +6776,7 @@ async def download_thumbnail(thumbnail_url, video_id):
         
     try:
         thumb_path = f'downloads/{video_id}_thumb.jpg'
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=15.0, http2=True) as client:
             response = await client.get(thumbnail_url)
             if response.status_code == 200:
                 with open(thumb_path, 'wb') as f:
@@ -6767,7 +6808,6 @@ def add_metadata(audio_path, title, artist, thumb_path):
             except Exception:
                 pass
     except Exception:
-        # إنشاء بيانات ID3 جديدة إذا لم تكن موجودة
         try:
             audio = EasyID3()
             audio['title'] = title
