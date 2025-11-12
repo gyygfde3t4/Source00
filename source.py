@@ -6661,9 +6661,26 @@ async def download_and_send_audio(event):
                             break
                 
                 if audio_url:
-                    # التحميل المتوازي باستخدام httpx
+                    # التحميل المتوازي باستخدام httpx مع تجاوز القيود
                     audio_path = f'downloads/{video_id}.mp3'
-                    await parallel_download(audio_url, audio_path, event, title)
+                    try:
+                        await parallel_download(audio_url, audio_path, event, title, ydl_opts)
+                        print(f"✅ تم التحميل المتوازي بنجاح: {audio_path}")
+                    except Exception as e:
+                        print(f"❌ فشل التحميل المتوازي: {str(e)}")
+                        await event.edit(f"**⚠️ فشل التحميل المتوازي: {str(e)[:200]} - جاري استخدام الطريقة العادية**")
+                        # استخدام الطريقة العادية إذا فشل التحميل المتوازي
+                        await asyncio.to_thread(ydl.download, [video_url])
+                        audio_path = f'downloads/{video_id}.mp3'
+                        if not os.path.exists(audio_path):
+                            for ext in ['webm', 'm4a', 'opus']:
+                                temp_path = f'downloads/{video_id}.{ext}'
+                                if os.path.exists(temp_path):
+                                    audio_path = temp_path
+                                    break
+                            else:
+                                await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
+                                return
                 else:
                     # استخدام الطريقة العادية إذا لم يوجد رابط مباشر
                     await asyncio.to_thread(ydl.download, [video_url])
@@ -6693,7 +6710,7 @@ async def download_and_send_audio(event):
                 await event.client.send_file(
                     event.chat_id,
                     audio_path,
-                    caption=f"**⌔╎البحث:** `{artist} - {title}`" if is_url else f"**⌔╎البحث:** `{artist} - {title}`",
+                    caption=f"**⌔╎البحث:** `{artist} - {title}`",
                     thumb=thumb_path if thumb_path and os.path.exists(thumb_path) else None,
                     attributes=[
                         DocumentAttributeAudio(
@@ -6725,48 +6742,134 @@ async def download_and_send_audio(event):
         if 'video_id' in locals():
             await cleanup_files(video_id)
 
-async def parallel_download(url, file_path, event, title):
-    """التحميل المتوازي باستخدام httpx"""
+async def parallel_download(url, file_path, event, title, ydl_opts=None):
+    """التحميل المتوازي باستخدام httpx مع تجاوز القيود"""
     PARALLEL_CONNECTIONS = 10
     CHUNK_SIZE = 6 * 1024 * 1024  # 6MB
     
     try:
+        # تحضير الهيدرات من إعدادات yt-dlp
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Referer': 'https://www.youtube.com/',
+            'Origin': 'https://www.youtube.com',
+            'Sec-Fetch-Dest': 'audio',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-site',
+        }
+        
+        # إضافة الهيدرات من yt-dlp إذا كانت متوفرة
+        if ydl_opts and 'http_headers' in ydl_opts:
+            headers.update(ydl_opts['http_headers'])
+        
+        # تحضير الكوكيز
+        cookies = None
+        if ydl_opts and ydl_opts.get('cookiefile') and os.path.exists(ydl_opts['cookiefile']):
+            try:
+                # تحميل الكوكيز من ملف yt-dlp
+                import http.cookies
+                cookies = {}
+                with open(ydl_opts['cookiefile'], 'r') as f:
+                    for line in f:
+                        if line.strip() and not line.startswith('#'):
+                            try:
+                                if '\t' in line:
+                                    # تنسيق Netscape cookie
+                                    parts = line.strip().split('\t')
+                                    if len(parts) >= 7:
+                                        domain, include_subdomains, path, secure, expiry, name, value = parts[:7]
+                                        cookies[name] = value
+                                elif '=' in line:
+                                    # تنسيق بسيط name=value
+                                    name, value = line.strip().split('=', 1)
+                                    cookies[name] = value
+                            except Exception as e:
+                                print(f"⚠️ خطأ في تحميل الكوكي: {e}")
+                                continue
+            except Exception as e:
+                print(f"⚠️ فشل تحميل الكوكيز: {e}")
+
+        print(f"🔗 بدء التحميل المتوازي من: {url[:100]}...")
+        print(f"📁 سيتم الحفظ في: {file_path}")
+        if cookies:
+            print(f"🍪 تم تحميل {len(cookies)} كوكيز")
+
         async with httpx.AsyncClient(
-            timeout=30.0,
+            timeout=60.0,
             limits=httpx.Limits(max_connections=PARALLEL_CONNECTIONS),
-            http2=True  # تفعيل HTTP/2 لسرعة أكبر
+            http2=True,
+            headers=headers,
+            cookies=cookies,
+            follow_redirects=True
         ) as client:
             # الحصول على معلومات الملف
-            head_response = await client.head(url)
-            total_size = int(head_response.headers.get('content-length', 0))
-            
-            if total_size == 0:
-                raise Exception("تعذر تحديد حجم الملف")
+            try:
+                print("🔍 جاري الحصول على معلومات الملف...")
+                head_response = await client.head(url)
+                total_size = int(head_response.headers.get('content-length', 0))
+                print(f"📊 حجم الملف: {total_size} bytes")
+                
+                if total_size == 0:
+                    # محاولة باستخدام GET إذا فشل HEAD
+                    print("⚠️ HEAD فشل، جاري المحاولة بـ GET...")
+                    async with client.stream('GET', url) as test_response:
+                        total_size = int(test_response.headers.get('content-length', 0))
+                        print(f"📊 حجم الملف (بعد GET): {total_size} bytes")
+                        
+                if total_size == 0:
+                    raise Exception(f"تعذر تحديد حجم الملف - كود الحالة: {head_response.status_code}")
+                    
+            except Exception as e:
+                print(f"❌ فشل في الحصول على معلومات الملف: {e}")
+                raise Exception(f"فشل في الحصول على معلومات الملف: {str(e)}")
             
             # التحميل المتوازي
             downloaded = 0
+            print("⬇️ بدء التحميل...")
             with open(file_path, 'wb') as file:
                 async with client.stream('GET', url) as response:
                     response.raise_for_status()
+                    print(f"✅ اتصال ناجح - كود الحالة: {response.status_code}")
                     
                     async for chunk in response.aiter_bytes(CHUNK_SIZE):
+                        if not chunk:
+                            continue
+                            
                         file.write(chunk)
                         downloaded += len(chunk)
                         
-                        # تحديث التقدم (كل 10%)
+                        # تحديث التقدم
                         if total_size > 0:
                             progress = (downloaded / total_size) * 100
-                            if progress % 10 < 1:  # تحديث كل 10% تقريباً
+                            if int(progress) % 10 == 0:  # تحديث كل 10%
+                                print(f"📈 التقدم: {progress:.1f}% ({downloaded}/{total_size})")
                                 await event.edit(f"**╮ جـارِ التحميل: {title} - {progress:.1f}% ... 🎧♥️╰**")
             
             # التحقق من اكتمال التحميل
-            if os.path.getsize(file_path) != total_size:
-                raise Exception("التحميل غير مكتمل")
+            final_size = os.path.getsize(file_path)
+            print(f"✅ التحميل مكتمل - الحجم النهائي: {final_size} bytes")
+            
+            if total_size > 0 and final_size != total_size:
+                raise Exception(f"التحميل غير مكتمل: {final_size} من {total_size} bytes")
                 
+            print("🎉 التحميل المتوازي تم بنجاح!")
+                
+    except httpx.HTTPStatusError as e:
+        error_msg = f"خطأ HTTP {e.response.status_code}: {e.response.text[:200]}"
+        print(f"❌ HTTP Error: {error_msg}")
+        raise Exception(error_msg)
+    except httpx.RequestError as e:
+        error_msg = f"خطأ في الاتصال: {str(e)}"
+        print(f"❌ Request Error: {error_msg}")
+        raise Exception(error_msg)
     except Exception as e:
-        # حذف الملف غير المكتمل
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        error_msg = f"خطأ غير متوقع: {str(e)}"
+        print(f"❌ Unexpected Error: {error_msg}")
         raise e
 
 async def download_thumbnail(thumbnail_url, video_id):
@@ -6782,7 +6885,8 @@ async def download_thumbnail(thumbnail_url, video_id):
                 with open(thumb_path, 'wb') as f:
                     f.write(response.content)
                 return thumb_path
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ فشل تحميل الصورة المصغرة: {e}")
         return None
 
 def add_metadata(audio_path, title, artist, thumb_path):
@@ -6822,9 +6926,9 @@ async def cleanup_files(video_id):
         for file_path in glob.glob(pattern):
             try:
                 os.remove(file_path)
-            except:
-                pass
-
+                print(f"🧹 تم تنظيف: {file_path}")
+            except Exception as e:
+                print(f"⚠️ فشل تنظيف {file_path}: {e}")
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
