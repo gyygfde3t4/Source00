@@ -1298,9 +1298,7 @@ async def manual_self_destruct_save(event):
         if os.path.exists("temp_media_file"):
             os.remove("temp_media_file")
 
-
-
-@client.on(events.NewMessage(pattern=r'^\.انشاء جروب (\d+)$'))
+@client.on(events.NewMessage(pattern=r'^[\.\!]?\s*انشاء جروب\s*(\d+)\s*$'))
 async def create_multiple_groups(event):
     """إنشاء عدة جروبات خاصة مع إدارة الأخطاء والتأخيرات"""
     
@@ -1517,6 +1515,7 @@ async def check_groups_status(event):
 • 20+ جروبات (عالية المخاطرة)
     """
     await event.edit(status_text)
+    
 # ✅ تشغيل الحفظ التلقائي
 @client.on(events.NewMessage(pattern=r'^\.الذاتيه تشغيل$'))
 async def enable_auto_saving(event):
