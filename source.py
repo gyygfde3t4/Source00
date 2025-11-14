@@ -6532,6 +6532,12 @@ async def update_command(event):
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
 
+import os
+import re
+import asyncio
+import glob
+from yt_dlp import YoutubeDL
+from telethon.tl.types import DocumentAttributeAudio
 
 def is_youtube_url(text):
     """التعرف على روابط يوتيوب"""
@@ -6543,37 +6549,76 @@ def is_youtube_url(text):
     ]
     return any(re.search(pattern, text, re.IGNORECASE) for pattern in youtube_patterns)
 
-# دالة شريط التقدم المخصصة لـ aria2c
+# دالة شريط التقدم المخصصة
 class ProgressTracker:
     def __init__(self, event, title):
         self.event = event
         self.title = title
         self.last_update = 0
+        self.last_downloaded = 0
         
     async def update_progress(self, d):
         if d['status'] == 'downloading':
             current_time = asyncio.get_event_loop().time()
-            # تحديث كل 2 ثانية فقط لتجنب spam
-            if current_time - self.last_update < 2:
+            
+            # تحديث كل 3 ثوان فقط لتجنب spam
+            if current_time - self.last_update < 3:
                 return
                 
             self.last_update = current_time
             
-            percent = d.get('_percent_str', '0%').strip()
-            speed = d.get('_speed_str', 'N/A').strip()
-            total_size = d.get('_total_bytes_str', 'N/A').strip()
-            downloaded = d.get('_downloaded_bytes_str', 'N/A').strip()
-            eta = d.get('_eta_str', 'N/A').strip()
+            # الحصول على معلومات التقدم
+            total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+            downloaded_bytes = d.get('downloaded_bytes', 0)
+            speed = d.get('speed', 0)
             
-            progress_info = f"**╮ جـارِ تحميل:** `{self.title}`\n"
-            progress_info += f"**↳ التقدم:** {percent} | {speed}\n"
-            progress_info += f"**↳ الحجم:** {downloaded} / {total_size}\n"
-            progress_info += f"**↳ الوقت المتبقي:** {eta} 🎧♥️╰"
-            
-            try:
-                await self.event.edit(progress_info)
-            except:
-                pass
+            # حساب النسبة المئوية
+            if total_bytes and total_bytes > 0:
+                percent = (downloaded_bytes / total_bytes) * 100
+                percent_str = f"{percent:.1f}%"
+                
+                # حساب السرعة
+                if speed:
+                    if speed > 1024 * 1024:
+                        speed_str = f"{speed / (1024 * 1024):.1f} MB/s"
+                    elif speed > 1024:
+                        speed_str = f"{speed / 1024:.1f} KB/s"
+                    else:
+                        speed_str = f"{speed:.0f} B/s"
+                else:
+                    speed_str = "N/A"
+                
+                # حساب الحجم
+                if total_bytes > 1024 * 1024:
+                    total_str = f"{total_bytes / (1024 * 1024):.1f} MB"
+                elif total_bytes > 1024:
+                    total_str = f"{total_bytes / 1024:.1f} KB"
+                else:
+                    total_str = f"{total_bytes:.0f} B"
+                    
+                if downloaded_bytes > 1024 * 1024:
+                    downloaded_str = f"{downloaded_bytes / (1024 * 1024):.1f} MB"
+                elif downloaded_bytes > 1024:
+                    downloaded_str = f"{downloaded_bytes / 1024:.1f} KB"
+                else:
+                    downloaded_str = f"{downloaded_bytes:.0f} B"
+                
+                # حساب الوقت المتبقي
+                if speed and speed > 0:
+                    eta_seconds = (total_bytes - downloaded_bytes) / speed
+                    eta_str = f"{int(eta_seconds // 60)}:{int(eta_seconds % 60):02d}"
+                else:
+                    eta_str = "N/A"
+                
+                progress_info = f"**╮ جـارِ تحميل:** `{self.title}`\n"
+                progress_info += f"**↳ التقدم:** {percent_str} | {speed_str}\n"
+                progress_info += f"**↳ الحجم:** {downloaded_str} / {total_str}\n"
+                progress_info += f"**↳ الوقت المتبقي:** {eta_str} 🎧♥️╰"
+                
+                try:
+                    await self.event.edit(progress_info)
+                except:
+                    pass
 
 @client.on(events.NewMessage(pattern=r'\.بحث (.+)'))
 async def download_and_send_audio(event):
@@ -6588,39 +6633,23 @@ async def download_and_send_audio(event):
         video_url = None
         is_url = False
 
-    progress_tracker = None
-
     try:
-        # إعدادات yt-dlp مع aria2c وكولباك التقدم
+        # إعدادات yt-dlp بدون aria2c لتفادي مشاكل التقدم
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
-            'quiet': True,
-            'no_warnings': True,
+            'quiet': False,  # تغيير إلى False لرؤية output
+            'no_warnings': False,
             'ignoreerrors': True,
             'extract_flat': False,
             'skip_download': False,
             'noplaylist': True,
-            'socket_timeout': 20,
-            'retries': 3,
-            'fragment_retries': 3,
+            'socket_timeout': 30,
+            'retries': 10,
+            'fragment_retries': 10,
             'extractor_retries': 3,
             'ignore_no_formats_error': True,
             'no_check_certificate': True,
-            'prefer_insecure': True,
-            
-            # إعدادات aria2c للتحميل المتوازي (الأسرع)
-            'external_downloader': 'aria2c',
-            'external_downloader_args': [
-                '-x', '8',  # 8 اتصالات متوازية (أقل لتجنب الحظر)
-                '-k', '2M',  # حجم القطعة 2 ميجابايت
-                '--file-allocation=none',
-                '--summary-interval=1',  # تحديث الملخص كل ثانية
-                '--max-tries=3',
-                '--retry-wait=2',
-                '--timeout=30',
-                '--connect-timeout=30'
-            ],
             
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -6628,12 +6657,11 @@ async def download_and_send_audio(event):
                 'Accept-Language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7',
                 'Accept-Encoding': 'gzip, deflate',
                 'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
             },
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
-                'preferredquality': '96',
+                'preferredquality': '128',
             }],
         }
 
@@ -6648,36 +6676,13 @@ async def download_and_send_audio(event):
                 if is_url:
                     info = await asyncio.to_thread(ydl.extract_info, video_url, download=False)
                     if not info:
-                        await event.edit("**⚠️ تعذر استخراج معلومات الرابط - جاري المحاولة بطريقة بديلة**")
-                        temp_opts = ydl_opts.copy()
-                        temp_opts.pop('cookiefile', None)
-                        temp_opts.pop('external_downloader', None)
-                        temp_opts.pop('external_downloader_args', None)
-                        with YoutubeDL(temp_opts) as ydl_temp:
-                            info = await asyncio.to_thread(ydl_temp.extract_info, video_url, download=False)
-                        
-                        if not info:
-                            await event.edit("**⚠️ فشل في تحميل الفيديو**")
-                            return
+                        await event.edit("**⚠️ تعذر استخراج معلومات الرابط**")
+                        return
                 else:
                     search_query = f"ytsearch1:{query}"
                     info = await asyncio.to_thread(ydl.extract_info, search_query, download=False)
                     
-                    if not info:
-                        await event.edit("**⚠️ فشل في البحث - جاري المحاولة بطريقة بديلة**")
-                        temp_opts = ydl_opts.copy()
-                        temp_opts.pop('cookiefile', None)
-                        temp_opts.pop('external_downloader', None)
-                        temp_opts.pop('external_downloader_args', None)
-                        with YoutubeDL(temp_opts) as ydl_temp:
-                            info = await asyncio.to_thread(ydl_temp.extract_info, search_query, download=False)
-                        
-                        if not info:
-                            await event.edit("**⚠️ لم يتم العثور على نتائج**")
-                            return
-
-                if not is_url:
-                    if not info.get('entries'):
+                    if not info or not info.get('entries'):
                         await event.edit("**⚠️ لم يتم العثور على نتائج**")
                         return
                     
@@ -6703,23 +6708,22 @@ async def download_and_send_audio(event):
 
                 # إعداد تتبع التقدم
                 progress_tracker = ProgressTracker(event, title)
-                
-                # إضافة progress hook للتحميل (سيعمل للتحميل الداخلي إذا فشل aria2c)
                 ydl_opts['progress_hooks'] = [lambda d: asyncio.create_task(progress_tracker.update_progress(d))]
-                
-                await event.edit(f"**╮ جـارِ التحميل السريع بـ aria2c... 🎧♥️╰**")
 
-                # التحميل باستخدام aria2c (الأسرع)
+                await event.edit(f"**╮ جـارِ التحميل . . . 🎧♥️╰**")
+
+                # التحميل مع التتبع
                 await asyncio.to_thread(ydl.download, [video_url])
                 
                 # البحث عن الملف المحمل
                 audio_path = f'downloads/{video_id}.mp3'
                 if not os.path.exists(audio_path):
-                    for ext in ['webm', 'm4a', 'opus']:
+                    # إذا لم يتم تحويله تلقائياً، نقوم بالتحويل يدوياً
+                    for ext in ['webm', 'm4a', 'opus', 'mp4']:
                         temp_path = f'downloads/{video_id}.{ext}'
                         if os.path.exists(temp_path):
-                            # تحويل إلى MP3 مع دمج الغلاف مباشرة
-                            await convert_to_mp3_with_cover(temp_path, audio_path, title, artist, thumbnail, video_id)
+                            await event.edit("**╮ جـارِ تحويل الصوت وإضافة الغلاف... 🎧♥️╰**")
+                            audio_path = await convert_to_mp3_with_cover(temp_path, title, artist, thumbnail, video_id)
                             break
                     else:
                         await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
@@ -6748,8 +6752,6 @@ async def download_and_send_audio(event):
                         )
                     ],
                     supports_streaming=True,
-                    part_size_kb=4096,
-                    workers=4,
                 )
                 
                 await event.delete()
@@ -6769,21 +6771,25 @@ async def download_and_send_audio(event):
         if 'video_id' in locals():
             await cleanup_files(video_id)
 
-async def convert_to_mp3_with_cover(input_path, output_path, title, artist, thumbnail_url, video_id):
+async def convert_to_mp3_with_cover(input_path, title, artist, thumbnail_url, video_id):
     """تحويل الملف إلى MP3 مع دمج الغلاف مباشرة باستخدام ffmpeg"""
+    output_path = f'downloads/{video_id}_final.mp3'
+    
     try:
         # تحميل الصورة المصغرة
         thumb_path = None
         if thumbnail_url:
             try:
                 import httpx
-                thumb_path = f'downloads/{video_id}_temp_thumb.jpg'
+                thumb_path = f'downloads/{video_id}_thumb.jpg'
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     response = await client.get(thumbnail_url)
                     if response.status_code == 200:
                         with open(thumb_path, 'wb') as f:
                             f.write(response.content)
-            except Exception:
+                        print(f"تم تحميل الصورة المصغرة: {thumb_path}")
+            except Exception as e:
+                print(f"فشل تحميل الصورة المصغرة: {e}")
                 thumb_path = None
 
         # بناء أمر ffmpeg مع دمج البيانات الوصفية والغلاف
@@ -6791,11 +6797,12 @@ async def convert_to_mp3_with_cover(input_path, output_path, title, artist, thum
             cmd = [
                 'ffmpeg', '-i', input_path,
                 '-i', thumb_path,
-                '-map', '0:0', '-map', '1:0',
-                '-c:a', 'libmp3lame', '-b:a', '128k',  # جودة متوسطة وسرعة عالية
+                '-map', '0:a', '-map', '1',
+                '-c:a', 'libmp3lame', '-b:a', '128k',
                 '-id3v2_version', '3',
                 '-metadata', f'title={title}',
                 '-metadata', f'artist={artist}',
+                '-metadata', 'comment=Downloaded by Telegram Bot',
                 '-disposition:v', 'attached_pic',
                 '-y', output_path
             ]
@@ -6806,6 +6813,7 @@ async def convert_to_mp3_with_cover(input_path, output_path, title, artist, thum
                 '-id3v2_version', '3',
                 '-metadata', f'title={title}',
                 '-metadata', f'artist={artist}',
+                '-metadata', 'comment=Downloaded by Telegram Bot',
                 '-y', output_path
             ]
 
@@ -6814,18 +6822,20 @@ async def convert_to_mp3_with_cover(input_path, output_path, title, artist, thum
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        await process.communicate()
         
-        # تنظيف الملفات المؤقتة
-        if os.path.exists(input_path):
-            os.remove(input_path)
-        if thumb_path and os.path.exists(thumb_path):
-            os.remove(thumb_path)
-            
-    except Exception as e:
-        print(f"فشل التحويل إلى MP3: {e}")
-        # محاولة بديلة بدون غلاف
-        try:
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode == 0:
+            print("تم التحويل بنجاح")
+            # تنظيف الملفات المؤقتة
+            if os.path.exists(input_path):
+                os.remove(input_path)
+            if thumb_path and os.path.exists(thumb_path):
+                os.remove(thumb_path)
+            return output_path
+        else:
+            print(f"فشل التحويل: {stderr.decode()}")
+            # محاولة بديلة بدون غلاف
             cmd = [
                 'ffmpeg', '-i', input_path,
                 '-c:a', 'libmp3lame', '-b:a', '128k',
@@ -6840,15 +6850,24 @@ async def convert_to_mp3_with_cover(input_path, output_path, title, artist, thum
             
             if os.path.exists(input_path):
                 os.remove(input_path)
-        except Exception:
-            pass
+            return output_path
+            
+    except Exception as e:
+        print(f"فشل التحويل إلى MP3: {e}")
+        # محاولة أخيرة - نسخ الملف كما هو
+        import shutil
+        shutil.copy(input_path, output_path)
+        if os.path.exists(input_path):
+            os.remove(input_path)
+        return output_path
 
 async def cleanup_files(video_id):
     """تنظيف الملفات المؤقتة"""
     for pattern in [f'downloads/{video_id}*', 'downloads/*.part']:
         for file_path in glob.glob(pattern):
             try:
-                os.remove(file_path)
+                if not file_path.endswith('_final.mp3'):
+                    os.remove(file_path)
             except Exception:
                 pass
 
