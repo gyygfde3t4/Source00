@@ -4,9 +4,12 @@ FROM python:3.11-slim
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# تحديث النظام وتثبيت المكتبات المطلوبة فقط
+# تحديث النظام وتثبيت المكتبات المطلوبة + أدوات البناء
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    git \
+    build-essential \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # إنشاء مجلد العمل
@@ -22,10 +25,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # التحقق من ffmpeg والمكتبات الأساسية
 RUN ffmpeg -version && echo "✅ FFmpeg يعمل بشكل صحيح"
 
-# اختبار سريع للمكتبات الأساسية
-RUN python -c "import telethon, PIL, requests, mutagen, pytz; print('✅ جميع المكتبات تم تثبيتها بنجاح!')"
-
-RUN apt-get update && apt-get install -y git
+# اختبار سريع للمكتبات الأساسية + cryptg
+RUN python -c "import telethon, cryptg, PIL, requests, mutagen, pytz; print('✅ جميع المكتبات تم تثبيتها بنجاح!')"
 
 # نسخ ملفات البوت
 COPY . .
