@@ -6,7 +6,7 @@ beautifulsoup4
 
 # ========== مكتبة Telegram ==========
 telethon[cryptg]
-
+cryptg
 # ========== معالجة الصور ==========
 Pillow
 
