@@ -5,7 +5,7 @@ aiohttp[speedups]
 beautifulsoup4
 
 # ========== مكتبة Telegram ==========
-telethon[cryptg]>=1.29.0
+telethon[cryptg]>=1.42.0
 
 # ========== معالجة الصور ==========
 Pillow
