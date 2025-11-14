@@ -6076,6 +6076,168 @@ async def stop_game(event):
     await event.reply(f"**🛑 تم إيقاف لعبة {game_type}**")
 
 
+from telethon import TelegramClient, events, functions
+from telethon.tl.types import InputPeerUser, StarGift, StarGiftUpgraded
+
+
+async def get_user_info(user_id=None, username=None):
+    """
+    دالة لجلب معلومات المستخدم من تيليجرام باستخدام الدوال الفعلية
+    """
+    try:
+        if user_id:
+            user = await client.get_entity(user_id)
+        elif username:
+            user = await client.get_entity(username)
+        else:
+            return None
+        
+        # جلب المعلومات الكاملة للمستخدم
+        full_user = await client(functions.users.GetFullUserRequest(id=user.id))
+        
+        # معلومات الأساسية
+        user_info = {
+            'id': user.id,
+            'first_name': user.first_name or '',
+            'last_name': user.last_name or '',
+            'username': user.username or 'لا يوجد',
+            'premium': user.premium if hasattr(user, 'premium') else False,
+        }
+        
+        # جلب اليوزرات الإضافية
+        additional_usernames = []
+        if hasattr(user, 'usernames') and user.usernames:
+            for uname in user.usernames:
+                if uname.username != user.username:
+                    additional_usernames.append(f"@{uname.username}")
+        
+        user_info['additional_usernames'] = additional_usernames
+        
+        # جلب معلومات النجوم والمستوى
+        try:
+            input_peer = InputPeerUser(user_id=user.id, access_hash=user.access_hash)
+            
+            stars_status = await client(functions.payments.GetStarsStatusRequest(
+                peer=input_peer
+            ))
+            user_info['stars'] = getattr(stars_status, 'balance', 0)
+            
+            # الحصول على المستوى الحقيقي
+            if hasattr(full_user, 'stars_rating') and full_user.stars_rating:
+                user_info['level'] = getattr(full_user.stars_rating, 'level', 1)
+                user_info['next_level_stars'] = getattr(full_user.stars_rating, 'next_level_stars', 5000)
+            else:
+                user_info['level'] = 1
+                user_info['next_level_stars'] = 5000
+                
+        except Exception as e:
+            print(f"Error getting stars status: {e}")
+            user_info['stars'] = 0
+            user_info['level'] = 1
+            user_info['next_level_stars'] = 5000
+        
+        # جلب معلومات الهدايا - التصحيح النهائي ✅
+        try:
+            input_peer = InputPeerUser(user_id=user.id, access_hash=user.access_hash)
+            
+            gifts_result = await client(functions.payments.GetSavedStarGiftsRequest(
+                peer=input_peer,
+                offset='',
+                limit=100
+            ))
+            
+            developed_gifts = 0
+            undeveloped_gifts = 0
+            
+            if hasattr(gifts_result, 'gifts') and gifts_result.gifts:
+                for gift in gifts_result.gifts:
+                    # التصحيح النهائي بناءً على البحث ✅
+                    if isinstance(gift, StarGiftUpgraded):
+                        developed_gifts += 1   # NFT - مطورة
+                    elif isinstance(gift, StarGift):
+                        undeveloped_gifts += 1  # عادية - غير مطورة
+            
+            user_info['developed_gifts'] = developed_gifts
+            user_info['undeveloped_gifts'] = undeveloped_gifts
+            user_info['has_gifts'] = (developed_gifts + undeveloped_gifts) > 0
+            
+        except Exception as e:
+            print(f"Error getting gifts: {e}")
+            user_info['developed_gifts'] = 0
+            user_info['undeveloped_gifts'] = 0
+            user_info['has_gifts'] = False
+        
+        return user_info
+        
+    except Exception as e:
+        print(f"Error getting user info: {e}")
+        return None
+
+@client.on(events.NewMessage(pattern=r'^\.كشف حساب(?:\s+(@\w+|\d+))?$'))
+async def account_info_handler(event):
+    """
+    معالج أمر كشف الحساب
+    """
+    # تحقق إذا كان هناك رد على رسالة
+    reply_msg = await event.get_reply_message()
+    target_user = None
+    
+    # تحديد المستخدم المستهدف
+    if event.pattern_match.group(1):
+        input_data = event.pattern_match.group(1).strip()
+        target_user = input_data
+    elif reply_msg:
+        target_user = reply_msg.sender_id
+    else:
+        await event.reply("⚠️ يرجى الرد على رسالة المستخدم أو كتابة الأمر مع اليوزر/الأيدي\nمثال: `.كشف حساب @username`")
+        return
+    
+    loading_msg = await event.edit("**جاري تقييم حساب تيليجرام . . .**")
+    
+    try:
+        user_info = await get_user_info(
+            user_id=target_user if str(target_user).isdigit() else None, 
+            username=target_user if not str(target_user).isdigit() else None
+        )
+        
+        if not user_info:
+            await loading_msg.edit("❌ تعذر جلب معلومات الحساب")
+            return
+        
+        # بناء النص النهائي
+        full_name = f"{user_info['first_name']} {user_info['last_name']}".strip()
+        user_link = f"https://t.me/{user_info['username']}" if user_info['username'] != 'لا يوجد' else f"tg://user?id={user_info['id']}"
+        
+        # جمع كل اليوزرات
+        all_usernames = [f"@{user_info['username']}"] if user_info['username'] != 'لا يوجد' else []
+        all_usernames.extend(user_info['additional_usernames'])
+        usernames_text = " , ".join(all_usernames) if all_usernames else "لا يوجد"
+        
+        # بناء الرسالة النهائية مع - قبل كل سطر
+        result_text = f"""
+**• معلومات حساب تيليجرام :**
+
+- **الاسم** ← [{full_name}]({user_link})
+- **الايدي** ← `{user_info['id']}`
+- **اليوزر** ← {usernames_text}
+- **الحساب** ← {'**Premium ✅**' if user_info['premium'] else 'عادي ❌'}
+- **المستوى** ← `{user_info['level']}`
+- **النجوم** ← `{user_info['stars']}/{user_info['next_level_stars']}`"""
+        
+        # إضافة معلومات الهدايا فقط إذا كانت موجودة
+        if user_info['has_gifts']:
+            result_text += f"""
+- **الهدايا المطوره** ← `{user_info['developed_gifts']}`
+- **الهدايا الغير مطوره** ← `{user_info['undeveloped_gifts']}`"""
+        
+        result_text = result_text.strip()
+        
+        await loading_msg.edit(result_text, link_preview=False)
+        
+    except Exception as e:
+        await loading_msg.edit(f"❌ حدث خطأ: {str(e)}")
+
+
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")    
 
 # سيتم تعبئة هذه المتغيرات تلقائياً
