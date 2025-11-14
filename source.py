@@ -6076,167 +6076,6 @@ async def stop_game(event):
     await event.reply(f"**🛑 تم إيقاف لعبة {game_type}**")
 
 
-from telethon import TelegramClient, events, functions
-from telethon.tl.types import InputPeerUser, StarGift, StarGiftUpgraded
-
-
-async def get_user_info(user_id=None, username=None):
-    """
-    دالة لجلب معلومات المستخدم من تيليجرام باستخدام الدوال الفعلية
-    """
-    try:
-        if user_id:
-            user = await client.get_entity(user_id)
-        elif username:
-            user = await client.get_entity(username)
-        else:
-            return None
-        
-        # جلب المعلومات الكاملة للمستخدم
-        full_user = await client(functions.users.GetFullUserRequest(id=user.id))
-        
-        # معلومات الأساسية
-        user_info = {
-            'id': user.id,
-            'first_name': user.first_name or '',
-            'last_name': user.last_name or '',
-            'username': user.username or 'لا يوجد',
-            'premium': user.premium if hasattr(user, 'premium') else False,
-        }
-        
-        # جلب اليوزرات الإضافية
-        additional_usernames = []
-        if hasattr(user, 'usernames') and user.usernames:
-            for uname in user.usernames:
-                if uname.username != user.username:
-                    additional_usernames.append(f"@{uname.username}")
-        
-        user_info['additional_usernames'] = additional_usernames
-        
-        # جلب معلومات النجوم والمستوى
-        try:
-            input_peer = InputPeerUser(user_id=user.id, access_hash=user.access_hash)
-            
-            stars_status = await client(functions.payments.GetStarsStatusRequest(
-                peer=input_peer
-            ))
-            user_info['stars'] = getattr(stars_status, 'balance', 0)
-            
-            # الحصول على المستوى الحقيقي
-            if hasattr(full_user, 'stars_rating') and full_user.stars_rating:
-                user_info['level'] = getattr(full_user.stars_rating, 'level', 1)
-                user_info['next_level_stars'] = getattr(full_user.stars_rating, 'next_level_stars', 5000)
-            else:
-                user_info['level'] = 1
-                user_info['next_level_stars'] = 5000
-                
-        except Exception as e:
-            print(f"Error getting stars status: {e}")
-            user_info['stars'] = 0
-            user_info['level'] = 1
-            user_info['next_level_stars'] = 5000
-        
-        # جلب معلومات الهدايا - التصحيح النهائي ✅
-        try:
-            input_peer = InputPeerUser(user_id=user.id, access_hash=user.access_hash)
-            
-            gifts_result = await client(functions.payments.GetSavedStarGiftsRequest(
-                peer=input_peer,
-                offset='',
-                limit=100
-            ))
-            
-            developed_gifts = 0
-            undeveloped_gifts = 0
-            
-            if hasattr(gifts_result, 'gifts') and gifts_result.gifts:
-                for gift in gifts_result.gifts:
-                    # التصحيح النهائي بناءً على البحث ✅
-                    if isinstance(gift, StarGiftUpgraded):
-                        developed_gifts += 1   # NFT - مطورة
-                    elif isinstance(gift, StarGift):
-                        undeveloped_gifts += 1  # عادية - غير مطورة
-            
-            user_info['developed_gifts'] = developed_gifts
-            user_info['undeveloped_gifts'] = undeveloped_gifts
-            user_info['has_gifts'] = (developed_gifts + undeveloped_gifts) > 0
-            
-        except Exception as e:
-            print(f"Error getting gifts: {e}")
-            user_info['developed_gifts'] = 0
-            user_info['undeveloped_gifts'] = 0
-            user_info['has_gifts'] = False
-        
-        return user_info
-        
-    except Exception as e:
-        print(f"Error getting user info: {e}")
-        return None
-
-@client.on(events.NewMessage(pattern=r'^\.كشف حساب(?:\s+(@\w+|\d+))?$'))
-async def account_info_handler(event):
-    """
-    معالج أمر كشف الحساب
-    """
-    # تحقق إذا كان هناك رد على رسالة
-    reply_msg = await event.get_reply_message()
-    target_user = None
-    
-    # تحديد المستخدم المستهدف
-    if event.pattern_match.group(1):
-        input_data = event.pattern_match.group(1).strip()
-        target_user = input_data
-    elif reply_msg:
-        target_user = reply_msg.sender_id
-    else:
-        await event.reply("⚠️ يرجى الرد على رسالة المستخدم أو كتابة الأمر مع اليوزر/الأيدي\nمثال: `.كشف حساب @username`")
-        return
-    
-    loading_msg = await event.edit("**جاري تقييم حساب تيليجرام . . .**")
-    
-    try:
-        user_info = await get_user_info(
-            user_id=target_user if str(target_user).isdigit() else None, 
-            username=target_user if not str(target_user).isdigit() else None
-        )
-        
-        if not user_info:
-            await loading_msg.edit("❌ تعذر جلب معلومات الحساب")
-            return
-        
-        # بناء النص النهائي
-        full_name = f"{user_info['first_name']} {user_info['last_name']}".strip()
-        user_link = f"https://t.me/{user_info['username']}" if user_info['username'] != 'لا يوجد' else f"tg://user?id={user_info['id']}"
-        
-        # جمع كل اليوزرات
-        all_usernames = [f"@{user_info['username']}"] if user_info['username'] != 'لا يوجد' else []
-        all_usernames.extend(user_info['additional_usernames'])
-        usernames_text = " , ".join(all_usernames) if all_usernames else "لا يوجد"
-        
-        # بناء الرسالة النهائية مع - قبل كل سطر
-        result_text = f"""
-**• معلومات حساب تيليجرام :**
-
-- **الاسم** ← [{full_name}]({user_link})
-- **الايدي** ← `{user_info['id']}`
-- **اليوزر** ← {usernames_text}
-- **الحساب** ← {'**Premium ✅**' if user_info['premium'] else 'عادي ❌'}
-- **المستوى** ← `{user_info['level']}`
-- **النجوم** ← `{user_info['stars']}/{user_info['next_level_stars']}`"""
-        
-        # إضافة معلومات الهدايا فقط إذا كانت موجودة
-        if user_info['has_gifts']:
-            result_text += f"""
-- **الهدايا المطوره** ← `{user_info['developed_gifts']}`
-- **الهدايا الغير مطوره** ← `{user_info['undeveloped_gifts']}`"""
-        
-        result_text = result_text.strip()
-        
-        await loading_msg.edit(result_text, link_preview=False)
-        
-    except Exception as e:
-        await loading_msg.edit(f"❌ حدث خطأ: {str(e)}")
-
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")    
 
@@ -6694,6 +6533,20 @@ async def update_command(event):
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
 
+# إعدادات الرفع المحسنة
+UPLOAD_PART_SIZE_KB = 4096
+UPLOAD_WORKERS = 4
+
+# محاولة استيراد cryptg لتسريع التشفير
+try:
+    import cryptg
+    from telethon.crypto import AESMode
+    # تفعيل cryptg لتحسين الأداء
+    os.environ['TELETHON_USE_CRYPTG'] = '1'
+except ImportError:
+    cryptg = None
+    print("⚠️ cryptg غير مثبت، سيتم استخدام التشفير العادي")
+
 def is_youtube_url(text):
     """التعرف على روابط يوتيوب"""
     youtube_patterns = [
@@ -6874,8 +6727,8 @@ async def download_and_send_audio(event):
                         )
                     ],
                     supports_streaming=True,
-                    part_size_kb=4096,
-                    workers=4,
+                    part_size_kb=UPLOAD_PART_SIZE_KB,
+                    workers=UPLOAD_WORKERS,
                 )
                 
                 await event.delete()
@@ -6975,7 +6828,25 @@ async def cleanup_files(video_id):
             except Exception:
                 pass
 
+# إعدادات الرفع المحسنة
+UPLOAD_PART_SIZE_KB = 4096
+UPLOAD_WORKERS = 4
 
+# محاولة استيراد cryptg لتسريع التشفير
+try:
+    import cryptg
+    from telethon.crypto import AESMode
+    # تفعيل cryptg لتحسين الأداء
+    os.environ['TELETHON_USE_CRYPTG'] = '1'
+except ImportError:
+    cryptg = None
+    print("⚠️ cryptg غير مثبت، سيتم استخدام التشفير العادي")
+
+async def progress(current, total, event, text):
+    """عرض تقدم الرفع"""
+    percent = (current / total) * 100
+    bar = "█" * int(percent / 5) + "▒" * (20 - int(percent / 5))
+    await event.edit(f"{text}\n\n**╮ 📊╎التقدم:** `{bar}`\n**╰ 💾╎النسبة:** `{percent:.1f}%`")
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
@@ -6999,26 +6870,38 @@ async def download_and_send_video(event):
             await event.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
             return
 
-        # إعدادات yt-dlp محسنة مع الكوكيز
+        # إعدادات yt-dlp محسنة مع تنسيقات مرنة
         ydl_opts = {
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            # تنسيقات مرنة مع بدائل متعددة
+            'format': '(bestvideo[height<=720][ext=mp4]/bestvideo[height<=720]/bestvideo[ext=mp4]/bestvideo)+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[ext=mp4]/best',
+            'outtmpl': 'downloads/%(id)s.%(ext)s',
             'noplaylist': True,
             'quiet': True,
             'no_warnings': True,
             'cookiefile': cookie_file,
             'extract_flat': False,
-            'ignoreerrors': False,
+            'ignoreerrors': True,
+            'retries': 10,
+            'fragment_retries': 10,
+            'skip_unavailable_fragments': True,
             
-            # إعدادات محسنة لتجاوز اكتشاف البوت
-            'extractor_args': {
-                'youtube': {
-                    'skip': ['translated_subs', 'automatic_captions'],
-                    'player_client': ['android', 'web'],
-                }
-            },
+            # إعدادات التحميل المتوازي مع aria2c
+            'external_downloader': 'aria2c',
+            'external_downloader_args': [
+                '-x', '16',
+                '-k', '2M',
+                '-s', '16',
+                '-j', '16',
+                '--file-allocation=none',
+                '--summary-interval=0',
+                '--quiet'
+            ],
             
-            # تحديد User-Agent محدث
+            # قائمة تنسيقات بديلة
+            'format_sort': ['res:720', 'ext:mp4:m4a', 'acodec:mp4a', 'vcodec:avc1'],
+            'merge_output_format': 'mp4',
+            
+            # إعدادات HTTP محسنة
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -7029,44 +6912,78 @@ async def download_and_send_video(event):
                 'Upgrade-Insecure-Requests': '1',
             },
             
-            # إضافة تأخير لتجنب اكتشاف البوت
-            'sleep_interval': 1,
-            'max_sleep_interval': 3,
+            # إعدادات PostProcessing
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
         }
 
         # إنشاء مجلد التحميل إذا لم يكن موجوداً
         os.makedirs('downloads', exist_ok=True)
 
-        # تأخير عشوائي قبل البدء
-        await asyncio.sleep(random.uniform(2, 4))
+        video_file = None
+        video_title = "فيـديـو بـدون عـنوان"
 
-        # تنزيل الفيديو
         with YoutubeDL(ydl_opts) as ydl:
             try:
-                info = ydl.extract_info(input_url, download=True)
-                video_title = info.get('title', 'فيـديـو بـدون عـنوان')
-                video_file = ydl.prepare_filename(info)
+                # استخراج المعلومات أولاً
+                info = await asyncio.to_thread(ydl.extract_info, input_url, download=False)
                 
-                # التحقق من أن الملف تم تنزيله
-                if not os.path.exists(video_file):
-                    await event.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
+                if not info:
+                    await event.edit("**⚠️ لم يتم العثور على الفيديو أو الرابط غير صحيح**")
                     return
+                
+                video_id = info.get('id', 'unknown')
+                video_title = info.get('title', 'فيـديـو بـدون عـنوان')
+                duration = info.get('duration', 0)
+                width = info.get('width', 1280)
+                height = info.get('height', 720)
 
-                await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                await event.edit(f"**╮ جـارِ تحميـل الفيـديـو... 📹╰**\n**╰ العـنوان:** `{video_title}`")
+
+                # تحميل الفيديو
+                await asyncio.to_thread(ydl.download, [input_url])
+                
+                # البحث عن الملف المحمل
+                for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov']:
+                    possible_path = f'downloads/{video_id}.{ext}'
+                    if os.path.exists(possible_path):
+                        video_file = possible_path
+                        break
+                else:
+                    # إذا لم نجد بالـ ID، نبحث بأي ملف في المجلد
+                    download_files = glob.glob('downloads/*.*')
+                    if download_files:
+                        video_file = download_files[0]
+                    else:
+                        await event.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
+                        return
 
                 # التحقق من حجم الملف
                 file_size = os.path.getsize(video_file)
                 if file_size > 2000 * 1024 * 1024:  # 2GB
                     await event.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
-                    os.remove(video_file)
                     return
 
-                # إرسال الفيديو
-                await client.send_file(
+                await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+
+                # إرسال الفيديو مع إعدادات الرفع المحسنة
+                await event.client.send_file(
                     event.chat_id,
                     video_file,
                     caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
                     supports_streaming=True,
+                    attributes=[
+                        DocumentAttributeVideo(
+                            duration=duration,
+                            w=width,
+                            h=height,
+                            supports_streaming=True
+                        )
+                    ],
+                    part_size_kb=UPLOAD_PART_SIZE_KB,
+                    workers=UPLOAD_WORKERS,
                     progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
                         progress(d, t, event, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
                     )
@@ -7077,29 +6994,72 @@ async def download_and_send_video(event):
             except Exception as download_error:
                 error_msg = str(download_error)
                 
-                # رسائل خطأ محددة لمساعدة المستخدم
+                # محاولة بديلة بدون aria2c
+                if "Requested format is not available" in error_msg or "Format not available" in error_msg:
+                    await event.edit("**⚠️ جـارِ المحـاولة بطـريقة بديلـة...**")
+                    try:
+                        # إعدادات بديلة بدون external downloader
+                        alt_ydl_opts = ydl_opts.copy()
+                        alt_ydl_opts.pop('external_downloader', None)
+                        alt_ydl_opts.pop('external_downloader_args', None)
+                        alt_ydl_opts['format'] = 'best[height<=480]/best'
+                        
+                        with YoutubeDL(alt_ydl_opts) as alt_ydl:
+                            await asyncio.to_thread(alt_ydl.download, [input_url])
+                            
+                            # البحث عن الملف المحمل
+                            for ext in ['mp4', 'webm', 'mkv']:
+                                possible_path = f'downloads/{video_id}.{ext}'
+                                if os.path.exists(possible_path):
+                                    video_file = possible_path
+                                    break
+                            
+                            if video_file:
+                                await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                                await event.client.send_file(
+                                    event.chat_id,
+                                    video_file,
+                                    caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
+                                    supports_streaming=True,
+                                    part_size_kb=UPLOAD_PART_SIZE_KB,
+                                    workers=UPLOAD_WORKERS,
+                                )
+                                await event.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
+                                return
+                    except Exception as alt_error:
+                        error_msg = str(alt_error)
+                
+                # رسائل خطأ محددة
                 if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
                     await event.edit("**⚠️ YouTube يطلب التحقق. حدث الكوكيز أو جرب لاحقاً**")
                 elif "Video unavailable" in error_msg:
                     await event.edit("**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**")
                 elif "Private video" in error_msg:
                     await event.edit("**⚠️ الفيـديـو خـاص ولا يمكـن تحميـله**")
-                elif "too large" in error_msg.lower():
-                    await event.edit("**⚠️ الفيـديـو كبيـر جـداً للإرسـال**")
+                elif "Unsupported URL" in error_msg:
+                    await event.edit("**⚠️ الرابـط غيـر مدعـوم أو غيـر صحيـح**")
                 else:
-                    await event.edit(f"**⚠️ خطـأ في التحـميل**: {str(download_error)}")
+                    await event.edit(f"**⚠️ خطـأ في التحـميل**: {error_msg[:200]}")
                 return
 
     except Exception as e:
-        await event.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)}")
+        await event.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)[:200]}")
     
     finally:
         # تنظيف الملفات المؤقتة
         try:
-            if 'video_file' in locals() and os.path.exists(video_file):
+            if video_file and os.path.exists(video_file):
                 os.remove(video_file)
+            # تنظيف أي ملفات أخرى في مجلد downloads
+            for pattern in [f'downloads/{video_id}*', 'downloads/*.part']:
+                for file_path in glob.glob(pattern):
+                    try:
+                        os.remove(file_path)
+                    except:
+                        pass
         except Exception as cleanup_error:
             print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
+
 
 async def progress(current, total, event, text):
     """دالة لعرض شريط التقدم"""
