@@ -6532,13 +6532,6 @@ async def update_command(event):
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
 
-import os
-import re
-import asyncio
-import glob
-from yt_dlp import YoutubeDL
-from telethon.tl.types import DocumentAttributeAudio
-
 def is_youtube_url(text):
     """التعرف على روابط يوتيوب"""
     youtube_patterns = [
@@ -6634,11 +6627,11 @@ async def download_and_send_audio(event):
         is_url = False
 
     try:
-        # إعدادات yt-dlp بدون aria2c لتفادي مشاكل التقدم
+        # إعدادات yt-dlp بدون تحويل تلقائي
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
-            'quiet': False,  # تغيير إلى False لرؤية output
+            'quiet': False,
             'no_warnings': False,
             'ignoreerrors': True,
             'extract_flat': False,
@@ -6658,11 +6651,7 @@ async def download_and_send_audio(event):
                 'Accept-Encoding': 'gzip, deflate',
                 'Connection': 'keep-alive',
             },
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '128',
-            }],
+            # إزالة postprocessors للتحكم في عملية التحويل
         }
 
         # استخدام كوكيز
@@ -6712,22 +6701,24 @@ async def download_and_send_audio(event):
 
                 await event.edit(f"**╮ جـارِ التحميل . . . 🎧♥️╰**")
 
-                # التحميل مع التتبع
+                # التحميل بدون تحويل تلقائي
                 await asyncio.to_thread(ydl.download, [video_url])
                 
-                # البحث عن الملف المحمل
-                audio_path = f'downloads/{video_id}.mp3'
-                if not os.path.exists(audio_path):
-                    # إذا لم يتم تحويله تلقائياً، نقوم بالتحويل يدوياً
-                    for ext in ['webm', 'm4a', 'opus', 'mp4']:
-                        temp_path = f'downloads/{video_id}.{ext}'
-                        if os.path.exists(temp_path):
-                            await event.edit("**╮ جـارِ تحويل الصوت وإضافة الغلاف... 🎧♥️╰**")
-                            audio_path = await convert_to_mp3_with_cover(temp_path, title, artist, thumbnail, video_id)
-                            break
-                    else:
-                        await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
-                        return
+                # البحث عن الملف المحمل الأصلي
+                original_path = None
+                for ext in ['webm', 'm4a', 'opus', 'mp4', 'mkv']:
+                    temp_path = f'downloads/{video_id}.{ext}'
+                    if os.path.exists(temp_path):
+                        original_path = temp_path
+                        break
+                
+                if not original_path:
+                    await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
+                    return
+
+                # تحويل الملف إلى MP3 مع دمج الصورة المصغرة
+                await event.edit("**╮ جـارِ تحويل الصوت وإضافة الغلاف... 🎧♥️╰**")
+                audio_path = await convert_to_mp3_with_cover(original_path, title, artist, thumbnail, video_id)
 
                 # التحقق من وجود الملف النهائي
                 if not os.path.exists(audio_path):
@@ -6737,7 +6728,8 @@ async def download_and_send_audio(event):
                 # إرسال الملف مع التنسيق الجديد
                 await event.edit("**╮ ❐ جـارِ الرفع السريع...𓅫╰**")
                 
-                caption = f"**⌔╎البحث:** `{artist} - {title}`\n———————————————\n📎 [رابط الفيديو]({video_url})"
+                # التنسيق الجديد مع الرابط المضمن
+                caption = f"**⌔╎[البحث]({video_url}):** `{artist} - {title}`"
                 
                 await event.client.send_file(
                     event.chat_id,
@@ -6788,6 +6780,9 @@ async def convert_to_mp3_with_cover(input_path, title, artist, thumbnail_url, vi
                         with open(thumb_path, 'wb') as f:
                             f.write(response.content)
                         print(f"تم تحميل الصورة المصغرة: {thumb_path}")
+                    else:
+                        print(f"فشل تحميل الصورة: {response.status_code}")
+                        thumb_path = None
             except Exception as e:
                 print(f"فشل تحميل الصورة المصغرة: {e}")
                 thumb_path = None
@@ -6798,7 +6793,7 @@ async def convert_to_mp3_with_cover(input_path, title, artist, thumbnail_url, vi
                 'ffmpeg', '-i', input_path,
                 '-i', thumb_path,
                 '-map', '0:a', '-map', '1',
-                '-c:a', 'libmp3lame', '-b:a', '128k',
+                '-c:a', 'libmp3lame', '-b:a', '192k',
                 '-id3v2_version', '3',
                 '-metadata', f'title={title}',
                 '-metadata', f'artist={artist}',
@@ -6809,7 +6804,7 @@ async def convert_to_mp3_with_cover(input_path, title, artist, thumbnail_url, vi
         else:
             cmd = [
                 'ffmpeg', '-i', input_path,
-                '-c:a', 'libmp3lame', '-b:a', '128k',
+                '-c:a', 'libmp3lame', '-b:a', '192k',
                 '-id3v2_version', '3',
                 '-metadata', f'title={title}',
                 '-metadata', f'artist={artist}',
@@ -6817,6 +6812,8 @@ async def convert_to_mp3_with_cover(input_path, title, artist, thumbnail_url, vi
                 '-y', output_path
             ]
 
+        print(f"تنفيذ الأمر: {' '.join(cmd)}")
+        
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -6826,7 +6823,7 @@ async def convert_to_mp3_with_cover(input_path, title, artist, thumbnail_url, vi
         stdout, stderr = await process.communicate()
         
         if process.returncode == 0:
-            print("تم التحويل بنجاح")
+            print("تم التحويل بنجاح مع دمج الصورة المصغرة")
             # تنظيف الملفات المؤقتة
             if os.path.exists(input_path):
                 os.remove(input_path)
@@ -6836,29 +6833,34 @@ async def convert_to_mp3_with_cover(input_path, title, artist, thumbnail_url, vi
         else:
             print(f"فشل التحويل: {stderr.decode()}")
             # محاولة بديلة بدون غلاف
-            cmd = [
+            cmd_simple = [
                 'ffmpeg', '-i', input_path,
-                '-c:a', 'libmp3lame', '-b:a', '128k',
+                '-c:a', 'libmp3lame', '-b:a', '192k',
                 '-y', output_path
             ]
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
+            process_simple = await asyncio.create_subprocess_exec(
+                *cmd_simple,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            await process.communicate()
+            await process_simple.communicate()
             
             if os.path.exists(input_path):
                 os.remove(input_path)
+            if thumb_path and os.path.exists(thumb_path):
+                os.remove(thumb_path)
             return output_path
             
     except Exception as e:
         print(f"فشل التحويل إلى MP3: {e}")
         # محاولة أخيرة - نسخ الملف كما هو
         import shutil
-        shutil.copy(input_path, output_path)
-        if os.path.exists(input_path):
-            os.remove(input_path)
+        try:
+            shutil.copy(input_path, output_path)
+            if os.path.exists(input_path):
+                os.remove(input_path)
+        except:
+            pass
         return output_path
 
 async def cleanup_files(video_id):
@@ -6870,6 +6872,8 @@ async def cleanup_files(video_id):
                     os.remove(file_path)
             except Exception:
                 pass
+
+
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
