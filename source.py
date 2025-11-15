@@ -287,6 +287,14 @@ async def start_client():
 
 @client.on(events.NewMessage(pattern=r'^\.اوامري$'))
 async def show_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهلاً بك فـي قـائمة الأوامـر الـخاصة بسـورس إيــريــن** ⎚
@@ -307,10 +315,21 @@ async def show_commands(event):
 13- ☆ `.م13` - **أوامر بوت دعمكم** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
 
 @client.on(events.NewMessage(pattern=r'^\.م1$'))
 async def show_account_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهـلاً بك فـي قـائمة الحساب الـخاصة بسـورس إيــريــن ⎚**
@@ -329,10 +348,21 @@ async def show_account_commands(event):
 11- ☆ `.انشاء جروب + عدد ` - **لأنشاء جروبات ** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
 
 @client.on(events.NewMessage(pattern=r'^\.م2$'))
 async def show_timed_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة الوقتي الـخاصة بسـورس إيــريــن ⎚**
@@ -348,10 +378,21 @@ async def show_timed_commands(event):
 8- ☆ `.التوقيت` - **عرض قائمة التوقيتات المتاحة** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
     
 @client.on(events.NewMessage(pattern=r'^\.م3$'))
 async def show_search_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة البحث والتحميل الـخاصة بسـورس إيــريــن ⎚**
@@ -367,10 +408,21 @@ async def show_search_commands(event):
 8- ☆ `.معلومات انستا` + يوزر/رابط - **عرض معلومات حساب إنستجرام** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
 
 @client.on(events.NewMessage(pattern=r'^\.م4$'))
 async def show_games_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة الألعاب والفكاهية الـخاصة بسـورس إيــريــن ⎚**
@@ -393,10 +445,21 @@ async def show_games_commands(event):
 15- ☆ `.تهكير` - **محاكاة عملية تهكير (فكاهي)** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
 
 @client.on(events.NewMessage(pattern=r'^\.م5$'))
 async def show_ai_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة الذكاء الاصطناعي الـخاصة بسـورس إيــريــن ⎚**
@@ -407,10 +470,21 @@ async def show_ai_commands(event):
 3- ☆ `.تعديل صورة` + وصف - **تعديل الصورة بالرد (بالذكاء الاصطناعي)** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
 
 @client.on(events.NewMessage(pattern=r'^\.م6$'))
 async def show_self_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة الأوامـر الذاتية بسـورس إيــريــن ⎚**
@@ -421,10 +495,21 @@ async def show_self_commands(event):
 3- ☆ `.الذاتيه ايقاف` - **إيقاف الحفظ التلقائي للذاتية** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
 
 @client.on(events.NewMessage(pattern=r'^\.م7$'))
 async def show_media_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة الميديا والصيغ الـخاصة بسـورس إيــريــن ⎚**
@@ -436,10 +521,21 @@ async def show_media_commands(event):
 4- ☆ `.لمتحرك` - **تحويل فيديو إلى متحركة (بالرد)** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
 
 @client.on(events.NewMessage(pattern=r'^\.م8$'))
 async def show_protection_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة الحمايـة والتحكـم بسـورس إيــريــن ⎚**
@@ -456,10 +552,21 @@ async def show_protection_commands(event):
 9- ☆ `.حذف البوتات` - **حذف جميع محادثات البوتات** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
 
 @client.on(events.NewMessage(pattern=r'^\.م9$'))
 async def show_channels_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة إدارة القنـوات والمجموعات ⎚**
@@ -471,10 +578,21 @@ async def show_channels_commands(event):
 4- ☆ `.مغادرة الجروبات` - **مغادرة جميع المجموعات** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
 
 @client.on(events.NewMessage(pattern=r'^\.م10$'))
 async def show_storage_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة التخزين والترجمة ⎚**
@@ -487,10 +605,21 @@ async def show_storage_commands(event):
 5- ☆ `.حذف` - **حذف الرسالة (بالرد)** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
 
 @client.on(events.NewMessage(pattern=r'^\.م11$'))
 async def show_additional_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة الأوامـر الإضافيـة بسـورس إيــريــن ⎚**
@@ -507,15 +636,21 @@ async def show_additional_commands(event):
 9- ☆ `.افتارات` - **قائمة صور الانمي (أولاد، بنات، ستوري، خيرني)** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    if event.is_private or event.sender_id == (await event.client.get_me()).id:
+    if event.out:
         await event.edit(commands_message)
     else:
         await event.reply(commands_message)
 
-
-
 @client.on(events.NewMessage(pattern=r'^\.م12$'))
 async def show_crypto_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة العملات والتحليل ⎚**
@@ -527,10 +662,21 @@ async def show_crypto_commands(event):
 4- ☆ `.طقس` + مدينة - **عرض حالة الطقس** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
 
 @client.on(events.NewMessage(pattern=r'^\.م13$'))
 async def show_daamkom_commands(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
     commands_message = """
 ╭━━━┳━━━━╮
 **أهــلاً بك فـي قـائمة أوامـر بوت دعمكـم ⎚**
@@ -543,7 +689,10 @@ async def show_daamkom_commands(event):
 5- ☆ `.هدية دعمكم` - **تجميع الهدية** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
-    await event.edit(commands_message)
+    if event.out:
+        await event.edit(commands_message)
+    else:
+        await event.reply(commands_message)
     
 
 
@@ -685,32 +834,64 @@ async def stop_timed_update(event):
     else:
         await event.edit("**⚠️ لا يوجد تحديث تلقائي للاسم مفعّل.**")
   	    
-@client.on(events.NewMessage(pattern=r'^\.ايدي$'))
+@client.on(events.NewMessage(pattern=r'^\.ايدي(?:\s+(.+))?$'))
 async def show_user_info(event):
-    if event.reply_to_msg_id:
-        reply_message = await client.get_messages(event.chat_id, ids=event.reply_to_msg_id)
-        if reply_message.sender_id:
-            user = await client.get_entity(reply_message.sender_id)
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
-            await event.edit("**جاري عرض المعلومات . . .**")
+    target_user = None
+    input_text = event.pattern_match.group(1)
 
+    if event.out:
+        loading_msg = await event.edit("**جاري عرض المعلومات . . .**")
+    else:
+        loading_msg = await event.reply("**جاري عرض المعلومات . . .**")
+
+    try:
+        # تحديد المستخدم المستهدف
+        if event.reply_to_msg_id:
+            # إذا كان الرد على رسالة
+            reply_message = await client.get_messages(event.chat_id, ids=event.reply_to_msg_id)
+            if reply_message.sender_id:
+                target_user = await client.get_entity(reply_message.sender_id)
+        elif input_text:
+            # إذا كان هناك نص مدخل (يوزر أو ايدي)
+            input_text = input_text.strip()
+            if input_text.isdigit():
+                # إذا كان ايدي رقمي
+                target_user = await client.get_entity(int(input_text))
+            else:
+                # إذا كان يوزر
+                if input_text.startswith('@'):
+                    input_text = input_text[1:]
+                target_user = await client.get_entity(input_text)
+        else:
+            # إذا لم يكن هناك رد أو نص، استخدام مرسل الرسالة
+            target_user = await event.get_sender()
+
+        if target_user:
             user_photo_path = 'user_photo.jpg'
             
             # تحميل صورة البروفايل
             try:
-                await client.download_profile_photo(user.id, file=user_photo_path)
+                await client.download_profile_photo(target_user.id, file=user_photo_path)
             except:
                 user_photo_path = None
             
             # جمع المعلومات الأساسية
-            user_id = user.id
-            username = user.username if user.username else "غير متوفر"
-            user_name = user.first_name or "غير متوفر"
+            user_id = target_user.id
+            username = target_user.username if target_user.username else "غير متوفر"
+            user_name = target_user.first_name or "غير متوفر"
 
             # البايو
             bio = "لا يوجد"
             try:
-                user_full = await client(functions.users.GetFullUserRequest(user.id))
+                user_full = await client(functions.users.GetFullUserRequest(target_user.id))
                 if user_full.full_user.about:
                     bio = user_full.full_user.about
             except:
@@ -723,22 +904,22 @@ async def show_user_info(event):
                 rank = "مميز"
 
             # البريميوم
-            account_type = "بريميوم" if getattr(user, 'premium', False) else "عادي"
+            account_type = "بريميوم" if getattr(target_user, 'premium', False) else "عادي"
 
             # عدد الصور
             try:
-                photos = await client(GetUserPhotosRequest(user.id, offset=0, max_id=0, limit=100))
+                photos = await client(GetUserPhotosRequest(target_user.id, offset=0, max_id=0, limit=100))
                 num_photos = len(photos.photos)
             except:
                 num_photos = "غير معروف"
 
-            # حساب عدد الرسائل
+            # حساب عدد الرسائل (في الدردشة الحالية)
             messages_count = 0
             try:
                 search_result = await client(SearchRequest(
                     peer=event.chat_id,
                     q='',
-                    from_id=user.id,
+                    from_id=target_user.id,
                     filter=InputMessagesFilterEmpty(),
                     min_date=None,
                     max_date=None,
@@ -765,7 +946,30 @@ async def show_user_info(event):
             day = random.randint(1, 28)
             creation_date = f"{day}/{month}/{year}"
 
-            # رسالة المعلومات بتنسيق Quote الحقيقي
+            # جلب عدد الهدايا
+            gifts_count = 0
+            try:
+                result = await client(functions.payments.GetSavedStarGiftsRequest(
+                    peer=target_user.id,
+                    offset='',
+                    limit=100
+                ))
+                if hasattr(result, 'count'):
+                    gifts_count = result.count
+            except:
+                gifts_count = 0
+
+            # جلب اليوزرات الإضافية
+            additional_usernames = []
+            try:
+                if hasattr(target_user, 'usernames') and target_user.usernames:
+                    for username_obj in target_user.usernames:
+                        if username_obj.username != target_user.username:
+                            additional_usernames.append(f"@{username_obj.username}")
+            except:
+                pass
+
+            # بناء رسالة المعلومات
             user_info_message = f"""<blockquote>⧉ مـعلومـات المسـتخـدم | سـورس إيــريــن
 ═════════════════════════════
 
@@ -778,16 +982,24 @@ async def show_user_info(event):
 ✦ الرسائل: {messages_count}
 ✦ التفاعل: {interaction}
 ✦ الإنشـاء: {creation_date}
-✦ البايـو: {bio}
+✦ البايـو: {bio}"""
 
-⧉ قنـاة السـورس @EREN_PYTHON</blockquote>"""
+            # إضافة عدد الهدايا فقط إذا كان أكبر من صفر
+            if gifts_count > 0:
+                user_info_message += f"\n✦ عدد الهدايا : {gifts_count}"
 
-            if user_photo_path:
+            # إضافة اليوزرات الإضافية إذا وجدت
+            if additional_usernames:
+                user_info_message += f"\n✦ اليوزرات: {', '.join(additional_usernames)}"
+
+            user_info_message += "\n\n⧉ قنـاة السـورس @EREN_PYTHON</blockquote>"
+
+            if user_photo_path and os.path.exists(user_photo_path):
                 await client.send_file(
                     event.chat_id,
                     user_photo_path,
                     caption=user_info_message,
-                    reply_to=event.reply_to_msg_id,
+                    reply_to=event.id if not event.is_reply else event.reply_to_msg_id,
                     parse_mode='html'
                 )
                 # حذف الصورة
@@ -799,17 +1011,17 @@ async def show_user_info(event):
                 await client.send_message(
                     event.chat_id,
                     user_info_message,
-                    reply_to=event.reply_to_msg_id,
+                    reply_to=event.id if not event.is_reply else event.reply_to_msg_id,
                     parse_mode='html'
                 )
             
-            await event.delete()
+            await loading_msg.delete()
             
         else:
-            await event.edit("**⚠️ لم أتمكن من العثور على معلومات عن هذا المستخدم.**")
-    else:
-        await event.edit("**⚠️ يرجى الرد على رسالة المستخدم للحصول على معلوماته.**")	
+            await loading_msg.edit("**⚠️ لم أتمكن من العثور على معلومات عن هذا المستخدم.**")
 
+    except Exception as e:
+        await loading_msg.edit(f"**⚠️ حدث خطأ: {str(e)}**")
         
 # إضافة أمر .بل
 @client.on(events.NewMessage(pattern=r'^\.بلوك$'))
@@ -1215,20 +1427,37 @@ async def handle_ai_command(event):
 
 @client.on(events.NewMessage(pattern=r'^\.تلجراف$'))
 async def handle_telegraph_command(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # تحقق من وجود رد على رسالة
     if not event.is_reply:
-        await event.edit("⚠️ يرجى الرد على صورة لتحميلها.")
+        if event.out:
+            await event.edit("⚠️ يرجى الرد على صورة لتحميلها.")
+        else:
+            await event.reply("⚠️ يرجى الرد على صورة لتحميلها.")
         return
 
     replied_message = await event.get_reply_message()
 
     # تحقق من أن الرسالة تحتوي على وسائط
     if not replied_message.media:
-        await event.edit("⚠️ يرجى الرد على صورة فقط.")
+        if event.out:
+            await event.edit("⚠️ يرجى الرد على صورة فقط.")
+        else:
+            await event.reply("⚠️ يرجى الرد على صورة فقط.")
         return
 
     # إرسال رسالة معالجة مؤقتة
-    processing_message = await event.edit("⏳ جاري معالجة الصورة...")
+    if event.out:
+        processing_message = await event.edit("⏳ جاري معالجة الصورة...")
+    else:
+        processing_message = await event.reply("⏳ جاري معالجة الصورة...")
 
     file_path = 'temp_image.jpg'
 
@@ -1252,16 +1481,23 @@ async def handle_telegraph_command(event):
             catbox_url = response.text.strip()
             await event.reply(f"✅ تم رفع الصورة بنجاح!\n📎 الرابط: {catbox_url}")
         else:
-            await event.edit("⚠️ فشل في رفع الصورة. حاول لاحقًا.")
+            if event.out:
+                await event.edit("⚠️ فشل في رفع الصورة. حاول لاحقًا.")
+            else:
+                await event.reply("⚠️ فشل في رفع الصورة. حاول لاحقًا.")
 
     except Exception as e:
         await processing_message.delete()
-        await event.edit(f"⚠️ حدث خطأ أثناء المعالجة:\n`{str(e)}`")
+        error_msg = f"⚠️ حدث خطأ أثناء المعالجة:\n`{str(e)}`"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
     finally:
         # حذف الملف المؤقت إذا كان موجودًا
         if os.path.exists(file_path):
-            os.remove(file_path)  
+            os.remove(file_path)
 
 # متغير للتحكم في حالة التشغيل
 is_creating_groups = False
@@ -1677,6 +1913,14 @@ temp_questions = questions.copy()
 
 @client.on(events.NewMessage(pattern=r'^\.كت$'))
 async def ask_random_question(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     global temp_questions
 
     # تحقق مما إذا كانت القائمة المؤقتة فارغة
@@ -1692,8 +1936,10 @@ async def ask_random_question(event):
     # تعديل الرسالة بالسؤال المختار مع التنسيق المطلوب
     formatted_question = f"⌔╎**{random_question}**"
     
-    await event.edit(formatted_question)
-
+    if event.out:
+        await event.edit(formatted_question)
+    else:
+        await event.reply(formatted_question)
 
 
 @client.on(events.NewMessage(pattern=r'^\.انتحال$'))
@@ -1825,10 +2071,21 @@ def get_readable_time(seconds: float) -> str:
 # ─── Check Command ───
 @client.on(events.NewMessage(pattern=r'^\.(check|فحص)$'))
 async def eren_check(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     try:
         # Start check
         start_time = datetime.now()
-        check_msg = await event.edit("**⎆ Checking bot status...**")
+        if event.out:
+            check_msg = await event.edit("**⎆ Checking bot status...**")
+        else:
+            check_msg = await event.reply("**⎆ Checking bot status...**")
         await asyncio.sleep(2)  # Dramatic wait 😄
 
         # Gather information
@@ -1891,13 +2148,28 @@ async def eren_check(event):
             await check_msg.edit(result)
 
     except Exception as e:
-        await event.edit(f"**An error occurred:**\n`{str(e)}`")
+        error_msg = f"**An error occurred:**\n`{str(e)}`"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 # ─── Ping Command ───
 @client.on(events.NewMessage(pattern=r'^\.ping$'))
 async def eren_ping(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     start = datetime.now()
-    ping_msg = await event.edit("**🏓 Pong...**")
+    if event.out:
+        ping_msg = await event.edit("**🏓 Pong...**")
+    else:
+        ping_msg = await event.reply("**🏓 Pong...**")
     end = datetime.now()
     ping_time = (end - start).total_seconds() * 1000
     await ping_msg.edit(f"**🏓 Ping:** `{ping_time:.2f} ms`")
@@ -2317,6 +2589,14 @@ async def handle_gift_command(event):
 
 @client.on(events.NewMessage(pattern=r'^\.عربي$'))
 async def translate_to_arabic(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     if event.is_reply:
         message = await event.get_reply_message()
         text_to_translate = message.text
@@ -2324,18 +2604,36 @@ async def translate_to_arabic(event):
         text_to_translate = event.message.message
 
     if not text_to_translate:
-        await event.edit("**ليس هناك نص لترجمته.**")
+        if event.out:
+            await event.edit("**ليس هناك نص لترجمته.**")
+        else:
+            await event.reply("**ليس هناك نص لترجمته.**")
         return
     
     if any(char.isascii() for char in text_to_translate):  
         translated_text = GoogleTranslator(source='en', target='ar').translate(text_to_translate)
         
-        await event.message.edit(f"**الترجمة:** \n `{translated_text}`")
+        if event.out:
+            await event.edit(f"**الترجمة:** \n `{translated_text}`")
+        else:
+            await event.reply(f"**الترجمة:** \n `{translated_text}`")
     else:
-        await event.edit("** استخدام نص باللغة الإنجليزية للترجمة إلى العربية.**")
+        error_msg = "** استخدام نص باللغة الإنجليزية للترجمة إلى العربية.**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 @client.on(events.NewMessage(pattern=r'^\.انجلش$'))
 async def translate_to_english(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     if event.is_reply:
         message = await event.get_reply_message()
         text_to_translate = message.text
@@ -2343,17 +2641,25 @@ async def translate_to_english(event):
         text_to_translate = event.message.message
 
     if not text_to_translate:
-        await event.edit("**لا يوجد نص لترجمته.**")
+        if event.out:
+            await event.edit("**لا يوجد نص لترجمته.**")
+        else:
+            await event.reply("**لا يوجد نص لترجمته.**")
         return
 
-   
     if any(char.isascii() for char in text_to_translate):
         translated_text = GoogleTranslator(source='ar', target='en').translate(text_to_translate)
         
-        await event.message.edit(f"**الترجمة:** \n `{translated_text}`")
+        if event.out:
+            await event.edit(f"**الترجمة:** \n `{translated_text}`")
+        else:
+            await event.reply(f"**الترجمة:** \n `{translated_text}`")
     else:
-        await event.edit("**الرجاء استخدام نص باللغة العربية للترجمة إلى الإنجليزية.**")
-
+        error_msg = "**الرجاء استخدام نص باللغة العربية للترجمة إلى الإنجليزية.**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 def extract_username_or_invite(link):
     """
@@ -2371,8 +2677,16 @@ def extract_username_or_invite(link):
 
     return None
 
-@client.on(events.NewMessage(pattern=r'^\.انضم(?:\s+(.+))?', outgoing=True))
+@client.on(events.NewMessage(pattern=r'^\.انضم(?:\s+(.+))?')
 async def join_channel_or_group(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # محاولة الحصول على اسم المستخدم من الرسالة أو الرد
     text = event.pattern_match.group(1) if event.pattern_match.group(1) else None
 
@@ -2387,7 +2701,11 @@ async def join_channel_or_group(event):
             identifier = extract_username_or_invite(text)
 
             if not identifier:
-                await event.edit('لم أتمكن من استخراج اسم المستخدم أو رابط الدعوة.')
+                error_msg = 'لم أتمكن من استخراج اسم المستخدم أو رابط الدعوة.'
+                if event.out:
+                    await event.edit(error_msg)
+                else:
+                    await event.reply(error_msg)
                 return
 
             # محاولة الحصول على الكيان (قناة أو مجموعة)
@@ -2395,7 +2713,11 @@ async def join_channel_or_group(event):
                 # إذا كان رابط دعوة لمجموعة خاصة
                 invite_hash = identifier.split('/')[-1]
                 await client(functions.messages.ImportChatInviteRequest(invite_hash))
-                await event.edit('تم الانضمام إلى المجموعة عبر رابط الدعوة.')
+                success_msg = 'تم الانضمام إلى المجموعة عبر رابط الدعوة.'
+                if event.out:
+                    await event.edit(success_msg)
+                else:
+                    await event.reply(success_msg)
             else:
                 # محاولة الحصول على الكيان سواء كان قناة أو مجموعة
                 entity = await client.get_entity(identifier)
@@ -2403,16 +2725,36 @@ async def join_channel_or_group(event):
                 # الانضمام للقناة أو المجموعة بناءً على نوعها
                 if entity.broadcast:  # قناة
                     await client(functions.channels.JoinChannelRequest(entity))
-                    await event.edit(f'تم الانضمام إلى القناة: @{identifier}')
+                    success_msg = f'تم الانضمام إلى القناة: @{identifier}'
+                    if event.out:
+                        await event.edit(success_msg)
+                    else:
+                        await event.reply(success_msg)
                 elif entity.megagroup:  # مجموعة عامة
                     await client(functions.channels.JoinChannelRequest(entity))
-                    await event.edit(f'تم الانضمام إلى المجموعة: @{identifier}')
+                    success_msg = f'تم الانضمام إلى المجموعة: @{identifier}'
+                    if event.out:
+                        await event.edit(success_msg)
+                    else:
+                        await event.reply(success_msg)
                 else:
-                    await event.edit('تعذر التعرف على نوع الكيان.')
+                    error_msg = 'تعذر التعرف على نوع الكيان.'
+                    if event.out:
+                        await event.edit(error_msg)
+                    else:
+                        await event.reply(error_msg)
         except Exception as e:
-            await event.edit(f'حدث خطأ أثناء الانضمام: {str(e)}')
+            error_msg = f'حدث خطأ أثناء الانضمام: {str(e)}'
+            if event.out:
+                await event.edit(error_msg)
+            else:
+                await event.reply(error_msg)
     else:
-        await event.edit('يرجى تقديم اسم مستخدم القناة أو المجموعة أو الرد على رسالة تحتوي على رابط.')
+        error_msg = 'يرجى تقديم اسم مستخدم القناة أو المجموعة أو الرد على رسالة تحتوي على رابط.'
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 
 
@@ -2432,9 +2774,16 @@ def extract_username_or_invite(link):
 
     return None
 
-@client.on(events.NewMessage(pattern=r'^\.غادر(?:\s+(.+))?', outgoing=True))
+@client.on(events.NewMessage(pattern=r'^\.غادر(?:\s+(.+))?'))
 async def leave_channel_or_group(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
     
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     text = event.pattern_match.group(1) if event.pattern_match.group(1) else None
 
     if event.reply_to_msg_id:
@@ -2448,13 +2797,21 @@ async def leave_channel_or_group(event):
             identifier = extract_username_or_invite(text)
 
             if not identifier:
-                await event.edit('لم أتمكن من استخراج اسم المستخدم أو رابط الدعوة.')
+                error_msg = 'لم أتمكن من استخراج اسم المستخدم أو رابط الدعوة.'
+                if event.out:
+                    await event.edit(error_msg)
+                else:
+                    await event.reply(error_msg)
                 return
 
             # محاولة الحصول على الكيان (قناة أو مجموعة)
             if 'joinchat' in identifier:
                 # إذا كان رابط دعوة لمجموعة خاصة
-                await event.edit('لا يمكن مغادرة مجموعة خاصة باستخدام رابط الدعوة.')
+                error_msg = 'لا يمكن مغادرة مجموعة خاصة باستخدام رابط الدعوة.'
+                if event.out:
+                    await event.edit(error_msg)
+                else:
+                    await event.reply(error_msg)
             else:
                 # الحصول على الكيان سواء كان قناة أو مجموعة
                 entity = await client.get_entity(identifier)
@@ -2462,17 +2819,36 @@ async def leave_channel_or_group(event):
                 # مغادرة القناة أو المجموعة بناءً على نوعها
                 if entity.broadcast:  # قناة
                     await client(functions.channels.LeaveChannelRequest(entity))
-                    await event.edit(f'تم مغادرة القناة: @{identifier}')
+                    success_msg = f'تم مغادرة القناة: @{identifier}'
+                    if event.out:
+                        await event.edit(success_msg)
+                    else:
+                        await event.reply(success_msg)
                 elif entity.megagroup:  # مجموعة عامة
                     await client(functions.channels.LeaveChannelRequest(entity))
-                    await event.edit(f'تم مغادرة المجموعة: @{identifier}')
+                    success_msg = f'تم مغادرة المجموعة: @{identifier}'
+                    if event.out:
+                        await event.edit(success_msg)
+                    else:
+                        await event.reply(success_msg)
                 else:
-                    await event.edit('تعذر التعرف على نوع الكيان.')
+                    error_msg = 'تعذر التعرف على نوع الكيان.'
+                    if event.out:
+                        await event.edit(error_msg)
+                    else:
+                        await event.reply(error_msg)
         except Exception as e:
-            await event.edit(f'حدث خطأ أثناء المغادرة: {str(e)}')
+            error_msg = f'حدث خطأ أثناء المغادرة: {str(e)}'
+            if event.out:
+                await event.edit(error_msg)
+            else:
+                await event.reply(error_msg)
     else:
-        await event.edit('يرجى تقديم اسم مستخدم القناة أو المجموعة أو الرد على رسالة تحتوي على رابط.')
-
+        error_msg = 'يرجى تقديم اسم مستخدم القناة أو المجموعة أو الرد على رسالة تحتوي على رابط.'
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 # قائمة المستخدمين المسموح لهم
 ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
@@ -3883,22 +4259,28 @@ async def end_number_game(event):
     await event.reply(message)
     del number_games[chat_id]
 
-    await event.reply(response)
 async def is_authorized(user_id):
     me = await client.get_me()
     return user_id == me.id or user_id in AUTHORIZED_USERS
 
 @client.on(events.NewMessage(pattern=r'^\.(طقس|wt)(?:\s+(.+))?$'))
 async def weather_command(event):
-    # التحقق من أن المرسل مصرح له
-    if not await is_authorized(event.sender_id):
-        return
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
     
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     command = event.pattern_match.group(1)
     location = event.pattern_match.group(2)
     
     # إنشاء رسالة البوت أولاً
-    bot_message = await event.edit("⏳ جاري المعالجة..." if command == "طقس" else "⏳ Processing...")
+    if event.out:
+        bot_message = await event.edit("⏳ جاري المعالجة..." if command == "طقس" else "⏳ Processing...")
+    else:
+        bot_message = await event.reply("⏳ جاري المعالجة..." if command == "طقس" else "⏳ Processing...")
     
     if not location:
         example = "القاهرة" if command == "طقس" else "london"
@@ -4909,13 +5291,24 @@ async def cleanup_stale_games():
 
 @client.on(events.NewMessage(pattern=r'^\.لصوره$'))
 async def sticker_to_photo(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # تحقق من وجود رد على رسالة تحتوي على ملصق
     if event.reply_to_msg_id:
         reply_message = await event.get_reply_message()
 
         if reply_message and reply_message.sticker:
             # أرسل رسالة جاري التحويل
-            processing_message = await event.edit("**جاري التحويل لصورة...**")
+            if event.out:
+                processing_message = await event.edit("**جاري التحويل لصورة...**")
+            else:
+                processing_message = await event.reply("**جاري التحويل لصورة...**")
 
             # تحميل الملصق
             sticker = await reply_message.download_media(file=bytes)
@@ -4945,21 +5338,45 @@ async def sticker_to_photo(event):
 
             except Exception as e:
                 await processing_message.delete()
-                await event.edit(f"⚠️ حدث خطأ أثناء التحويل: {e}")
+                error_msg = f"⚠️ حدث خطأ أثناء التحويل: {e}"
+                if event.out:
+                    await event.edit(error_msg)
+                else:
+                    await event.reply(error_msg)
         else:
-            await event.edit("⚠️ يرجى الرد على ملصق لتحويله إلى صورة.")
+            error_msg = "⚠️ يرجى الرد على ملصق لتحويله إلى صورة."
+            if event.out:
+                await event.edit(error_msg)
+            else:
+                await event.reply(error_msg)
     else:
-        await event.edit("⚠️ يرجى الرد على ملصق لتحويله إلى صورة.")
+        error_msg = "⚠️ يرجى الرد على ملصق لتحويله إلى صورة."
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 @client.on(events.NewMessage(pattern=r'^\.حول بصمه$'))
 async def handler(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # التحقق من وجود رسالة رد تحتوي على فيديو
     if event.reply_to_msg_id:
         reply_message = await event.get_reply_message()
         
         if reply_message.video:
-            # إرسال رسالة "جاري التحويل..." والاحتفاظ بمعرف الرسالة
-            processing_message = await event.edit("**جاري التحويل...**")
+            # إرسال رسالة "جاري التحويل..."
+            if event.out:
+                processing_message = await event.edit("**جاري التحويل...**")
+            else:
+                processing_message = await event.reply("**جاري التحويل...**")
+
             # تحميل الفيديو
             video_path = await reply_message.download_media()
 
@@ -4974,11 +5391,16 @@ async def handler(event):
                 await client.send_file(event.chat_id, audio_path, voice_note=True)
                 
             except Exception as e:
-                await event.edit(f"حدث خطأ أثناء التحويل: {str(e)}")
+                error_msg = f"حدث خطأ أثناء التحويل: {str(e)}"
+                if event.out:
+                    await event.edit(error_msg)
+                else:
+                    await event.reply(error_msg)
+                return
             
             finally:
                 # حذف رسالة "جاري التحويل..." بعد إرسال البصمة
-                await client.delete_messages(event.chat_id, processing_message)
+                await processing_message.delete()
 
                 # حذف الرسالة الأصلية
                 await event.delete()
@@ -4990,20 +5412,38 @@ async def handler(event):
                     os.remove(audio_path)
                 
         else:
-            await event.edit("**يرجى الرد على فيديو للتحويل.**")
+            error_msg = "**يرجى الرد على فيديو للتحويل.**"
+            if event.out:
+                await event.edit(error_msg)
+            else:
+                await event.reply(error_msg)
     else:
-        await event.edit("**يرجى الرد على فيديو.**")
-
+        error_msg = "**يرجى الرد على فيديو.**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 @client.on(events.NewMessage(pattern=r'^\.حول صوت$'))
 async def handler(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # التحقق من وجود رسالة رد تحتوي على فيديو
     if event.reply_to_msg_id:
         reply_message = await event.get_reply_message()
         
         if reply_message.video:
-            # إرسال رسالة "جاري التحويل..." والاحتفاظ بمعرف الرسالة
-            processing_message = await event.edit("**جاري التحويل...**")
+            # إرسال رسالة "جاري التحويل..."
+            if event.out:
+                processing_message = await event.edit("**جاري التحويل...**")
+            else:
+                processing_message = await event.reply("**جاري التحويل...**")
 
             # تحميل الفيديو
             video_path = await reply_message.download_media()
@@ -5015,14 +5455,18 @@ async def handler(event):
                 video = AudioSegment.from_file(video_path)
                 video.export(audio_path, format="mp3")
             except Exception as e:
-                await event.edit(f"**حدث خطأ أثناء التحويل**: {str(e)}")
+                error_msg = f"**حدث خطأ أثناء التحويل**: {str(e)}"
+                if event.out:
+                    await event.edit(error_msg)
+                else:
+                    await event.reply(error_msg)
                 return
             
             # إرسال الصوت كملف صوت MP3
             await client.send_file(event.chat_id, audio_path)
 
             # حذف رسالة "جاري التحويل..." بعد إرسال الملف الصوتي
-            await client.delete_messages(event.chat_id, processing_message)
+            await processing_message.delete()
 
             # حذف الرسالة الأصلية
             await event.delete()
@@ -5031,19 +5475,38 @@ async def handler(event):
             os.remove(video_path)
             os.remove(audio_path)
         else:
-            await event.edit("**يرجى الرد على فيديو للتحويل.**")
+            error_msg = "**يرجى الرد على فيديو للتحويل.**"
+            if event.out:
+                await event.edit(error_msg)
+            else:
+                await event.reply(error_msg)
     else:
-        await event.edit("**يرجى الرد على فيديو.**")
+        error_msg = "**يرجى الرد على فيديو.**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 @client.on(events.NewMessage(pattern=r'^\.لمتحرك$'))
 async def handler(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # التحقق من وجود رسالة رد تحتوي على صورة أو ملصق
     if event.reply_to_msg_id:
         reply_message = await event.get_reply_message()
         
         if reply_message.photo or reply_message.sticker:  # التحقق مما إذا كانت الرسالة تحتوي على صورة أو ملصق
-            # إرسال رسالة "جاري التحويل..." والاحتفاظ بمعرف الرسالة
-            processing_message = await event.edit("**جاري التحويل...**")
+            # إرسال رسالة "جاري التحويل..."
+            if event.out:
+                processing_message = await event.edit("**جاري التحويل...**")
+            else:
+                processing_message = await event.reply("**جاري التحويل...**")
 
             # تحميل الصورة أو الملصق
             file_path = await reply_message.download_media()
@@ -5061,24 +5524,34 @@ async def handler(event):
                     gif_path
                 ], check=True)
             except Exception as e:
-                await event.edit(f"**حدث خطأ أثناء التحويل**: {str(e)}")
+                error_msg = f"**حدث خطأ أثناء التحويل**: {str(e)}"
+                if event.out:
+                    await event.edit(error_msg)
+                else:
+                    await event.reply(error_msg)
                 return
             
             # إرسال GIF
             await client.send_file(event.chat_id, gif_path)
 
             # حذف رسالة "جاري التحويل..." بعد إرسال GIF
-            await client.delete_messages(event.chat_id, processing_message)
+            await processing_message.delete()
 
             # حذف الملفات المؤقتة
             os.remove(file_path)
             os.remove(gif_path)
         else:
-            await event.edit("**يرجى الرد على صورة أو ملصق للتحويل.**")
+            error_msg = "**يرجى الرد على صورة أو ملصق للتحويل.**"
+            if event.out:
+                await event.edit(error_msg)
+            else:
+                await event.reply(error_msg)
     else:
-        await event.edit("**يرجى الرد على صورة أو ملصق.**")
-
-
+        error_msg = "**يرجى الرد على صورة أو ملصق.**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 
 @client.on(events.NewMessage(pattern=r'^\.لمتحركه$'))
@@ -5925,6 +6398,14 @@ async def main():
  
 @client.on(events.NewMessage(pattern=r'^\.افتارات$'))
 async def show_avatars_menu(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     avatars_message = """
 ╭━━━┳━━━━╮
 **قائمة صور الأنـمـي ⎚**
@@ -5937,20 +6418,27 @@ async def show_avatars_menu(event):
 5- ☆ `.صور + اسم + عدد` - **لإرسال صور حسب الطلب** ☆
 ٴ⋆─┄─┄─┄─ 𝐀𝐕𝐀𝐓𝐀𝐑 ─┄─┄─┄─⋆
     """
-    if event.is_private or event.sender_id == (await event.client.get_me()).id:
+    if event.out:
         await event.edit(avatars_message)
     else:
-        await event.reply(avatars_message)                                                                                         
+        await event.reply(avatars_message)
+                                                                                         
 async def edit_or_reply(event, text):
     """دالة مساعدة للتعديل أو الرد"""
-    if event.is_reply:
-        return await event.reply(text)
-    return await event.edit(text)
+    if event.out:
+        return await event.edit(text)
+    return await event.reply(text)
 
 @client.on(events.NewMessage(pattern=r'^\.ستوري انمي$'))
 async def anime_story(event):
-    if not event.out:  # يستجيب فقط إذا كان المرسل هو المستخدم الأصلي
-        return
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     try:
         zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ تحميـل الستـوري ...**")
         sources = ["@animeforlovers", "@ANIME_editsssss"]
@@ -5980,12 +6468,22 @@ VOLUME: ▁▂▃▄▅▆▇ 100%
         )
         await zzevent.delete()
     except Exception as e:
-        await event.reply(f"**حدث خطأ: {str(e)}**")
+        error_msg = f"**حدث خطأ: {str(e)}**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 @client.on(events.NewMessage(pattern=r'^\.خيرني$'))
 async def choice_game(event):
-    if not event.out:  # يستجيب فقط إذا كان المرسل هو المستخدم الأصلي
-        return
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     try:
         zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ التحميل ...**")
         images = []
@@ -6002,12 +6500,22 @@ async def choice_game(event):
         )
         await zzevent.delete()
     except Exception as e:
-        await event.reply(f"**حدث خطأ: {str(e)}**")
+        error_msg = f"**حدث خطأ: {str(e)}**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 @client.on(events.NewMessage(pattern=r'^\.ولد انمي$'))
 async def anime_boy(event):
-    if not event.out:  # يستجيب فقط إذا كان المرسل هو المستخدم الأصلي
-        return
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     try:
         zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ التحميل ...**")
         images = []
@@ -6024,12 +6532,22 @@ async def anime_boy(event):
         )
         await zzevent.delete()
     except Exception as e:
-        await event.reply(f"**حدث خطأ: {str(e)}**")
+        error_msg = f"**حدث خطأ: {str(e)}**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
 
 @client.on(events.NewMessage(pattern=r'^\.بنت انمي$'))
 async def anime_girl(event):
-    if not event.out:  # يستجيب فقط إذا كان المرسل هو المستخدم الأصلي
-        return
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     try:
         zzevent = await edit_or_reply(event, "**╮•⎚ جـارِ التحميل ...**")
         images = []
@@ -6046,7 +6564,11 @@ async def anime_girl(event):
         )
         await zzevent.delete()
     except Exception as e:
-        await event.reply(f"**حدث خطأ: {str(e)}**")
+        error_msg = f"**حدث خطأ: {str(e)}**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
                                                              
 # شروط الفوز لكل لعبة
 WIN_CONDITIONS = {
@@ -7446,6 +7968,14 @@ def humanbytes(size):
 
 @client.on(events.NewMessage(pattern=r'\.انستا(?: |$)(.*)'))
 async def download_and_send_instagram(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # التحقق مما إذا كان هناك رابط في الرسالة أو الرد على رسالة تحتوي على رابط
     reply = await event.get_reply_message()
     input_url = event.pattern_match.group(1).strip()
@@ -7454,19 +7984,26 @@ async def download_and_send_instagram(event):
         input_url = reply.message.strip()
 
     if not input_url:  # إذا لم يكن هناك رابط في الرسالة أو الرد
-        await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط إنستـجرام .انستا + رابط او بالـرد ع رابـط 📹╰**")
+        if event.out:
+            await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط إنستـجرام .انستا + رابط او بالـرد ع رابـط 📹╰**")
+        else:
+            await event.reply("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط إنستـجرام .انستا + رابط او بالـرد ع رابـط 📹╰**")
         return
 
-    await event.edit("**╮ جـارِ تحميـل الفيـديـو مـن إنستـجرام... 📹♥️╰**")
+    if event.out:
+        loading_msg = await event.edit("**╮ جـارِ تحميـل الفيـديـو مـن إنستـجرام... 📹♥️╰**")
+    else:
+        loading_msg = await event.reply("**╮ جـارِ تحميـل الفيـديـو مـن إنستـجرام... 📹♥️╰**")
 
     try:
         # التحقق من وجود ملف الكوكيز
         cookie_file = 'cks.txt'
         if not os.path.exists(cookie_file):
-            await event.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
+            error_msg = "**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!"
+            await loading_msg.edit(error_msg)
             return
 
-        # إعدادات yt-dlp محسنة مع الكوكيز
+        # إعدادات yt-dlp محسنة مع الكوكيز و aria2c
         ydl_opts = {
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             'outtmpl': 'downloads/%(title)s.%(ext)s',
@@ -7476,6 +8013,18 @@ async def download_and_send_instagram(event):
             'cookiefile': cookie_file,
             'extract_flat': False,
             'ignoreerrors': False,
+            
+            # إعدادات aria2c للتحميل المتوازي
+            'external_downloader': 'aria2c',
+            'external_downloader_args': [
+                '-x', '16',
+                '-k', '2M',
+                '-s', '16',
+                '-j', '16',
+                '--file-allocation=none',
+                '--summary-interval=0',
+                '--quiet'
+            ],
             
             # إعدادات محسنة لتجاوز اكتشاف البوت
             'extractor_args': {
@@ -7506,63 +8055,70 @@ async def download_and_send_instagram(event):
         # تأخير عشوائي قبل البدء
         await asyncio.sleep(random.uniform(2, 4))
 
+        video_file = None
+        video_title = "فيـديـو إنستـجرام بـدون عـنوان"
+
         # تنزيل الفيديو
         with YoutubeDL(ydl_opts) as ydl:
             try:
-                info = ydl.extract_info(input_url, download=True)
+                info = await asyncio.to_thread(ydl.extract_info, input_url, download=True)
                 video_title = info.get('title', 'فيـديـو إنستـجرام بـدون عـنوان')
                 video_file = ydl.prepare_filename(info)
                 
                 # التحقق من أن الملف تم تنزيله
                 if not os.path.exists(video_file):
-                    await event.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
+                    await loading_msg.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
                     return
 
-                await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
 
                 # التحقق من حجم الملف
                 file_size = os.path.getsize(video_file)
                 if file_size > 2000 * 1024 * 1024:  # 2GB
-                    await event.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
+                    await loading_msg.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
                     os.remove(video_file)
                     return
 
-                # إرسال الفيديو
+                # إرسال الفيديو مع إعدادات الرفع المحسنة
                 await client.send_file(
                     event.chat_id,
                     video_file,
                     caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
                     supports_streaming=True,
+                    part_size_kb=UPLOAD_PART_SIZE_KB,
+                    workers=UPLOAD_WORKERS,
                     progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
-                        progress(d, t, event, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                        progress(d, t, loading_msg, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
                     )
                 )
 
-                await event.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
+                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
 
             except Exception as download_error:
                 error_msg = str(download_error)
                 
                 # رسائل خطأ محددة لمساعدة المستخدم
                 if "Login Required" in error_msg or "private" in error_msg.lower():
-                    await event.edit("**⚠️ المنشور خاص أو يتطلب تسجيل الدخول**")
+                    error_msg = "**⚠️ المنشور خاص أو يتطلب تسجيل الدخول**"
                 elif "Video unavailable" in error_msg:
-                    await event.edit("**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**")
+                    error_msg = "**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**"
                 elif "too large" in error_msg.lower():
-                    await event.edit("**⚠️ الفيـديـو كبيـر جـداً للإرسـال**")
+                    error_msg = "**⚠️ الفيـديـو كبيـر جـداً للإرسـال**"
                 elif "rate limit" in error_msg.lower():
-                    await event.edit("**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**")
+                    error_msg = "**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**"
                 else:
-                    await event.edit(f"**⚠️ خطـأ في التحـميل**: {str(download_error)}")
+                    error_msg = f"**⚠️ خطـأ في التحـميل**: {str(download_error)}"
+                
+                await loading_msg.edit(error_msg)
                 return
 
     except Exception as e:
-        await event.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)}")
+        await loading_msg.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)}")
     
     finally:
         # تنظيف الملفات المؤقتة
         try:
-            if 'video_file' in locals() and os.path.exists(video_file):
+            if video_file and os.path.exists(video_file):
                 os.remove(video_file)
         except Exception as cleanup_error:
             print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
@@ -7589,6 +8145,14 @@ def humanbytes(size):
 
 @client.on(events.NewMessage(pattern=r'\.تيك(?: |$)(.*)'))
 async def download_and_send_tiktok(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # التحقق مما إذا كان هناك رابط في الرسالة أو الرد على رسالة تحتوي على رابط
     reply = await event.get_reply_message()
     input_url = event.pattern_match.group(1).strip()
@@ -7597,19 +8161,26 @@ async def download_and_send_tiktok(event):
         input_url = reply.message.strip()
 
     if not input_url:  # إذا لم يكن هناك رابط في الرسالة أو الرد
-        await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط تيـك تـوك .تيك + رابط او بالـرد ع رابـط 📹╰**")
+        if event.out:
+            await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط تيـك تـوك .تيك + رابط او بالـرد ع رابـط 📹╰**")
+        else:
+            await event.reply("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط تيـك تـوك .تيك + رابط او بالـرد ع رابـط 📹╰**")
         return
 
-    await event.edit("**╮ جـارِ تحميـل الفيـديـو مـن تيـك تـوك... 📹♥️╰**")
+    if event.out:
+        loading_msg = await event.edit("**╮ جـارِ تحميـل الفيـديـو مـن تيـك تـوك... 📹♥️╰**")
+    else:
+        loading_msg = await event.reply("**╮ جـارِ تحميـل الفيـديـو مـن تيـك تـوك... 📹♥️╰**")
 
     try:
         # التحقق من وجود ملف الكوكيز
         cookie_file = 'tekcook.txt'
         if not os.path.exists(cookie_file):
-            await event.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
+            error_msg = "**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!"
+            await loading_msg.edit(error_msg)
             return
 
-        # إعدادات yt-dlp محسنة مع الكوكيز
+        # إعدادات yt-dlp محسنة مع الكوكيز و aria2c
         ydl_opts = {
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             'outtmpl': 'downloads/%(title)s.%(ext)s',
@@ -7620,6 +8191,18 @@ async def download_and_send_tiktok(event):
             'extract_flat': False,
             'ignoreerrors': False,
             'socket_timeout': 60,
+            
+            # إعدادات aria2c للتحميل المتوازي
+            'external_downloader': 'aria2c',
+            'external_downloader_args': [
+                '-x', '16',
+                '-k', '2M',
+                '-s', '16',
+                '-j', '16',
+                '--file-allocation=none',
+                '--summary-interval=0',
+                '--quiet'
+            ],
             
             # إعدادات خاصة بتيك توك
             'extractor_args': {
@@ -7654,71 +8237,79 @@ async def download_and_send_tiktok(event):
         # تأخير عشوائي قبل البدء
         await asyncio.sleep(random.uniform(1, 3))
 
+        video_file = None
+        video_title = "فيـديـو تيـك تـوك بـدون عـنوان"
+
         # تنزيل الفيديو
         with YoutubeDL(ydl_opts) as ydl:
             try:
-                info = ydl.extract_info(input_url, download=True)
+                info = await asyncio.to_thread(ydl.extract_info, input_url, download=True)
                 video_title = info.get('title', 'فيـديـو تيـك تـوك بـدون عـنوان')
                 video_file = ydl.prepare_filename(info)
                 
                 # تأكيد تحويل الصيغة إلى mp4 إن لزم
                 if not video_file.endswith('.mp4'):
                     new_path = os.path.splitext(video_file)[0] + '.mp4'
-                    os.rename(video_file, new_path)
+                    if os.path.exists(video_file):
+                        os.rename(video_file, new_path)
                     video_file = new_path
                 
                 # التحقق من أن الملف تم تنزيله
                 if not os.path.exists(video_file):
-                    await event.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
+                    await loading_msg.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
                     return
 
-                await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
 
                 # التحقق من حجم الملف
                 file_size = os.path.getsize(video_file)
                 if file_size > 2000 * 1024 * 1024:  # 2GB
-                    await event.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
+                    await loading_msg.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
                     os.remove(video_file)
                     return
 
-                # إرسال الفيديو
+                # إرسال الفيديو مع إعدادات الرفع المحسنة
                 await client.send_file(
                     event.chat_id,
                     video_file,
                     caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
                     supports_streaming=True,
+                    part_size_kb=UPLOAD_PART_SIZE_KB,
+                    workers=UPLOAD_WORKERS,
                     progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
-                        progress(d, t, event, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                        progress(d, t, loading_msg, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
                     )
                 )
 
-                await event.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
+                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
 
             except Exception as download_error:
                 error_msg = str(download_error)
                 
                 # رسائل خطأ محددة لمساعدة المستخدم
                 if "Private video" in error_msg or "private" in error_msg.lower():
-                    await event.edit("**⚠️ الفيـديـو خـاص ولا يمكـن تحميـله**")
+                    error_msg = "**⚠️ الفيـديـو خـاص ولا يمكـن تحميـله**"
                 elif "Video unavailable" in error_msg:
-                    await event.edit("**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**")
+                    error_msg = "**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**"
                 elif "too large" in error_msg.lower():
-                    await event.edit("**⚠️ الفيـديـو كبيـر جـداً للإرسـال**")
+                    error_msg = "**⚠️ الفيـديـو كبيـر جـداً للإرسـال**"
                 elif "rate limit" in error_msg.lower() or "Too many" in error_msg:
-                    await event.edit("**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**")
+                    error_msg = "**⚠️ تم تجاوز حد الطلبات، حاول لاحقاً**"
                 elif "copyright" in error_msg.lower():
-                    await event.edit("**⚠️ الفيـديـو محمـي بحقـوق النشـر**")
+                    error_msg = "**⚠️ الفيـديـو محمـي بحقـوق النشـر**"
                 else:
-                    await event.edit(f"**⚠️ خطـأ في التحـميل**: {str(download_error)}")
+                    error_msg = f"**⚠️ خطـأ في التحـميل**: {str(download_error)}"
+                
+                await loading_msg.edit(error_msg)
                 return
 
     except Exception as e:
-        await event.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)}")
+        await loading_msg.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)}")
     
     finally:
         # تنظيف الملفات المؤقتة
         try:
-            if 'video_file' in locals() and os.path.exists(video_file):
+            if video_file and os.path.exists(video_file):
                 os.remove(video_file)
         except Exception as cleanup_error:
             print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
@@ -7877,6 +8468,14 @@ async def download_with_gallerydl(url, temp_dir, cookies=None):
 
 @client.on(events.NewMessage(pattern=r'\.بنترست(?: |$)(.*)'))
 async def download_pinterest(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # التحقق من وجود رابط
     reply = await event.get_reply_message()
     input_url = event.pattern_match.group(1).strip()
@@ -7885,21 +8484,35 @@ async def download_pinterest(event):
         input_url = reply.message.strip()
     
     if not input_url:
-        await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط بنترست .بنترست + رابط او بالـرد ع رابـط 📌╰**")
+        if event.out:
+            await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط بنترست .بنترست + رابط او بالـرد ع رابـط 📌╰**")
+        else:
+            await event.reply("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط بنترست .بنترست + رابط او بالـرد ع رابـط 📌╰**")
         return
 
     if not any(domain in input_url for domain in ['pinterest.com', 'pin.it']):
-        await event.edit("**⚠️ يـجب إدخـال رابـط بنترست صـحيح**")
+        error_msg = "**⚠️ يـجب إدخـال رابـط بنترست صـحيح**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
         return
 
     # توسيع الرابط المختصر إذا كان من pin.it
     if 'pin.it' in input_url:
         input_url = expand_pinterest_url(input_url)
         if not input_url or 'pinterest.com' not in input_url:
-            await event.edit("**⚠️ فشل في توسيع الرابط المختصر**")
+            error_msg = "**⚠️ فشل في توسيع الرابط المختصر**"
+            if event.out:
+                await event.edit(error_msg)
+            else:
+                await event.reply(error_msg)
             return
 
-    await event.edit("**╮ جـارِ تحميـل المحتـوى مـن بنترسـت... 📌♥️╰**")
+    if event.out:
+        loading_msg = await event.edit("**╮ جـارِ تحميـل المحتـوى مـن بنترسـت... 📌♥️╰**")
+    else:
+        loading_msg = await event.reply("**╮ جـارِ تحميـل المحتـوى مـن بنترسـت... 📌♥️╰**")
 
     try:
         # إنشاء مجلد التحميل المؤقت
@@ -7909,7 +8522,8 @@ async def download_pinterest(event):
         cookies = load_pinterest_cookies()
         
         if not cookies:
-            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:** `pincook.txt`\n\n**طريقة الحصول على الكوكيز:**\n1. افتح Pinterest في متصفحك\n2. استخدم إضافة مثل Cookie-Editor\n3. احفظ الكوكيز بصيغة Netscape (pincook.txt)")
+            error_msg = "**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:** `pincook.txt`\n\n**طريقة الحصول على الكوكيز:**\n1. افتح Pinterest في متصفحك\n2. استخدم إضافة مثل Cookie-Editor\n3. احفظ الكوكيز بصيغة Netscape (pincook.txt)"
+            await loading_msg.edit(error_msg)
             return
         
         print(f"Loaded cookies for Pinterest")
@@ -7920,13 +8534,13 @@ async def download_pinterest(event):
         # التحقق من حجم الملف
         file_size = os.path.getsize(downloaded_file)
         if file_size == 0:
-            await event.edit("**⚠️ الملف فارغ أو تالف**")
+            await loading_msg.edit("**⚠️ الملف فارغ أو تالف**")
             os.remove(downloaded_file)
             return
             
         max_size = 50 * 1024 * 1024  # 50MB
         if file_size > max_size:
-            await event.edit(f"**⚠️ الملف كبير جداً للإرسال ({humanbytes(file_size)})**\n**الحد الأقصى: {humanbytes(max_size)}**")
+            await loading_msg.edit(f"**⚠️ الملف كبير جداً للإرسال ({humanbytes(file_size)})**\n**الحد الأقصى: {humanbytes(max_size)}**")
             os.remove(downloaded_file)
             return
 
@@ -7934,7 +8548,7 @@ async def download_pinterest(event):
         is_video = downloaded_file.lower().endswith(('.mp4', '.webm', '.mkv'))
         is_gif = downloaded_file.lower().endswith('.gif')
         
-        await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+        await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
         
         # إعداد التسمية التوضيحية
         caption = f"**📌╎تم تحميـل {'الفيديـو' if is_video else 'الصـورة'} مـن بنترست**\n"
@@ -7960,7 +8574,7 @@ async def download_pinterest(event):
                     caption=caption,
                     supports_streaming=True,
                     progress_callback=lambda d, t: asyncio.create_task(
-                        progress(d, t, event, "**╮ ❐ جـارِ رفـع الفيـديـو ...🎬╰**")
+                        progress(d, t, loading_msg, "**╮ ❐ جـارِ رفـع الفيـديـو ...🎬╰**")
                     ) if d and t else None
                 )
             elif is_gif:
@@ -7970,7 +8584,7 @@ async def download_pinterest(event):
                     caption=caption,
                     force_document=False,
                     progress_callback=lambda d, t: asyncio.create_task(
-                        progress(d, t, event, "**╮ ❐ جـارِ رفـع الصـورة المتحركة ...🖼️╰**")
+                        progress(d, t, loading_msg, "**╮ ❐ جـارِ رفـع الصـورة المتحركة ...🖼️╰**")
                     ) if d and t else None
                 )
             else:
@@ -7979,15 +8593,15 @@ async def download_pinterest(event):
                     downloaded_file,
                     caption=caption,
                     progress_callback=lambda d, t: asyncio.create_task(
-                        progress(d, t, event, "**╮ ❐ جـارِ رفـع الصـورة ...🖼️╰**")
+                        progress(d, t, loading_msg, "**╮ ❐ جـارِ رفـع الصـورة ...🖼️╰**")
                     ) if d and t else None
                 )
 
-            await event.edit(f"**╮ ❐ تم إرسـال المحتـوى بنجـاح ✅**\n**╰ ❐ النـوع:** {'فيديو' if is_video else ('صورة متحركة' if is_gif else 'صورة')}\n**📊 الحجـم:** {humanbytes(file_size)}")
+            await loading_msg.edit(f"**╮ ❐ تم إرسـال المحتـوى بنجـاح ✅**\n**╰ ❐ النـوع:** {'فيديو' if is_video else ('صورة متحركة' if is_gif else 'صورة')}\n**📊 الحجـم:** {humanbytes(file_size)}")
 
         except Exception as upload_error:
             print(f"Upload error: {upload_error}")
-            await event.edit("**⚠️ فشل في رفع الملف، يرجى المحاولة لاحقاً**")
+            await loading_msg.edit("**⚠️ فشل في رفع الملف، يرجى المحاولة لاحقاً**")
 
         # تنظيف الملفات المؤقتة
         try:
@@ -8000,17 +8614,19 @@ async def download_pinterest(event):
         print(f"Main error: {e}")
         
         if "403" in error_msg or "forbidden" in error_msg:
-            await event.edit("**⚠️ تم حظر الوصول - جرب استخدام كوكيز صالح أو VPN**")
+            error_msg = "**⚠️ تم حظر الوصول - جرب استخدام كوكيز صالح أو VPN**"
         elif "private" in error_msg or "login" in error_msg:
-            await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل دخول - تأكد من صحة الكوكيز**")
+            error_msg = "**⚠️ المحتوى خاص ويتطلب تسجيل دخول - تأكد من صحة الكوكيز**"
         elif "not found" in error_msg or "unavailable" in error_msg or "404" in error_msg:
-            await event.edit("**⚠️ المحتوى غير متوفر أو تم حذفه**")
+            error_msg = "**⚠️ المحتوى غير متوفر أو تم حذفه**"
         elif "timeout" in error_msg:
-            await event.edit("**⚠️ انتهت مهلة الاتصال - حاول مرة أخرى**")
+            error_msg = "**⚠️ انتهت مهلة الاتصال - حاول مرة أخرى**"
         elif "invalid" in error_msg and "url" in error_msg:
-            await event.edit("**⚠️ الرابط غير صحيح أو غير مدعوم**")
+            error_msg = "**⚠️ الرابط غير صحيح أو غير مدعوم**"
         else:
-            await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
+            error_msg = f"**⚠️ حـدث خـطأ**: {str(e)[:200]}..."
+        
+        await loading_msg.edit(error_msg)
             
 #######################
 
@@ -8026,32 +8642,48 @@ async def get_correct_peer(entity):
         return InputPeerChannel(channel_id=entity.id, access_hash=entity.access_hash)
     raise ValueError("نوع Peer غير مدعوم")
 
-@client.on(events.NewMessage(pattern=r'^\.ستوريات(?:\s+(.+))?$', outgoing=True))
+@client.on(events.NewMessage(pattern=r'^\.ستوريات(?:\s+(.+))?$'))
 async def download_stories(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     if not event.pattern_match.group(1):
-        await event.edit("**⚠️ يرجى تحديد معرف المستخدم أو رابط الاستوري**\nمثال:\n`.ستوريات username` أو `.ستوريات t.me/username/s/123`")
+        error_msg = "**⚠️ يرجى تحديد معرف المستخدم أو رابط الاستوري**\nمثال:\n`.ستوريات username` أو `.ستوريات t.me/username/s/123`"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
         return
 
     text = event.pattern_match.group(1).strip()
-    await event.edit("**╮ جـارِ البحث عن القصص... 📱♥️╰**")
+    if event.out:
+        loading_msg = await event.edit("**╮ جـارِ البحث عن القصص... 📱♥️╰**")
+    else:
+        loading_msg = await event.reply("**╮ جـارِ البحث عن القصص... 📱♥️╰**")
 
     try:
         story_links = re.findall(r't\.me/([^/]+)/s/(\d+)', text)
         
         if story_links:
-            await download_stories_from_links(event, story_links)
+            await download_stories_from_links(loading_msg, story_links)
         else:
             username = text.replace('@', '').strip()
             if username.isdigit():
-                await download_all_user_stories_by_id(event, int(username))
+                await download_all_user_stories_by_id(loading_msg, int(username))
             else:
-                await download_all_user_stories(event, username)
+                await download_all_user_stories(loading_msg, username)
     
     except FloodWaitError as e:
-        await event.edit(f"**⏳ يرجى الانتظار {e.seconds} ثانية قبل المحاولة مرة أخرى**")
+        error_msg = f"**⏳ يرجى الانتظار {e.seconds} ثانية قبل المحاولة مرة أخرى**"
+        await loading_msg.edit(error_msg)
     except Exception as e:
         error_msg = f"**🔴 حدث خطأ:** `{str(e)[:100]}`"
-        await event.edit(error_msg)
+        await loading_msg.edit(error_msg)
 
 async def download_stories_from_links(event, story_links):
     """تحميل قصص من روابط محددة"""
@@ -8434,6 +9066,14 @@ async def download_pinterest_images(query, count, temp_dir, cookies, offset=None
 
 @client.on(events.NewMessage(pattern=r'\.صور (.*?) (\d+)'))
 async def pinterest_images_search(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # استخراج البحث وعدد الصور من الأمر
     match = event.pattern_match
     query = match.group(1).strip()
@@ -8441,13 +9081,24 @@ async def pinterest_images_search(event):
     
     # تحديد الحد الأقصى للصور (50 صورة كحد أقصى)
     if count > 50:
-        await event.edit("**⚠️ الحد الأقصى لعدد الصور هو 50**")
+        error_msg = "**⚠️ الحد الأقصى لعدد الصور هو 50**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
         return
     elif count < 1:
-        await event.edit("**⚠️ يجب أن يكون عدد الصور على الأقل 1**")
+        error_msg = "**⚠️ يجب أن يكون عدد الصور على الأقل 1**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
         return
     
-    await event.edit(f"**╮ جـارِ البحث عن {count} صورة لـ {query} في بنترست... 📌╰**")
+    if event.out:
+        loading_msg = await event.edit(f"**╮ جـارِ البحث عن {count} صورة لـ {query} في بنترست... 📌╰**")
+    else:
+        loading_msg = await event.reply(f"**╮ جـارِ البحث عن {count} صورة لـ {query} في بنترست... 📌╰**")
 
     temp_dir = None
     try:
@@ -8458,7 +9109,8 @@ async def pinterest_images_search(event):
         cookies = load_pinterest_cookies()
         
         if not cookies:
-            await event.edit("**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:** `pincook.txt`")
+            error_msg = "**⚠️ لم يتم العثور على ملف الكوكيز**\n\n**ضع ملف الكوكيز باسم:** `pincook.txt`"
+            await loading_msg.edit(error_msg)
             return
         
         # استخدام معرف فريد للبحث يتضمن التاريخ والوقت لتجنب التكرار
@@ -8503,7 +9155,7 @@ async def pinterest_images_search(event):
         if not downloaded_files:
             raise Exception("No images found after all attempts")
         
-        await event.edit(f"**╮ ❐ جـارِ رفـع {len(downloaded_files)} صورة ...🖼️╰**")
+        await loading_msg.edit(f"**╮ ❐ جـارِ رفـع {len(downloaded_files)} صورة ...🖼️╰**")
         
         # إرسال الصور مع تحسينات الذاكرة والتأخير
         for i, image_path in enumerate(downloaded_files, start=1):
@@ -8532,7 +9184,7 @@ async def pinterest_images_search(event):
                 # تحديث الرسالة كل 10 صور
                 if i % 10 == 0 or i == len(downloaded_files):
                     try:
-                        await event.edit(f"**╮ ❐ تم إرسـال {i}/{len(downloaded_files)} صورة ...🖼️╰**")
+                        await loading_msg.edit(f"**╮ ❐ تم إرسـال {i}/{len(downloaded_files)} صورة ...🖼️╰**")
                     except:
                         pass
                         
@@ -8543,7 +9195,7 @@ async def pinterest_images_search(event):
         # تنظيف نهائي للذاكرة
         gc.collect()
         
-        await event.edit(f"**╮ ❐ تم إرسـال {len(downloaded_files)} صورة لـ {query} بنجـاح ✅╰**")
+        await loading_msg.edit(f"**╮ ❐ تم إرسـال {len(downloaded_files)} صورة لـ {query} بنجـاح ✅╰**")
 
     except Exception as e:
         error_msg = str(e).lower()
@@ -8553,13 +9205,15 @@ async def pinterest_images_search(event):
         gc.collect()
         
         if "403" in error_msg or "forbidden" in error_msg:
-            await event.edit("**⚠️ تم حظر الوصول - جرب استخدام كوكيز صالح أو VPN**")
+            error_msg = "**⚠️ تم حظر الوصول - جرب استخدام كوكيز صالح أو VPN**"
         elif "private" in error_msg or "login" in error_msg:
-            await event.edit("**⚠️ المحتوى خاص ويتطلب تسجيل دخول - تأكد من صحة الكوكيز**")
+            error_msg = "**⚠️ المحتوى خاص ويتطلب تسجيل دخول - تأكد من صحة الكوكيز**"
         elif "not found" in error_msg or "unavailable" in error_msg:
-            await event.edit("**⚠️ لم يتم العثور على صور لهذا البحث**")
+            error_msg = "**⚠️ لم يتم العثور على صور لهذا البحث**"
         else:
-            await event.edit(f"**⚠️ حـدث خـطأ**: {str(e)[:200]}...")
+            error_msg = f"**⚠️ حـدث خـطأ**: {str(e)[:200]}..."
+        
+        await loading_msg.edit(error_msg)
 
     finally:
         # تنظيف الملفات المؤقتة
@@ -8583,16 +9237,17 @@ def run_server():
 server_thread = threading.Thread(target=run_server)
 server_thread.start()                
                                               
-print("""
-$$$$$$$$\ $$$$$$$\  $$$$$$$$\ $$\   $$\ 
-$$  _|$$  $$\ $$  ___|$$$\  $$ |
-$$ |      $$ |  $$ |$$ |      $$$$\ $$ |
-$$$$$\    $$$$$$$  |$$$$$\    $$ $$\$$ |
-$$  |   $$  $$< $$  __|   $$ \$$$$ |
-$$ |      $$ |  $$ |$$ |      $$ |\$$$ |
-$$$$$$$$\ $$ |  $$ |$$$$$$$$\ $$ | \$$ |
-\__|\|  \|\__|\|  \|
-تـم تـنـصـيـب ســورس ايـريـن بنـجـاح✔️
+print(r"""
+███████╗██████╗ ███████╗███╗   ██╗
+██╔════╝██╔══██╗██╔════╝████╗  ██║
+█████╗  ██████╔╝█████╗  ██╔██╗ ██║
+██╔══╝  ██╔══██╗██╔══╝  ██║╚██╗██║
+███████╗██║  ██║███████╗██║ ╚████║
+╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✔️ تـم تـنـصـيـب ســورس **EREN** بنـجـاح
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
 
 async def start_client():
