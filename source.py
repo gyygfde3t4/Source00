@@ -2677,23 +2677,19 @@ async def process_price(event, crypto_input):
                 return f"{num/1_000:.1f}K"
             return f"{num:,.2f}"
 
-        # زخرفة اسم العملة (زخرفة جميع الحروف)
+        # زخرفة اسم العملة (باستخدام الزخارف الجديدة - جميع الحروف كابيتال)
         def fancy_text(text):
+            # تحويل النص إلى كابيتال أولاً
+            text_upper = text.upper()
             fancy_dict = {
-                'A': 'A', 'B': 'B', 'C': 'ᥴ', 'D': 'D', 'E': 'E', 
-                'F': 'F', 'G': 'G', 'H': 'H', 'I': 'I', 'J': 'J',
-                'K': 'K', 'L': 'L', 'M': 'M', 'N': 'ᥒ', 'O': '᥆',
-                'P': 'P', 'Q': 'Q', 'R': 'R', 'S': 'S', 'T': '𝗍',
-                'U': 'U', 'V': 'V', 'W': 'W', 'X': 'X', 'Y': 'Y', 
-                'Z': 'Z',
-                'a': 'ᥲ', 'b': 'b', 'c': 'ᥴ', 'd': 'ᥲ', 'e': 'ᥱ',
-                'f': 'f', 'g': 'g', 'h': 'ℎ', 'i': 'i', 'j': 'j',
-                'k': 'k', 'l': 'l', 'm': 'm', 'n': 'ᥒ', 'o': '᥆',
-                'p': 'p', 'q': 'q', 'r': 'r', 's': 's', 't': '𝗍',
-                'u': 'u', 'v': 'v', 'w': 'w', 'x': 'x', 'y': 'y',
-                'z': 'z'
+                'A': '𝚨', 'B': '𝛃', 'C': 'ᑕ', 'D': 'ᗪ', 'E': '𝚬',
+                'F': '𝖥', 'G': 'G', 'H': '𝝜', 'I': '𝚰', 'J': '𝗝',
+                'K': 'K', 'L': 'L', 'M': '𝚳', 'N': '𐌽', 'O': '𐌏',
+                'P': '𝗉', 'Q': 'Q', 'R': 'ᖇ', 'S': '𐒖', 'T': 'T',
+                'U': 'U', 'V': '𝖵', 'W': '𝖶', 'X': 'Ⅹ', 'Y': 'ㄚ',
+                'Z': '𝛧'
             }
-            return ''.join(fancy_dict.get(char, char) for char in text)
+            return ''.join(fancy_dict.get(char, char) for char in text_upper)
         
         fancy_name = fancy_text(symbol)
         coin_url = f"https://coinmarketcap.com/currencies/{best_match['slug']}/"
@@ -2768,23 +2764,19 @@ async def process_conversion(event, amount, source_coin, target_coin):
         # حساب التحويل
         converted_amount = (amount * source_price) / target_price
 
-        # زخرفة الأسماء (زخرفة جميع الحروف)
+        # زخرفة الأسماء (باستخدام الزخارف الجديدة - جميع الحروف كابيتال)
         def fancy_text(text):
+            # تحويل النص إلى كابيتال أولاً
+            text_upper = text.upper()
             fancy_dict = {
-                'A': 'A', 'B': 'B', 'C': 'ᥴ', 'D': 'D', 'E': 'E', 
-                'F': 'F', 'G': 'G', 'H': 'H', 'I': 'I', 'J': 'J',
-                'K': 'K', 'L': 'L', 'M': 'M', 'N': 'ᥒ', 'O': '᥆',
-                'P': 'P', 'Q': 'Q', 'R': 'R', 'S': 'S', 'T': '𝗍',
-                'U': 'U', 'V': 'V', 'W': 'W', 'X': 'X', 'Y': 'Y', 
-                'Z': 'Z',
-                'a': 'ᥲ', 'b': 'b', 'c': 'ᥴ', 'd': 'ᥲ', 'e': 'ᥱ',
-                'f': 'f', 'g': 'g', 'h': 'ℎ', 'i': 'i', 'j': 'j',
-                'k': 'k', 'l': 'l', 'm': 'm', 'n': 'ᥒ', 'o': '᥆',
-                'p': 'p', 'q': 'q', 'r': 'r', 's': 's', 't': '𝗍',
-                'u': 'u', 'v': 'v', 'w': 'w', 'x': 'x', 'y': 'y',
-                'z': 'z'
+                'A': '𝚨', 'B': '𝛃', 'C': 'ᑕ', 'D': 'ᗪ', 'E': '𝚬',
+                'F': '𝖥', 'G': 'G', 'H': '𝝜', 'I': '𝚰', 'J': '𝗝',
+                'K': 'K', 'L': 'L', 'M': '𝚳', 'N': '𐌽', 'O': '𐌏',
+                'P': '𝗉', 'Q': 'Q', 'R': 'ᖇ', 'S': '𐒖', 'T': 'T',
+                'U': 'U', 'V': '𝖵', 'W': '𝖶', 'X': 'Ⅹ', 'Y': 'ㄚ',
+                'Z': '𝛧'
             }
-            return ''.join(fancy_dict.get(char, char) for char in text)
+            return ''.join(fancy_dict.get(char, char) for char in text_upper)
         
         source_fancy = fancy_text(source_coin_data['symbol'])
         target_fancy = fancy_text(target_coin_data['symbol'])
