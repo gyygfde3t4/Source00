@@ -2556,9 +2556,7 @@ async def save_post(event):
     except Exception as e:
         await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")
 
-
-# قائمة المستخدمين المسموح لهم
-ALLOWED_USERS = [5683930416]  # ضع هنا IDs المستخدمين المسموح لهم
+ALLOWED_USERS = 5683930416
 
 @client.on(events.NewMessage(pattern=r'\.p\s+(.+)'))
 async def get_crypto_price(event):
@@ -2574,29 +2572,39 @@ async def get_crypto_price(event):
         # طلب تحويل عملات
         parts = crypto_input.split("كم")
         if len(parts) != 2:
+            if event.out:
+                await event.edit("⚠️ استخدم الصيغة: `.p 5 ton كم usdt`")
+            else:
+                await event.reply("⚠️ استخدم الصيغة: `.p 5 ton كم usdt`")
             return
             
         amount_part = parts[0].strip()
         target_coin = parts[1].strip()
         
         # استخراج الرقم والعملة المصدر
+        import re
         amount_match = re.match(r'(\d+(?:\.\d+)?)\s*(.+)', amount_part)
         if not amount_match:
+            if event.out:
+                await event.edit("⚠️ تأكد من كتابة الرقم والعملة بشكل صحيح")
+            else:
+                await event.reply("⚠️ تأكد من كتابة الرقم والعملة بشكل صحيح")
             return
             
         amount = float(amount_match.group(1))
         source_coin = amount_match.group(2).strip()
         
-        await process_conversion(event, amount, source_coin, target_coin, sender_id)
+        await process_conversion(event, amount, source_coin, target_coin)
     else:
         # طلب سعر عادي
-        await process_price(event, crypto_input, sender_id)
+        await process_price(event, crypto_input)
 
-async def process_price(event, crypto_input, sender_id):
-    if sender_id == event.sender_id:
-        await event.edit(f"**⎉╎جـارِ البحث عن {crypto_input}...**")
+async def process_price(event, crypto_input):
+    # إرسال رسالة التحميل
+    if event.out:
+        loading_msg = await event.edit(f"**⎉╎جـارِ البحث عن {crypto_input}...**")
     else:
-        reply_msg = await event.reply(f"**⎉╎جـارِ البحث عن {crypto_input}...**")
+        loading_msg = await event.reply(f"**⎉╎جـارِ البحث عن {crypto_input}...**")
 
     try:
         headers = {
@@ -2609,10 +2617,7 @@ async def process_price(event, crypto_input, sender_id):
         search_response = requests.get(search_url, headers=headers)
         if search_response.status_code != 200:
             error_msg = "⚠️ فشل في الاتصال بـ CoinMarketCap."
-            if sender_id == event.sender_id:
-                await event.edit(error_msg)
-            else:
-                await reply_msg.edit(error_msg)
+            await loading_msg.edit(error_msg)
             return
 
         search_data = search_response.json()["data"]
@@ -2633,10 +2638,7 @@ async def process_price(event, crypto_input, sender_id):
                 f"⚠️ العملة '{crypto_input}' غير موجودة على CoinMarketCap.\n\n"
                 f"🔎 **جرب البحث عنها هنا:** [DexScreener]({dexscreener_url})"
             )
-            if sender_id == event.sender_id:
-                await event.edit(error_msg)
-            else:
-                await reply_msg.edit(error_msg)
+            await loading_msg.edit(error_msg)
             return
 
         # الحصول على بيانات السعر
@@ -2648,10 +2650,7 @@ async def process_price(event, crypto_input, sender_id):
         detail_response = requests.get(detail_url, headers=headers)
         if detail_response.status_code != 200:
             error_msg = "⚠️ فشل في جلب بيانات العملة."
-            if sender_id == event.sender_id:
-                await event.edit(error_msg)
-            else:
-                await reply_msg.edit(error_msg)
+            await loading_msg.edit(error_msg)
             return
 
         data = detail_response.json()['data'][str(coin_id)]['quote']['USD']
@@ -2690,30 +2689,25 @@ async def process_price(event, crypto_input, sender_id):
         coin_url = f"https://coinmarketcap.com/currencies/{best_match['slug']}/"
         
         message = (
-            f"• {fancy_name} Priᥴᥱ ❤️ ⥂ ❪ ${current_price:,.2f} ❫\n"
+            f"• {fancy_name} Priᥴᥱ ❤️ ⥂ ❪ ${current_price:,.5f} ❫\n"
             f"• 24H Change: {price_change_24h:+.2f}%\n"
             f"• Market Cap: ${format_number(market_cap)}\n"
             f"• 24H Volume: ${format_number(volume_24h)}\n\n"
             f"⎉╎المصدر: [𑀝᧐iᥒΜᥲ𝗋κᥱ𝗍ᥴᥲρ]({coin_url})"
         )
 
-        if sender_id == event.sender_id:
-            await event.edit(message)
-        else:
-            await reply_msg.edit(message)
+        await loading_msg.edit(message)
 
     except Exception as e:
         error_msg = f"⚠️ حدث خطأ: {str(e)}"
-        if sender_id == event.sender_id:
-            await event.edit(error_msg)
-        else:
-            await reply_msg.edit(error_msg)
+        await loading_msg.edit(error_msg)
 
-async def process_conversion(event, amount, source_coin, target_coin, sender_id):
-    if sender_id == event.sender_id:
-        await event.edit("**⎉╎جـارِ الحساب...**")
+async def process_conversion(event, amount, source_coin, target_coin):
+    # إرسال رسالة التحميل
+    if event.out:
+        loading_msg = await event.edit("**⎉╎جـارِ الحساب...**")
     else:
-        reply_msg = await event.reply("**⎉╎جـارِ الحساب...**")
+        loading_msg = await event.reply("**⎉╎جـارِ الحساب...**")
 
     try:
         headers = {
@@ -2726,10 +2720,7 @@ async def process_conversion(event, amount, source_coin, target_coin, sender_id)
         search_response = requests.get(search_url, headers=headers)
         if search_response.status_code != 200:
             error_msg = "⚠️ فشل في الاتصال بـ CoinMarketCap."
-            if sender_id == event.sender_id:
-                await event.edit(error_msg)
-            else:
-                await reply_msg.edit(error_msg)
+            await loading_msg.edit(error_msg)
             return
 
         search_data = search_response.json()["data"]
@@ -2747,10 +2738,7 @@ async def process_conversion(event, amount, source_coin, target_coin, sender_id)
 
         if not source_coin_data or not target_coin_data:
             error_msg = "⚠️ لم يتم العثور على إحدى العملات."
-            if sender_id == event.sender_id:
-                await event.edit(error_msg)
-            else:
-                await reply_msg.edit(error_msg)
+            await loading_msg.edit(error_msg)
             return
 
         # الحصول على الأسعار
@@ -2760,10 +2748,7 @@ async def process_conversion(event, amount, source_coin, target_coin, sender_id)
         
         if prices_response.status_code != 200:
             error_msg = "⚠️ فشل في جلب بيانات الأسعار."
-            if sender_id == event.sender_id:
-                await event.edit(error_msg)
-            else:
-                await reply_msg.edit(error_msg)
+            await loading_msg.edit(error_msg)
             return
 
         prices_data = prices_response.json()['data']
@@ -2790,17 +2775,11 @@ async def process_conversion(event, amount, source_coin, target_coin, sender_id)
             f"⎉╎تم الحساب بنجاح ✅"
         )
 
-        if sender_id == event.sender_id:
-            await event.edit(message)
-        else:
-            await reply_msg.edit(message)
+        await loading_msg.edit(message)
 
     except Exception as e:
         error_msg = f"⚠️ حدث خطأ في التحويل: {str(e)}"
-        if sender_id == event.sender_id:
-            await event.edit(error_msg)
-        else:
-            await reply_msg.edit(error_msg)
+        await loading_msg.edit(error_msg)
 
 
 
