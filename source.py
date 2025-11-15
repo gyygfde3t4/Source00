@@ -2564,10 +2564,11 @@ async def get_crypto_price(event):
     # تعريف ALLOWED_USERS بشكل آمن
     allowed_users = [5683930416]  # استخدم متغير محلي
     
-    # التحقق من الصلاحيات
+    # التحقق من الصلاحيات - السماح للبوت نفسه + المستخدمين المسموح لهم
     sender_id = event.sender_id
+    is_bot_owner = event.out  # إذا كانت الرسالة من البوت نفسه
     
-    if sender_id not in allowed_users:
+    if not is_bot_owner and sender_id not in allowed_users:
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
     crypto_input = event.pattern_match.group(1).strip().lower()
@@ -2676,21 +2677,25 @@ async def process_price(event, crypto_input):
                 return f"{num/1_000:.1f}K"
             return f"{num:,.2f}"
 
-        # زخرفة اسم العملة
-        fancy_names = {
-            'TON': 'T𐌏𐌽',
-            'BTC': 'B𝗍ᥴ',
-            'ETH': 'E𝗍ℎ',
-            'USDT': 'U𝗌ᥱ𝗍',
-            'USDC': 'U𝗌ᥴ',
-            'BNB': 'Bᥒb',
-            'SOL': 'S᥆ᥣ',
-            'XRP': 'X𝗋ρ',
-            'ADA': 'A᥆ᥲ',
-            'DOGE': 'D᥆gᥱ'
-        }
+        # زخرفة اسم العملة (زخرفة جميع الحروف)
+        def fancy_text(text):
+            fancy_dict = {
+                'A': 'A', 'B': 'B', 'C': 'ᥴ', 'D': 'D', 'E': 'E', 
+                'F': 'F', 'G': 'G', 'H': 'H', 'I': 'I', 'J': 'J',
+                'K': 'K', 'L': 'L', 'M': 'M', 'N': 'ᥒ', 'O': '᥆',
+                'P': 'P', 'Q': 'Q', 'R': 'R', 'S': 'S', 'T': '𝗍',
+                'U': 'U', 'V': 'V', 'W': 'W', 'X': 'X', 'Y': 'Y', 
+                'Z': 'Z',
+                'a': 'ᥲ', 'b': 'b', 'c': 'ᥴ', 'd': 'ᥲ', 'e': 'ᥱ',
+                'f': 'f', 'g': 'g', 'h': 'ℎ', 'i': 'i', 'j': 'j',
+                'k': 'k', 'l': 'l', 'm': 'm', 'n': 'ᥒ', 'o': '᥆',
+                'p': 'p', 'q': 'q', 'r': 'r', 's': 's', 't': '𝗍',
+                'u': 'u', 'v': 'v', 'w': 'w', 'x': 'x', 'y': 'y',
+                'z': 'z'
+            }
+            return ''.join(fancy_dict.get(char, char) for char in text)
         
-        fancy_name = fancy_names.get(symbol, symbol)
+        fancy_name = fancy_text(symbol)
         coin_url = f"https://coinmarketcap.com/currencies/{best_match['slug']}/"
         
         message = (
@@ -2763,21 +2768,32 @@ async def process_conversion(event, amount, source_coin, target_coin):
         # حساب التحويل
         converted_amount = (amount * source_price) / target_price
 
-        # زخرفة الأسماء
-        fancy_names = {
-            'TON': 'T𐌏𐌽', 'BTC': 'B𝗍ᥴ', 'ETH': 'E𝗍ℎ', 'USDT': 'U𝗌ᥱ𝗍', 
-            'USDC': 'U𝗌ᥴ', 'BNB': 'Bᥒb', 'SOL': 'S᥆ᥣ', 'XRP': 'X𝗋ρ',
-            'ADA': 'A᥆ᥲ', 'DOGE': 'D᥆gᥱ'
-        }
+        # زخرفة الأسماء (زخرفة جميع الحروف)
+        def fancy_text(text):
+            fancy_dict = {
+                'A': 'A', 'B': 'B', 'C': 'ᥴ', 'D': 'D', 'E': 'E', 
+                'F': 'F', 'G': 'G', 'H': 'H', 'I': 'I', 'J': 'J',
+                'K': 'K', 'L': 'L', 'M': 'M', 'N': 'ᥒ', 'O': '᥆',
+                'P': 'P', 'Q': 'Q', 'R': 'R', 'S': 'S', 'T': '𝗍',
+                'U': 'U', 'V': 'V', 'W': 'W', 'X': 'X', 'Y': 'Y', 
+                'Z': 'Z',
+                'a': 'ᥲ', 'b': 'b', 'c': 'ᥴ', 'd': 'ᥲ', 'e': 'ᥱ',
+                'f': 'f', 'g': 'g', 'h': 'ℎ', 'i': 'i', 'j': 'j',
+                'k': 'k', 'l': 'l', 'm': 'm', 'n': 'ᥒ', 'o': '᥆',
+                'p': 'p', 'q': 'q', 'r': 'r', 's': 's', 't': '𝗍',
+                'u': 'u', 'v': 'v', 'w': 'w', 'x': 'x', 'y': 'y',
+                'z': 'z'
+            }
+            return ''.join(fancy_dict.get(char, char) for char in text)
         
-        source_fancy = fancy_names.get(source_coin_data['symbol'], source_coin_data['symbol'])
-        target_fancy = fancy_names.get(target_coin_data['symbol'], target_coin_data['symbol'])
+        source_fancy = fancy_text(source_coin_data['symbol'])
+        target_fancy = fancy_text(target_coin_data['symbol'])
 
         message = (
-            f"• **التحويل:** {amount} {source_fancy} ⥂ {converted_amount:,.6f} {target_fancy}\n"
-            f"• **سعر {source_fancy}:** ${source_price:,.6f}\n"  
-            f"• **سعر {target_fancy}:** ${target_price:,.6f}\n\n"
-            f"⎉╎تم الحساب بنجاح ✅"
+            f"• {amount} {source_fancy} ⥂ {converted_amount:,.6f} {target_fancy}\n"
+            f"• {source_fancy}: ${source_price:,.6f}\n"  
+            f"• {target_fancy}: ${target_price:,.6f}\n\n"
+            f"⎉╎Total"
         )
 
         await loading_msg.edit(message)
