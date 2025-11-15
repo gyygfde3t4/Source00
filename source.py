@@ -2474,8 +2474,19 @@ async def leave_channel_or_group(event):
         await event.edit('يرجى تقديم اسم مستخدم القناة أو المجموعة أو الرد على رسالة تحتوي على رابط.')
 
 
+# قائمة المستخدمين المسموح لهم
+ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
+
 @client.on(events.NewMessage(pattern=r'^\.حفظ(?:\s+(.+))?'))
 async def save_post(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     reply = await event.get_reply_message()
     input_url = event.pattern_match.group(1).strip() if event.pattern_match.group(1) else None
 
@@ -2483,11 +2494,17 @@ async def save_post(event):
         input_url = reply.text.strip()
 
     if not input_url:
-        await event.edit("**⚠️ يرجى إدخال رابط المنشور بعد الأمر أو الرد على رسالة تحتوي على الرابط**")
+        if event.out:
+            await event.edit("**⚠️ يرجى إدخال رابط المنشور بعد الأمر أو الرد على رسالة تحتوي على الرابط**")
+        else:
+            await event.reply("**⚠️ يرجى إدخال رابط المنشور بعد الأمر أو الرد على رسالة تحتوي على الرابط**")
         return
 
     try:
-        await event.edit("**⏳ جاري جلب المنشور...**")
+        if event.out:
+            await event.edit("**⏳ جاري جلب المنشور...**")
+        else:
+            loading_msg = await event.reply("**⏳ جاري جلب المنشور...**")
 
         # معالجة الرابط
         parsed = urlparse(input_url)
@@ -2512,7 +2529,11 @@ async def save_post(event):
         message = await client.get_messages(entity, ids=post_id)
 
         if not message:
-            await event.edit("**⚠️ لم يتم العثور على المنشور. قد لا يكون لديك صلاحية الوصول**")
+            error_msg = "**⚠️ لم يتم العثور على المنشور. قد لا يكون لديك صلاحية الوصول**"
+            if event.out:
+                await event.edit(error_msg)
+            else:
+                await loading_msg.edit(error_msg)
             return
 
         caption = f"**⎉╎تم جلب المنشور من:** {channel_name}\n\n"
@@ -2542,20 +2563,39 @@ async def save_post(event):
             elif message.text:
                 await event.respond(caption)
             else:
-                await event.respond("**⚠️ لا يمكن حفظ هذا النوع من المحتوى**")
+                error_msg = "**⚠️ لا يمكن حفظ هذا النوع من المحتوى**"
+                if event.out:
+                    await event.edit(error_msg)
+                else:
+                    await loading_msg.edit(error_msg)
         finally:
             if file_path and os.path.exists(file_path):
                 os.remove(file_path)
 
-        await event.delete()
+        if event.out:
+            await event.delete()
+        else:
+            await loading_msg.delete()
 
     except ValueError as ve:
-        await event.edit(f"**⚠️ الرابط غير صالح: {ve}**")
+        error_msg = f"**⚠️ الرابط غير صالح: {ve}**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await loading_msg.edit(error_msg)
     except ChannelPrivateError:
-        await event.edit("**⚠️ لا يمكن الوصول إلى القناة/المجموعة. قد تكون خاصة أو محظورة**")
+        error_msg = "**⚠️ لا يمكن الوصول إلى القناة/المجموعة. قد تكون خاصة أو محظورة**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await loading_msg.edit(error_msg)
     except Exception as e:
-        await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")
-
+        error_msg = f"**⚠️ حدث خطأ: {str(e)}**"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await loading_msg.edit(error_msg)
+            
 # قائمة المستخدمين المسموح لهم
 ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
 
