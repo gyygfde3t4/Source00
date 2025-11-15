@@ -2557,18 +2557,17 @@ async def save_post(event):
         await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")
 
 # قائمة المستخدمين المسموح لهم
-ALLOWED_USERS = [5683930416]  # أضفت أيدي صديقك، أضف أيديك أيضاً إذا كنت تريد
+ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
 
 @client.on(events.NewMessage(pattern=r'\.p\s+(.+)'))
 async def get_crypto_price(event):
+    # تعريف ALLOWED_USERS بشكل آمن
+    allowed_users = [5683930416]  # استخدم متغير محلي
+    
     # التحقق من الصلاحيات
     sender_id = event.sender_id
     
-    # تأكد أن ALLOWED_USERS هي list
-    if not isinstance(ALLOWED_USERS, list):
-        ALLOWED_USERS = [5683930416]  # قائمة بأيدي المسموح لهم
-        
-    if sender_id not in ALLOWED_USERS:
+    if sender_id not in allowed_users:
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
     crypto_input = event.pattern_match.group(1).strip().lower()
