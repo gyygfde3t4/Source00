@@ -164,6 +164,9 @@ from telethon.tl.functions.photos import GetUserPhotosRequest
 from telethon.tl.functions.messages import SearchRequest
 from telethon.tl.types import InputMessagesFilterEmpty
 
+# ─── Import python_version ───
+from platform import python_version
+
 # الحصول على المتغيرات من environment variables
 API_ID = int(os.getenv('API_ID'))  # القيمة الافتراضية 29984076 إذا لم يتم تحديد المتغير
 
@@ -2091,7 +2094,10 @@ async def eren_check(event):
         # Gather information
         user = await event.get_sender()
         user_name = f"{user.first_name} {user.last_name}" if user.last_name else user.first_name
-        ping_time = (datetime.now() - start_time).total_seconds() * 1000
+        ping_time = (datetime.now() - start_time).microseconds / 1000
+        
+        # Get python version
+        pyver = python_version()
         
         # Get user profile photo
         user_photo = None
@@ -2111,7 +2117,7 @@ async def eren_check(event):
 ┣━━━━━━━━━━━━━━━━━┫
 ┃ • ᴜsᴇʀ ➪ {user_name}
 ┃ • ᴠᴇʀsɪᴏɴ ➪ {EREN_VERSION}
-┃ • ᴘʏᴛʜᴏɴ ➪ {python_version()}
+┃ • ᴘʏᴛʜᴏɴ ➪ {pyver}
 ┃ • ᴛᴇʟᴇᴛʜᴏɴ ➪ {version.__version__}
 ┃ • ᴘʟᴀᴛғᴏʀᴍ ➪ KOYEB
 ┃ • ᴘɪɴɢ ➪ {ping_time:.2f} ms
@@ -2171,9 +2177,8 @@ async def eren_ping(event):
     else:
         ping_msg = await event.reply("**🏓 Pong...**")
     end = datetime.now()
-    ping_time = (end - start).total_seconds() * 1000
+    ping_time = (end - start).microseconds / 1000
     await ping_msg.edit(f"**🏓 Ping:** `{ping_time:.2f} ms`")
-                      
 
 async def edit_or_reply(event, text):
     """دالة مساعدة للتعديل أو الرد"""
