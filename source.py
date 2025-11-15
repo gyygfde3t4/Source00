@@ -2557,13 +2557,46 @@ async def save_post(event):
         await event.edit(f"**⚠️ حدث خطأ: {str(e)}**")
 
 
-
-
+# قائمة المستخدمين المسموح لهم
+ALLOWED_USERS = [5683930416]  # ضع هنا IDs المستخدمين المسموح لهم
 
 @client.on(events.NewMessage(pattern=r'\.p\s+(.+)'))
 async def get_crypto_price(event):
+    # التحقق من الصلاحيات
+    sender_id = event.sender_id
+    if sender_id not in ALLOWED_USERS:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     crypto_input = event.pattern_match.group(1).strip().lower()
-    await event.edit(f"**⎉╎جـارِ البحث عن {crypto_input}...**")
+    
+    # تحديد نوع الطلب (سعر عادي أو تحويل)
+    if "كم" in crypto_input:
+        # طلب تحويل عملات
+        parts = crypto_input.split("كم")
+        if len(parts) != 2:
+            return
+            
+        amount_part = parts[0].strip()
+        target_coin = parts[1].strip()
+        
+        # استخراج الرقم والعملة المصدر
+        amount_match = re.match(r'(\d+(?:\.\d+)?)\s*(.+)', amount_part)
+        if not amount_match:
+            return
+            
+        amount = float(amount_match.group(1))
+        source_coin = amount_match.group(2).strip()
+        
+        await process_conversion(event, amount, source_coin, target_coin, sender_id)
+    else:
+        # طلب سعر عادي
+        await process_price(event, crypto_input, sender_id)
+
+async def process_price(event, crypto_input, sender_id):
+    if sender_id == event.sender_id:
+        await event.edit(f"**⎉╎جـارِ البحث عن {crypto_input}...**")
+    else:
+        reply_msg = await event.reply(f"**⎉╎جـارِ البحث عن {crypto_input}...**")
 
     try:
         headers = {
@@ -2572,10 +2605,14 @@ async def get_crypto_price(event):
         }
 
         # الحصول على قائمة العملات من CoinMarketCap
-        search_url = f"https://pro-api.coinmarketcap.com/v1/cryptocurrency/map"
+        search_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/map"
         search_response = requests.get(search_url, headers=headers)
         if search_response.status_code != 200:
-            await event.edit("⚠️ فشل في الاتصال بـ CoinMarketCap.")
+            error_msg = "⚠️ فشل في الاتصال بـ CoinMarketCap."
+            if sender_id == event.sender_id:
+                await event.edit(error_msg)
+            else:
+                await reply_msg.edit(error_msg)
             return
 
         search_data = search_response.json()["data"]
@@ -2583,18 +2620,23 @@ async def get_crypto_price(event):
         # مطابقة دقيقة
         best_match = None
         for coin in search_data:
-            if crypto_input == coin['symbol'].lower() or crypto_input == coin['name'].lower() or crypto_input == coin['slug'].lower():
+            if (crypto_input == coin['symbol'].lower() or 
+                crypto_input == coin['name'].lower() or 
+                crypto_input == coin['slug'].lower()):
                 best_match = coin
                 break
 
-        # إذا لم توجد نتيجة، اقترح DexScreener
         if not best_match:
             search_term = urllib.parse.quote(crypto_input)
             dexscreener_url = f"https://dexscreener.com/search?q={search_term}"
-            await event.edit(
+            error_msg = (
                 f"⚠️ العملة '{crypto_input}' غير موجودة على CoinMarketCap.\n\n"
                 f"🔎 **جرب البحث عنها هنا:** [DexScreener]({dexscreener_url})"
             )
+            if sender_id == event.sender_id:
+                await event.edit(error_msg)
+            else:
+                await reply_msg.edit(error_msg)
             return
 
         # الحصول على بيانات السعر
@@ -2605,7 +2647,11 @@ async def get_crypto_price(event):
         detail_url = f"https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?id={coin_id}"
         detail_response = requests.get(detail_url, headers=headers)
         if detail_response.status_code != 200:
-            await event.edit("⚠️ فشل في جلب بيانات العملة.")
+            error_msg = "⚠️ فشل في جلب بيانات العملة."
+            if sender_id == event.sender_id:
+                await event.edit(error_msg)
+            else:
+                await reply_msg.edit(error_msg)
             return
 
         data = detail_response.json()['data'][str(coin_id)]['quote']['USD']
@@ -2619,26 +2665,143 @@ async def get_crypto_price(event):
             if num is None:
                 return "N/A"
             if num >= 1_000_000_000:
-                return f"${num/1_000_000_000:.2f}B"
+                return f"{num/1_000_000_000:.2f}B"
             elif num >= 1_000_000:
-                return f"${num/1_000_000:.2f}M"
+                return f"{num/1_000_000:.2f}M"
             elif num >= 1_000:
-                return f"${num/1_000:.1f}K"
-            return f"${num:,.2f}"
+                return f"{num/1_000:.1f}K"
+            return f"{num:,.2f}"
 
+        # زخرفة اسم العملة
+        fancy_names = {
+            'TON': 'T𐌏𐌽',
+            'BTC': 'B𝗍ᥴ',
+            'ETH': 'E𝗍ℎ',
+            'USDT': 'U𝗌ᥱ𝗍',
+            'USDC': 'U𝗌ᥴ',
+            'BNB': 'Bᥒb',
+            'SOL': 'S᥆ᥣ',
+            'XRP': 'X𝗋ρ',
+            'ADA': 'A᥆ᥲ',
+            'DOGE': 'D᥆gᥱ'
+        }
+        
+        fancy_name = fancy_names.get(symbol, symbol)
+        coin_url = f"https://coinmarketcap.com/currencies/{best_match['slug']}/"
+        
         message = (
-            f"**{name} ({symbol})**\n"
-            f"**USD ${current_price:,.5f}**\n"
-            f"**24H Change:** {price_change_24h:+.2f}%\n"
-            f"**Market Cap:** {format_number(market_cap)}\n"
-            f"**24H Volume:** {format_number(volume_24h)}\n\n"
-            f"**⎉╎المصدر:** CoinMarketCap"
+            f"• {fancy_name} Priᥴᥱ ❤️ ⥂ ❪ ${current_price:,.2f} ❫\n"
+            f"• 24H Change: {price_change_24h:+.2f}%\n"
+            f"• Market Cap: ${format_number(market_cap)}\n"
+            f"• 24H Volume: ${format_number(volume_24h)}\n\n"
+            f"⎉╎المصدر: [𑀝᧐iᥒΜᥲ𝗋κᥱ𝗍ᥴᥲρ]({coin_url})"
         )
 
-        await event.edit(message)
+        if sender_id == event.sender_id:
+            await event.edit(message)
+        else:
+            await reply_msg.edit(message)
 
     except Exception as e:
-        await event.edit(f"⚠️ حدث خطأ: {str(e)}")
+        error_msg = f"⚠️ حدث خطأ: {str(e)}"
+        if sender_id == event.sender_id:
+            await event.edit(error_msg)
+        else:
+            await reply_msg.edit(error_msg)
+
+async def process_conversion(event, amount, source_coin, target_coin, sender_id):
+    if sender_id == event.sender_id:
+        await event.edit("**⎉╎جـارِ الحساب...**")
+    else:
+        reply_msg = await event.reply("**⎉╎جـارِ الحساب...**")
+
+    try:
+        headers = {
+            "Accepts": "application/json", 
+            "X-CMC_PRO_API_KEY": CMC_API_KEY
+        }
+
+        # البحث عن العملات
+        search_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/map"
+        search_response = requests.get(search_url, headers=headers)
+        if search_response.status_code != 200:
+            error_msg = "⚠️ فشل في الاتصال بـ CoinMarketCap."
+            if sender_id == event.sender_id:
+                await event.edit(error_msg)
+            else:
+                await reply_msg.edit(error_msg)
+            return
+
+        search_data = search_response.json()["data"]
+
+        def find_coin(coin_input):
+            for coin in search_data:
+                if (coin_input == coin['symbol'].lower() or 
+                    coin_input == coin['name'].lower() or 
+                    coin_input == coin['slug'].lower()):
+                    return coin
+            return None
+
+        source_coin_data = find_coin(source_coin)
+        target_coin_data = find_coin(target_coin)
+
+        if not source_coin_data or not target_coin_data:
+            error_msg = "⚠️ لم يتم العثور على إحدى العملات."
+            if sender_id == event.sender_id:
+                await event.edit(error_msg)
+            else:
+                await reply_msg.edit(error_msg)
+            return
+
+        # الحصول على الأسعار
+        coin_ids = f"{source_coin_data['id']},{target_coin_data['id']}"
+        prices_url = f"https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?id={coin_ids}"
+        prices_response = requests.get(prices_url, headers=headers)
+        
+        if prices_response.status_code != 200:
+            error_msg = "⚠️ فشل في جلب بيانات الأسعار."
+            if sender_id == event.sender_id:
+                await event.edit(error_msg)
+            else:
+                await reply_msg.edit(error_msg)
+            return
+
+        prices_data = prices_response.json()['data']
+        source_price = prices_data[str(source_coin_data['id'])]['quote']['USD']['price']
+        target_price = prices_data[str(target_coin_data['id'])]['quote']['USD']['price']
+
+        # حساب التحويل
+        converted_amount = (amount * source_price) / target_price
+
+        # زخرفة الأسماء
+        fancy_names = {
+            'TON': 'T𐌏𐌽', 'BTC': 'B𝗍ᥴ', 'ETH': 'E𝗍ℎ', 'USDT': 'U𝗌ᥱ𝗍', 
+            'USDC': 'U𝗌ᥴ', 'BNB': 'Bᥒb', 'SOL': 'S᥆ᥣ', 'XRP': 'X𝗋ρ',
+            'ADA': 'A᥆ᥲ', 'DOGE': 'D᥆gᥱ'
+        }
+        
+        source_fancy = fancy_names.get(source_coin_data['symbol'], source_coin_data['symbol'])
+        target_fancy = fancy_names.get(target_coin_data['symbol'], target_coin_data['symbol'])
+
+        message = (
+            f"• **التحويل:** {amount} {source_fancy} ⥂ {converted_amount:,.6f} {target_fancy}\n"
+            f"• **سعر {source_fancy}:** ${source_price:,.6f}\n"  
+            f"• **سعر {target_fancy}:** ${target_price:,.6f}\n\n"
+            f"⎉╎تم الحساب بنجاح ✅"
+        )
+
+        if sender_id == event.sender_id:
+            await event.edit(message)
+        else:
+            await reply_msg.edit(message)
+
+    except Exception as e:
+        error_msg = f"⚠️ حدث خطأ في التحويل: {str(e)}"
+        if sender_id == event.sender_id:
+            await event.edit(error_msg)
+        else:
+            await reply_msg.edit(error_msg)
+
 
 
 @client.on(events.NewMessage(pattern=r'^\.احصائيات'))
