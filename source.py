@@ -3294,11 +3294,26 @@ async def anime_search(event):
     except Exception as e:
         await event.respond("**❌ حدث خطأ غير متوقع**\n\nيرجى المحاولة لاحقاً", parse_mode='md')
                 
-@client.on(events.NewMessage(pattern=r'^\.فلور\s+(t\.me/nft/\S+)', outgoing=True))
+# قائمة المستخدمين المسموح لهم
+ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
+
+@client.on(events.NewMessage(pattern=r'^\.فلور\s+(t\.me/nft/\S+)'))
 async def handle_floor(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     url = event.pattern_match.group(1)
 
-    await event.edit("**انتظر قليلًا . . . ⏳**")
+    # إرسال رسالة الانتظار
+    if event.out:
+        loading_msg = await event.edit("**انتظر قليلًا . . . ⏳**")
+    else:
+        loading_msg = await event.reply("**انتظر قليلًا . . . ⏳**")
 
     bot = await client.get_entity(bot_username)
     async with client.conversation(bot) as conv:
@@ -3321,7 +3336,7 @@ async def handle_floor(event):
                             final_response = await conv.get_response()
 
                             # حذف رسالة الانتظار
-                            await event.delete()
+                            await loading_msg.delete()
                             
                             # إرسال الرسالة بنفس التنسيق الأصلي
                             await client.send_message(
@@ -3333,14 +3348,36 @@ async def handle_floor(event):
                             )
                             return
 
-            await event.edit("❌ لم يتم العثور على زر 'Gift information'.")
+            error_msg = "❌ لم يتم العثور على زر 'Gift information'."
+            await loading_msg.edit(error_msg)
 
         except Exception as e:
-            await event.edit(f"❌ حدث خطأ: {str(e)}") 
+            error_msg = f"❌ حدث خطأ: {str(e)}"
+            await loading_msg.edit(error_msg) 
                
+# قائمة المستخدمين المسموح لهم
+ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
+
 @client.on(events.NewMessage(pattern=r'^\.(?:تحليل|VT)(?:\s+(http[s]?://\S+))?'))
 async def virus_total_handler(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     url_match = event.pattern_match.group(1)
+    
+    # إذا لم يكن هناك رابط في الأمر، تحقق من الرسالة المردود عليها
+    if not url_match and event.is_reply:
+        reply_msg = await event.get_reply_message()
+        # البحث عن رابط في الرسالة المردود عليها
+        import re
+        url_match = re.search(r'http[s]?://\S+', reply_msg.text or '')
+        if url_match:
+            url_match = url_match.group()
 
     async def wait_for_completion(analysis_id, max_retries=10, delay=15):
         for _ in range(max_retries):
@@ -3358,7 +3395,11 @@ async def virus_total_handler(event):
     # ====== 🔗 فحص الرابط ======
     if url_match:
         url = url_match.strip()
-        await event.edit("**⏳ جاري فحص الرابط... (قد يستغرق دقيقة)**")
+        if event.out:
+            loading_msg = await event.edit("**⏳ جاري فحص الرابط... (قد يستغرق دقيقة)**")
+        else:
+            loading_msg = await event.reply("**⏳ جاري فحص الرابط... (قد يستغرق دقيقة)**")
+        
         try:
             response = requests.post(
                 "https://www.virustotal.com/api/v3/urls",
@@ -3368,7 +3409,9 @@ async def virus_total_handler(event):
             data = response.json()
 
             if "error" in data:
-                return await event.edit(f"**❌ خطأ:** {data['error']['message']}")
+                error_msg = f"**❌ خطأ:** {data['error']['message']}"
+                await loading_msg.edit(error_msg)
+                return
 
             analysis_id = data["data"]["id"]
             encoded_url = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
@@ -3377,11 +3420,13 @@ async def virus_total_handler(event):
             report = await wait_for_completion(analysis_id)
             
             if not report:
-                return await event.edit(
+                result_text = (
                     f"**⏳ التقرير لم يكتمل بعد**\n"
                     f"يمكنك مراجعة التقرير يدوياً: [اضغط هنا]({report_url})\n"
                     f"(عادة ما يستغرق 1-2 دقيقة)"
                 )
+                await loading_msg.edit(result_text)
+                return
 
             final_report = requests.get(
                 f"https://www.virustotal.com/api/v3/urls/{encoded_url}",
@@ -3401,116 +3446,135 @@ async def virus_total_handler(event):
                 f"• 📊 تم الفحص بواسطة {total_engines} محرك تحليل"
             )
 
-            await event.edit(result_text)
+            await loading_msg.edit(result_text)
 
         except Exception as e:
-            await event.edit(f"**⚠️ حدث خطأ أثناء فحص الرابط:** {str(e)}")
+            error_msg = f"**⚠️ حدث خطأ أثناء فحص الرابط:** {str(e)}"
+            await loading_msg.edit(error_msg)
 
-    # ====== 📁 فحص الملف - الإصدار المحسن ======
-@client.on(events.NewMessage(pattern=r'^\.(?:تحليل|vt)(?:\s+(.+))?', outgoing=True))
-async def virus_total_handler(event):
-    # فحص الملفات فقط
-    if not event.is_reply:
-        return await event.edit("**⚠️ يرجى الرد على الملف المراد فحصه**")
-    
-    reply_msg = await event.get_reply_message()
-    if not reply_msg.media:
-        return await event.edit("**⚠️ يجب الرد على ملف حقيقي**")
-
-    try:
-        # تحميل الملف
-        await event.edit("**⏳ جاري تحميل الملف...**")
-        file_path = await reply_msg.download_media()
-        file_size = os.path.getsize(file_path) / (1024 * 1024)  # الحجم بالميجابايت
+    # ====== 📁 فحص الملف ======
+    else:
+        if not event.is_reply:
+            if event.out:
+                await event.edit("**⚠️ يرجى الرد على الملف المراد فحصه**")
+            else:
+                await event.reply("**⚠️ يرجى الرد على الملف المراد فحصه**")
+            return
         
-        # التحقق من حجم الملف
-        if file_size > 32:
-            os.remove(file_path)
-            return await event.edit("**❌ يتجاوز حجم الملف الحد المسموح (32MB)**")
+        reply_msg = await event.get_reply_message()
+        if not reply_msg.media:
+            if event.out:
+                await event.edit("**⚠️ يجب الرد على ملف حقيقي**")
+            else:
+                await event.reply("**⚠️ يجب الرد على ملف حقيقي**")
+            return
 
-        # إرسال الملف لـ VirusTotal
-        await event.edit("**🔍 جاري فحص الملف على VirusTotal...**")
-        with open(file_path, 'rb') as file:
-            response = requests.post(
-                'https://www.virustotal.com/api/v3/files',
-                headers={'x-apikey': VIRUSTOTAL_API},
-                files={'file': (os.path.basename(file_path), file)},
-                timeout=60
-            )
-        
-        data = response.json()
-        
-        if response.status_code != 200:
-            error_msg = data.get('error', {}).get('message', 'خطأ غير معروف')
-            os.remove(file_path)
-            return await event.edit(
-                "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
-                f"السبب: {error_msg}\n\n"
-                "يرجى المحاولة في وقت لاحق أو استخدام الموقع الرسمي:\n"
-                "https://www.virustotal.com"
-            )
+        try:
+            # تحميل الملف
+            if event.out:
+                loading_msg = await event.edit("**⏳ جاري تحميل الملف...**")
+            else:
+                loading_msg = await event.reply("**⏳ جاري تحميل الملف...**")
+            
+            file_path = await reply_msg.download_media()
+            file_size = os.path.getsize(file_path) / (1024 * 1024)  # الحجم بالميجابايت
+            
+            # التحقق من حجم الملف
+            if file_size > 32:
+                os.remove(file_path)
+                error_msg = "**❌ يتجاوز حجم الملف الحد المسموح (32MB)**"
+                await loading_msg.edit(error_msg)
+                return
 
-        analysis_id = data['data']['id']
-        report_url = f"https://www.virustotal.com/gui/file/{analysis_id}"
+            # إرسال الملف لـ VirusTotal
+            await loading_msg.edit("**🔍 جاري فحص الملف على VirusTotal...**")
+            with open(file_path, 'rb') as file:
+                response = requests.post(
+                    'https://www.virustotal.com/api/v3/files',
+                    headers={'x-apikey': VIRUSTOTAL_API},
+                    files={'file': (os.path.basename(file_path), file)},
+                    timeout=60
+                )
+            
+            data = response.json()
+            
+            if response.status_code != 200:
+                error_msg = data.get('error', {}).get('message', 'خطأ غير معروف')
+                os.remove(file_path)
+                result_text = (
+                    "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
+                    f"السبب: {error_msg}\n\n"
+                    "يرجى المحاولة في وقت لاحق أو استخدام الموقع الرسمي:\n"
+                    "https://www.virustotal.com"
+                )
+                await loading_msg.edit(result_text)
+                return
 
-        # انتظار اكتمال التحليل
-        await event.edit("**⏳ جاري تحليل الملف... (قد يستغرق 3-5 دقائق)**")
-        for _ in range(15):  # 15 محاولة كل 20 ثانية
-            await asyncio.sleep(20)
-            analysis_report = requests.get(
-                f'https://www.virustotal.com/api/v3/analyses/{analysis_id}',
+            analysis_id = data['data']['id']
+            report_url = f"https://www.virustotal.com/gui/file/{analysis_id}"
+
+            # انتظار اكتمال التحليل
+            await loading_msg.edit("**⏳ جاري تحليل الملف... (قد يستغرق 3-5 دقائق)**")
+            for _ in range(15):  # 15 محاولة كل 20 ثانية
+                await asyncio.sleep(20)
+                analysis_report = requests.get(
+                    f'https://www.virustotal.com/api/v3/analyses/{analysis_id}',
+                    headers={'x-apikey': VIRUSTOTAL_API}
+                ).json()
+                
+                if analysis_report.get('data', {}).get('attributes', {}).get('status') == 'completed':
+                    break
+            else:
+                os.remove(file_path)
+                result_text = (
+                    "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
+                    "السبب: تجاوز وقت الانتظار\n\n"
+                    f"يمكنك التحقق لاحقاً من الرابط:\n{report_url}"
+                )
+                await loading_msg.edit(result_text)
+                return
+
+            # جلب النتائج النهائية
+            final_report = requests.get(
+                f'https://www.virustotal.com/api/v3/files/{analysis_id}',
                 headers={'x-apikey': VIRUSTOTAL_API}
             ).json()
-            
-            if analysis_report.get('data', {}).get('attributes', {}).get('status') == 'completed':
-                break
-        else:
-            os.remove(file_path)
-            return await event.edit(
-                "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
-                "السبب: تجاوز وقت الانتظار\n\n"
-                f"يمكنك التحقق لاحقاً من الرابط:\n{report_url}"
+
+            if 'error' in final_report:
+                os.remove(file_path)
+                result_text = (
+                    "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
+                    f"السبب: {final_report['error']['message']}\n\n"
+                    "يرجى المحاولة في وقت لاحق أو استخدام الموقع الرسمي:\n"
+                    "https://www.virustotal.com"
+                )
+                await loading_msg.edit(result_text)
+                return
+
+            stats = final_report['data']['attributes']['last_analysis_stats']
+            result_text = (
+                f"**📊 نتائج فحص الملف:**\n"
+                f"• 🗂️ الملف: `{os.path.basename(file_path)}`\n"
+                f"• 📦 الحجم: {file_size:.2f} MB\n"
+                f"• ⚠️ ضار: {stats['malicious']}\n"
+                f"• ✅ نظيف: {stats['harmless']}\n"
+                f"• 🔗 التقرير الكامل: [اضغط هنا]({report_url})"
             )
 
-        # جلب النتائج النهائية
-        final_report = requests.get(
-            f'https://www.virustotal.com/api/v3/files/{analysis_id}',
-            headers={'x-apikey': VIRUSTOTAL_API}
-        ).json()
-
-        if 'error' in final_report:
+            await loading_msg.edit(result_text)
             os.remove(file_path)
-            return await event.edit(
+
+        except Exception as e:
+            error_msg = (
                 "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
-                f"السبب: {final_report['error']['message']}\n\n"
+                "السبب المحتمل:\n"
+                f"- {str(e)}\n\n"
                 "يرجى المحاولة في وقت لاحق أو استخدام الموقع الرسمي:\n"
                 "https://www.virustotal.com"
             )
-
-        stats = final_report['data']['attributes']['last_analysis_stats']
-        result_text = (
-            f"**📊 نتائج فحص الملف:**\n"
-            f"• 🗂️ الملف: `{os.path.basename(file_path)}`\n"
-            f"• 📦 الحجم: {file_size:.2f} MB\n"
-            f"• ⚠️ ضار: {stats['malicious']}\n"
-            f"• ✅ نظيف: {stats['harmless']}\n"
-            f"• 🔗 التقرير الكامل: [اضغط هنا]({report_url})"
-        )
-
-        await event.edit(result_text)
-        os.remove(file_path)
-
-    except Exception as e:
-        error_msg = (
-            "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
-            "السبب المحتمل:\n"
-            f"- {str(e)}\n\n"
-            "يرجى المحاولة في وقت لاحق أو استخدام الموقع الرسمي:\n"
-            "https://www.virustotal.com"
-        )
-        if 'file_path' in locals() and os.path.exists(file_path):
-            os.remove(file_path)
-        await event.edit(error_msg)
+            if 'file_path' in locals() and os.path.exists(file_path):
+                os.remove(file_path)
+            await loading_msg.edit(error_msg)	
 
 
 async def is_authorized(user_id):
