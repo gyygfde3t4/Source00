@@ -6792,6 +6792,9 @@ async def update_command(event):
     await deploy(loading_msg, repo, ups_rem, ac_br, txt)
 
 
+# قائمة المستخدمين المسموح لهم
+ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
+
 # إعدادات الرفع المحسنة
 UPLOAD_PART_SIZE_KB = 4096
 UPLOAD_WORKERS = 4
@@ -6816,16 +6819,44 @@ def is_youtube_url(text):
     ]
     return any(re.search(pattern, text, re.IGNORECASE) for pattern in youtube_patterns)
 
-@client.on(events.NewMessage(pattern=r'\.بحث (.+)'))
+@client.on(events.NewMessage(pattern=r'\.بحث(?:\s+(.+))?'))
 async def download_and_send_audio(event):
-    query = event.pattern_match.group(1).strip()
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
+    query_input = event.pattern_match.group(1)
+    
+    # إذا لم يكن هناك نص في الأمر، تحقق من الرسالة المردود عليها
+    if not query_input and event.is_reply:
+        reply_msg = await event.get_reply_message()
+        query_input = reply_msg.text or ''
+    
+    if not query_input:
+        if event.out:
+            await event.edit("**⚠️ يرجى إدخال نص للبحث أو الرد على رسالة تحتوي على نص/رابط**")
+        else:
+            await event.reply("**⚠️ يرجى إدخال نص للبحث أو الرد على رسالة تحتوي على نص/رابط**")
+        return
+
+    query = query_input.strip()
     
     if is_youtube_url(query):
-        await event.edit("**╮ جـارِ معالجة الرابط... 🎧♥️╰**")
+        if event.out:
+            await event.edit("**╮ جـارِ معالجة الرابط... 🎧♥️╰**")
+        else:
+            loading_msg = await event.reply("**╮ جـارِ معالجة الرابط... 🎧♥️╰**")
         video_url = query
         is_url = True
     else:
-        await event.edit("**╮ جـارِ البحث ؏ـن المقطـٓع الصٓوتـي... 🎧♥️╰**")
+        if event.out:
+            await event.edit("**╮ جـارِ البحث ؏ـن المقطـٓع الصٓوتـي... 🎧♥️╰**")
+        else:
+            loading_msg = await event.reply("**╮ جـارِ البحث ؏ـن المقطـٓع الصٓوتـي... 🎧♥️╰**")
         video_url = None
         is_url = False
 
@@ -6884,7 +6915,11 @@ async def download_and_send_audio(event):
                 if is_url:
                     info = await asyncio.to_thread(ydl.extract_info, video_url, download=False)
                     if not info:
-                        await event.edit("**⚠️ تعذر استخراج معلومات الرابط - جاري المحاولة بطريقة بديلة**")
+                        error_msg = "**⚠️ تعذر استخراج معلومات الرابط - جاري المحاولة بطريقة بديلة**"
+                        if event.out:
+                            await event.edit(error_msg)
+                        else:
+                            await loading_msg.edit(error_msg)
                         temp_opts = ydl_opts.copy()
                         temp_opts.pop('cookiefile', None)
                         temp_opts.pop('external_downloader', None)
@@ -6893,14 +6928,22 @@ async def download_and_send_audio(event):
                             info = await asyncio.to_thread(ydl_temp.extract_info, video_url, download=False)
                         
                         if not info:
-                            await event.edit("**⚠️ فشل في تحميل الفيديو**")
+                            error_msg = "**⚠️ فشل في تحميل الفيديو**"
+                            if event.out:
+                                await event.edit(error_msg)
+                            else:
+                                await loading_msg.edit(error_msg)
                             return
                 else:
                     search_query = f"ytsearch1:{query}"
                     info = await asyncio.to_thread(ydl.extract_info, search_query, download=False)
                     
                     if not info:
-                        await event.edit("**⚠️ فشل في البحث - جاري المحاولة بطريقة بديلة**")
+                        error_msg = "**⚠️ فشل في البحث - جاري المحاولة بطريقة بديلة**"
+                        if event.out:
+                            await event.edit(error_msg)
+                        else:
+                            await loading_msg.edit(error_msg)
                         temp_opts = ydl_opts.copy()
                         temp_opts.pop('cookiefile', None)
                         temp_opts.pop('external_downloader', None)
@@ -6909,22 +6952,38 @@ async def download_and_send_audio(event):
                             info = await asyncio.to_thread(ydl_temp.extract_info, search_query, download=False)
                         
                         if not info:
-                            await event.edit("**⚠️ لم يتم العثور على نتائج**")
+                            error_msg = "**⚠️ لم يتم العثور على نتائج**"
+                            if event.out:
+                                await event.edit(error_msg)
+                            else:
+                                await loading_msg.edit(error_msg)
                             return
 
                 if not is_url:
                     if not info.get('entries'):
-                        await event.edit("**⚠️ لم يتم العثور على نتائج**")
+                        error_msg = "**⚠️ لم يتم العثور على نتائج**"
+                        if event.out:
+                            await event.edit(error_msg)
+                        else:
+                            await loading_msg.edit(error_msg)
                         return
                     
                     info = info['entries'][0]
                     if not info:
-                        await event.edit("**⚠️ النتيجة فارغة**")
+                        error_msg = "**⚠️ النتيجة فارغة**"
+                        if event.out:
+                            await event.edit(error_msg)
+                        else:
+                            await loading_msg.edit(error_msg)
                         return
 
                 video_id = info.get('id')
                 if not video_id:
-                    await event.edit("**⚠️ لا يوجد معرف للفيديو**")
+                    error_msg = "**⚠️ لا يوجد معرف للفيديو**"
+                    if event.out:
+                        await event.edit(error_msg)
+                    else:
+                        await loading_msg.edit(error_msg)
                     return
                     
                 video_url = info.get('webpage_url') or f"https://www.youtube.com/watch?v={video_id}"
@@ -6934,10 +6993,17 @@ async def download_and_send_audio(event):
                 thumbnail = info.get('thumbnail')
 
                 if not video_url:
-                    await event.edit("**⚠️ لا يوجد رابط للفيديو**")
+                    error_msg = "**⚠️ لا يوجد رابط للفيديو**"
+                    if event.out:
+                        await event.edit(error_msg)
+                    else:
+                        await loading_msg.edit(error_msg)
                     return
 
-                await event.edit(f"**╮ جـارِ تحميل . . . 🎧♥️╰**")
+                if event.out:
+                    await event.edit(f"**╮ جـارِ تحميل . . . 🎧♥️╰**")
+                else:
+                    await loading_msg.edit(f"**╮ جـارِ تحميل . . . 🎧♥️╰**")
 
                 # التحميل باستخدام aria2c
                 await asyncio.to_thread(ydl.download, [video_url])
@@ -6952,12 +7018,20 @@ async def download_and_send_audio(event):
                             await convert_to_mp3(temp_path, audio_path)
                             break
                     else:
-                        await event.edit("**⚠️ فشل في العثور على الملف المحمل**")
+                        error_msg = "**⚠️ فشل في العثور على الملف المحمل**"
+                        if event.out:
+                            await event.edit(error_msg)
+                        else:
+                            await loading_msg.edit(error_msg)
                         return
 
                 # التحقق من وجود الملف النهائي
                 if not os.path.exists(audio_path):
-                    await event.edit("**⚠️ فشل في إنشاء الملف الصوتي**")
+                    error_msg = "**⚠️ فشل في إنشاء الملف الصوتي**"
+                    if event.out:
+                        await event.edit(error_msg)
+                    else:
+                        await loading_msg.edit(error_msg)
                     return
 
                 # تحميل الصورة المصغرة
@@ -6967,7 +7041,10 @@ async def download_and_send_audio(event):
                 await asyncio.to_thread(add_metadata, audio_path, title, artist, thumb_path)
 
                 # إرسال الملف مع الهايبر لينك على كلمة "بحث" والعنوان بصيغة mono
-                await event.edit("**╮ ❐ جـارِ الرفع . . . 𓅫╰**")
+                if event.out:
+                    await event.edit("**╮ ❐ جـارِ الرفع . . . 𓅫╰**")
+                else:
+                    await loading_msg.edit("**╮ ❐ جـارِ الرفع . . . 𓅫╰**")
                 
                 # إنشاء النص مع الهايبر لينك على كلمة "بحث" والعنوان بصيغة mono
                 caption_text = f"**[⌔╎البحث]({video_url}):** `{artist} - {title}`"
@@ -6990,18 +7067,30 @@ async def download_and_send_audio(event):
                     workers=UPLOAD_WORKERS,
                 )
                 
-                await event.delete()
+                if event.out:
+                    await event.delete()
+                else:
+                    await loading_msg.delete()
 
             except Exception as e:
                 error_msg = str(e)
                 if "Sign in to confirm you're not a bot" in error_msg:
-                    await event.edit("**⚠️ مشكلة في الكوكيز - يرجى تحديث ملف cookies.txt**")
+                    error_msg = "**⚠️ مشكلة في الكوكيز - يرجى تحديث ملف cookies.txt**"
                 else:
-                    await event.edit(f"**⚠️ خطأ:** {error_msg[:200]}")
+                    error_msg = f"**⚠️ خطأ:** {error_msg[:200]}"
+                
+                if event.out:
+                    await event.edit(error_msg)
+                else:
+                    await loading_msg.edit(error_msg)
                 return
 
     except Exception as e:
-        await event.edit(f"**⚠️ خطأ عام:** {str(e)[:200]}")
+        error_msg = f"**⚠️ خطأ عام:** {str(e)[:200]}"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await loading_msg.edit(error_msg)
     
     finally:
         if 'video_id' in locals():
