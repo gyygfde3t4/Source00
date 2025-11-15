@@ -2677,7 +2677,7 @@ def extract_username_or_invite(link):
 
     return None
 
-@client.on(events.NewMessage(pattern=r'^\.انضم(?:\s+(.+))?')
+@client.on(events.NewMessage(pattern=r'^\.انضم(?:\s+(.+))?'))
 async def join_channel_or_group(event):
     # التحقق من الصلاحيات
     allowed_users = [5683930416]
