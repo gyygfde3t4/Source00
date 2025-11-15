@@ -2091,20 +2091,20 @@ async def eren_check(event):
             check_msg = await event.reply("**⎆ Checking bot status...**")
         await asyncio.sleep(2)  # Dramatic wait 😄
 
-        # Gather information
-        user = await event.get_sender()
-        user_name = f"{user.first_name} {user.last_name}" if user.last_name else user.first_name
+        # Gather information - استخدام معلومات الحساب الذي يعمل عليه البوت
+        me = await event.client.get_me()
+        user_name = f"{me.first_name} {me.last_name}" if me.last_name else me.first_name
         ping_time = (datetime.now() - start_time).microseconds / 1000
         
-        # Get python version
+        # Get python version - الطريقة الصحيحة
         pyver = python_version()
         
-        # Get user profile photo
+        # Get profile photo of the account running the bot
         user_photo = None
         try:
             user_photo = await event.client.download_profile_photo(
-                user.id,
-                file=f"downloads/{user.id}.jpg",
+                me.id,
+                file=f"downloads/{me.id}.jpg",
                 download_big=True
             )
         except Exception as photo_error:
@@ -2115,7 +2115,7 @@ async def eren_check(event):
 ┏━━━━━━━━━━━━━━━━━┓
 ┃  ◉ Sᴏᴜʀᴄᴇ EREN  ┃
 ┣━━━━━━━━━━━━━━━━━┫
-┃ • ᴜsᴇʀ ➪ {user_name}
+┃ • ᴀᴄᴄᴏᴜɴᴛ ➪ {user_name}
 ┃ • ᴠᴇʀsɪᴏɴ ➪ {EREN_VERSION}
 ┃ • ᴘʏᴛʜᴏɴ ➪ {pyver}
 ┃ • ᴛᴇʟᴇᴛʜᴏɴ ➪ {version.__version__}
