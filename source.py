@@ -7176,6 +7176,9 @@ async def cleanup_files(video_id):
             except Exception:
                 pass
 
+# قائمة المستخدمين المسموح لهم
+ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
+
 # إعدادات الرفع المحسنة
 UPLOAD_PART_SIZE_KB = 4096
 UPLOAD_WORKERS = 4
@@ -7198,6 +7201,14 @@ async def progress(current, total, event, text):
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # التحقق مما إذا كان هناك رابط في الرسالة أو الرد على رسالة تحتوي على رابط
     reply = await event.get_reply_message()
     input_url = event.pattern_match.group(1).strip()
@@ -7206,16 +7217,23 @@ async def download_and_send_video(event):
         input_url = reply.message.strip()
 
     if not input_url:  # إذا لم يكن هناك رابط في الرسالة أو الرد
-        await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط الفيـديـو .يوت + رابط او بالـرد ع رابـط 📹╰**")
+        if event.out:
+            await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط الفيـديـو .يوت + رابط او بالـرد ع رابـط 📹╰**")
+        else:
+            await event.reply("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط الفيـديـو .يوت + رابط او بالـرد ع رابـط 📹╰**")
         return
 
-    await event.edit("**╮ جـارِ تحميـل الفيـديـو مـن يـوتيـوب... 📹♥️╰**")
+    if event.out:
+        loading_msg = await event.edit("**╮ جـارِ تحميـل الفيـديـو مـن يـوتيـوب... 📹♥️╰**")
+    else:
+        loading_msg = await event.reply("**╮ جـارِ تحميـل الفيـديـو مـن يـوتيـوب... 📹♥️╰**")
 
     try:
         # التحقق من وجود ملف الكوكيز
         cookie_file = 'cookies.txt'
         if not os.path.exists(cookie_file):
-            await event.edit("**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!")
+            error_msg = "**⚠️ خطـأ**: ملف الكـوكيـز غيـر موجـود!"
+            await loading_msg.edit(error_msg)
             return
 
         # إعدادات yt-dlp محسنة مع تنسيقات مرنة
@@ -7279,7 +7297,7 @@ async def download_and_send_video(event):
                 info = await asyncio.to_thread(ydl.extract_info, input_url, download=False)
                 
                 if not info:
-                    await event.edit("**⚠️ لم يتم العثور على الفيديو أو الرابط غير صحيح**")
+                    await loading_msg.edit("**⚠️ لم يتم العثور على الفيديو أو الرابط غير صحيح**")
                     return
                 
                 video_id = info.get('id', 'unknown')
@@ -7288,7 +7306,7 @@ async def download_and_send_video(event):
                 width = info.get('width', 1280)
                 height = info.get('height', 720)
 
-                await event.edit(f"**╮ جـارِ تحميـل الفيـديـو... 📹╰**\n**╰ العـنوان:** `{video_title}`")
+                await loading_msg.edit(f"**╮ جـارِ تحميـل الفيـديـو... 📹╰**\n**╰ العـنوان:** `{video_title}`")
 
                 # تحميل الفيديو
                 await asyncio.to_thread(ydl.download, [input_url])
@@ -7305,16 +7323,16 @@ async def download_and_send_video(event):
                     if download_files:
                         video_file = download_files[0]
                     else:
-                        await event.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
+                        await loading_msg.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
                         return
 
                 # التحقق من حجم الملف
                 file_size = os.path.getsize(video_file)
                 if file_size > 2000 * 1024 * 1024:  # 2GB
-                    await event.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
+                    await loading_msg.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
                     return
 
-                await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
 
                 # إرسال الفيديو مع إعدادات الرفع المحسنة
                 await event.client.send_file(
@@ -7333,18 +7351,18 @@ async def download_and_send_video(event):
                     part_size_kb=UPLOAD_PART_SIZE_KB,
                     workers=UPLOAD_WORKERS,
                     progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
-                        progress(d, t, event, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                        progress(d, t, loading_msg, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
                     )
                 )
 
-                await event.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
+                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
 
             except Exception as download_error:
                 error_msg = str(download_error)
                 
                 # محاولة بديلة بدون aria2c
                 if "Requested format is not available" in error_msg or "Format not available" in error_msg:
-                    await event.edit("**⚠️ جـارِ المحـاولة بطـريقة بديلـة...**")
+                    await loading_msg.edit("**⚠️ جـارِ المحـاولة بطـريقة بديلـة...**")
                     try:
                         # إعدادات بديلة بدون external downloader
                         alt_ydl_opts = ydl_opts.copy()
@@ -7363,7 +7381,7 @@ async def download_and_send_video(event):
                                     break
                             
                             if video_file:
-                                await event.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                                await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
                                 await event.client.send_file(
                                     event.chat_id,
                                     video_file,
@@ -7372,26 +7390,26 @@ async def download_and_send_video(event):
                                     part_size_kb=UPLOAD_PART_SIZE_KB,
                                     workers=UPLOAD_WORKERS,
                                 )
-                                await event.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
+                                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
                                 return
                     except Exception as alt_error:
                         error_msg = str(alt_error)
                 
                 # رسائل خطأ محددة
                 if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
-                    await event.edit("**⚠️ YouTube يطلب التحقق. حدث الكوكيز أو جرب لاحقاً**")
+                    await loading_msg.edit("**⚠️ YouTube يطلب التحقق. حدث الكوكيز أو جرب لاحقاً**")
                 elif "Video unavailable" in error_msg:
-                    await event.edit("**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**")
+                    await loading_msg.edit("**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**")
                 elif "Private video" in error_msg:
-                    await event.edit("**⚠️ الفيـديـو خـاص ولا يمكـن تحميـله**")
+                    await loading_msg.edit("**⚠️ الفيـديـو خـاص ولا يمكـن تحميـله**")
                 elif "Unsupported URL" in error_msg:
-                    await event.edit("**⚠️ الرابـط غيـر مدعـوم أو غيـر صحيـح**")
+                    await loading_msg.edit("**⚠️ الرابـط غيـر مدعـوم أو غيـر صحيـح**")
                 else:
-                    await event.edit(f"**⚠️ خطـأ في التحـميل**: {error_msg[:200]}")
+                    await loading_msg.edit(f"**⚠️ خطـأ في التحـميل**: {error_msg[:200]}")
                 return
 
     except Exception as e:
-        await event.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)[:200]}")
+        await loading_msg.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)[:200]}")
     
     finally:
         # تنظيف الملفات المؤقتة
