@@ -3744,6 +3744,7 @@ async def handle_floor(event):
                
 # قائمة المستخدمين المسموح لهم
 ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
+
 @client.on(events.NewMessage(pattern=r'^\.(?:تحليل|VT)(?:\s+(\S+))?'))
 async def virus_total_handler(event):
     # التحقق من الصلاحيات
@@ -3779,26 +3780,6 @@ async def virus_total_handler(event):
         import re
         pattern = r'^https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[/\w\.-]*\??[/\w\.-=&]*$'
         return re.match(pattern, url) is not None
-
-    async def wait_for_completion(analysis_id, max_retries=10, delay=15):
-        for i in range(max_retries):
-            try:
-                report = requests.get(
-                    f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
-                    headers={"x-apikey": VIRUSTOTAL_API}
-                ).json()
-                
-                status = report.get("data", {}).get("attributes", {}).get("status")
-                print(f"🔍 [DEBUG] التحقق من التحليل {analysis_id} - المحاولة {i+1}: {status}")
-                
-                if status == "completed":
-                    print(f"✅ [DEBUG] التحليل اكتمل: {analysis_id}")
-                    return report
-                await asyncio.sleep(delay)
-            except Exception as e:
-                print(f"❌ [DEBUG] خطأ في التحقق من التحليل: {str(e)}")
-                await asyncio.sleep(delay)
-        return None
 
     url_match = event.pattern_match.group(1)
     url_from_reply = None
@@ -3841,9 +3822,18 @@ async def virus_total_handler(event):
             encoded_url = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
             report_url = f"https://www.virustotal.com/gui/url/{encoded_url}"
 
-            report = await wait_for_completion(analysis_id)
-            
-            if not report:
+            # انتظار اكتمال تحليل الرابط
+            for i in range(10):
+                await asyncio.sleep(15)
+                report = requests.get(
+                    f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+                    headers={"x-apikey": VIRUSTOTAL_API}
+                ).json()
+                
+                status = report.get("data", {}).get("attributes", {}).get("status")
+                if status == "completed":
+                    break
+            else:
                 result_text = (
                     f"**⏳ التقرير لم يكتمل بعد**\n"
                     f"يمكنك مراجعة التقرير يدوياً: [اضغط هنا]({report_url})\n"
@@ -3913,9 +3903,18 @@ async def virus_total_handler(event):
                     encoded_url = base64.urlsafe_b64encode(normalized_url.encode()).decode().strip("=")
                     report_url = f"https://www.virustotal.com/gui/url/{encoded_url}"
 
-                    report = await wait_for_completion(analysis_id)
-                    
-                    if not report:
+                    # انتظار اكتمال تحليل الرابط
+                    for i in range(10):
+                        await asyncio.sleep(15)
+                        report = requests.get(
+                            f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+                            headers={"x-apikey": VIRUSTOTAL_API}
+                        ).json()
+                        
+                        status = report.get("data", {}).get("attributes", {}).get("status")
+                        if status == "completed":
+                            break
+                    else:
                         result_text = (
                             f"**⏳ التقرير لم يكتمل بعد**\n"
                             f"يمكنك مراجعة التقرير يدوياً: [اضغط هنا]({report_url})\n"
@@ -3999,89 +3998,78 @@ async def virus_total_handler(event):
                 await loading_msg.edit(result_text)
                 return
 
+            # 🔥 الحل الصحيح: استخراج SHA256 من الرد مباشرة
             analysis_id = data['data']['id']
-            report_url = f"https://www.virustotal.com/gui/file-analysis/{analysis_id}"
             print(f"🆔 [DEBUG] analysis_id: {analysis_id}")
 
-            # انتظار اكتمال التحليل
-            await loading_msg.edit("**⏳ جاري تحليل الملف... (قد يستغرق 3-5 دقائق)**")
-            
-            # انتظار اكتمال التحليل والحصول على SHA256
+            # محاولة استخراج SHA256 بطرق متعددة
             file_hash = None
-            for i in range(15):
-                await asyncio.sleep(20)
-                print(f"🔄 [DEBUG] التحقق من التحليل {analysis_id} - المحاولة {i+1}")
-                
-                analysis_report = requests.get(
-                    f'https://www.virustotal.com/api/v3/analyses/{analysis_id}',
-                    headers={'x-apikey': VIRUSTOTAL_API}
-                ).json()
-                
-                print(f"📊 [DEBUG] تقرير التحليل: {analysis_report}")
-                
-                status = analysis_report.get('data', {}).get('attributes', {}).get('status')
-                if status == 'completed':
-                    # استخراج الـ SHA256 من التقرير
-                    file_hash = analysis_report.get('data', {}).get('attributes', {}).get('meta', {}).get('file_info', {}).get('sha256')
-                    print(f"🔑 [DEBUG] SHA256 من التحليل: {file_hash}")
-                    
-                    if file_hash:
-                        break
             
-            # === الحل الذكي: محاولات بديلة للحصول على SHA256 ===
+            # الطريقة 1: من meta.file_info في استجابة الرفع
+            if 'meta' in data and 'file_info' in data['meta']:
+                file_hash = data['meta']['file_info'].get('sha256')
+                print(f"🔑 [DEBUG] SHA256 من meta.file_info: {file_hash}")
             
-            # المحاولة الأولى: إعادة التحقق مع تأخير
+            # الطريقة 2: من attributes إذا كانت موجودة
+            if not file_hash and 'data' in data and 'attributes' in data['data']:
+                file_hash = data['data']['attributes'].get('sha256')
+                print(f"🔑 [DEBUG] SHA256 من attributes: {file_hash}")
+            
+            # الطريقة 3: الاستعلام عن التحليل للحصول على SHA256
             if not file_hash:
-                print("🔄 [DEBUG] المحاولة الأولى: إعادة التحقق مع تأخير")
-                await asyncio.sleep(5)
-                retry_report = requests.get(
-                    f'https://www.virustotal.com/api/v3/analyses/{analysis_id}',
-                    headers={'x-apikey': VIRUSTOTAL_API}
-                ).json()
-                print(f"🔄 [DEBUG] تقرير إعادة المحاولة: {retry_report}")
-
-                file_hash = retry_report.get('data', {}).get('attributes', {}).get('meta', {}).get('file_info', {}).get('sha256')
-                print(f"🔑 [DEBUG] SHA256 بعد إعادة المحاولة: {file_hash}")
-
-            # المحاولة الثانية: استخدام endpoint بديل
-            if not file_hash:
-                print("🔄 [DEBUG] المحاولة الثانية: استخدام endpoint بديل")
-                try:
-                    alt_response = requests.get(
+                print("🔄 [DEBUG] جاري الاستعلام عن التحليل للحصول على SHA256...")
+                for attempt in range(5):
+                    analysis_report = requests.get(
                         f'https://www.virustotal.com/api/v3/analyses/{analysis_id}',
                         headers={'x-apikey': VIRUSTOTAL_API}
                     ).json()
-                    print(f"🔄 [DEBUG] استجابة endpoint البديل: {alt_response}")
                     
-                    # محاولة استخراج SHA256 بطرق مختلفة
+                    print(f"📊 [DEBUG] تقرير التحليل (المحاولة {attempt + 1}): {analysis_report}")
+                    
+                    # البحث عن SHA256 في أماكن مختلفة من الرد
                     file_hash = (
-                        alt_response.get('data', {}).get('attributes', {}).get('meta', {}).get('file_info', {}).get('sha256') or
-                        alt_response.get('data', {}).get('attributes', {}).get('sha256') or
-                        alt_response.get('data', {}).get('id')
+                        analysis_report.get('meta', {}).get('file_info', {}).get('sha256') or
+                        analysis_report.get('data', {}).get('attributes', {}).get('sha256') or
+                        analysis_report.get('data', {}).get('attributes', {}).get('meta', {}).get('file_info', {}).get('sha256')
                     )
-                    print(f"🔑 [DEBUG] SHA256 من endpoint البديل: {file_hash}")
-                except Exception as alt_error:
-                    print(f"❌ [DEBUG] خطأ في endpoint البديل: {str(alt_error)}")
-
-            # إذا مازال غير موجود
+                    
+                    if file_hash:
+                        print(f"✅ [DEBUG] تم الحصول على SHA256: {file_hash}")
+                        break
+                    
+                    await asyncio.sleep(3)
+            
+            # إذا لم نحصل على SHA256 بعد كل المحاولات
             if not file_hash:
-                print("❌ [DEBUG] فشل جميع محاولات الحصول على SHA256")
                 os.remove(file_path)
                 result_text = (
-                    "**⏳ التحليل لم يكتمل بالكامل بعد**\n\n"
-                    f"🔗 يمكنك التحقق لاحقًا من التقرير:\n{report_url}\n\n"
-                    "🕒 يحدث هذا عادةً مع:\n"
-                    "• الملفات الكبيرة\n"
-                    "• الملفات المشفرة\n"
-                    "• الملفات التي تحتاج وقت تحليل أطول\n\n"
-                    "⚠️ جرب مرة أخرى بعد 5-10 دقائق"
+                    "**⚠️ تعذر الحصول على بصمة الملف**\n\n"
+                    "السبب المحتمل:\n"
+                    "• الملف غير مدعوم\n"
+                    "• خطأ في الرفع\n"
+                    "• مشكلة في اتصال VirusTotal\n\n"
+                    "يرجى المحاولة مرة أخرى أو استخدام الموقع الرسمي"
                 )
                 await loading_msg.edit(result_text)
                 return
 
-            print(f"✅ [DEBUG] تم الحصول على SHA256: {file_hash}")
+            # التحقق من أن file_hash هو SHA256 صحيح (64 حرف hex)
+            import re
+            if not re.match(r'^[a-fA-F0-9]{64}$', file_hash):
+                print(f"❌ [DEBUG] file_hash ليس SHA256 صحيح: {file_hash}")
+                os.remove(file_path)
+                result_text = (
+                    "**⚠️ خطأ في بصمة الملف**\n\n"
+                    "تم الحصول على معرّف غير صحيح للملف.\n"
+                    "يرجى المحاولة مرة أخرى."
+                )
+                await loading_msg.edit(result_text)
+                return
 
-            # جلب التقرير النهائي باستخدام الـ SHA256 الصحيح
+            # الآن جلب التقرير النهائي باستخدام الـ SHA256 الصحيح
+            report_url = f"https://www.virustotal.com/gui/file/{file_hash}"
+            print(f"🔗 [DEBUG] رابط التقرير: {report_url}")
+            
             final_report = requests.get(
                 f'https://www.virustotal.com/api/v3/files/{file_hash}',
                 headers={'x-apikey': VIRUSTOTAL_API}
@@ -4091,20 +4079,19 @@ async def virus_total_handler(event):
 
             if 'error' in final_report:
                 os.remove(file_path)
+                error_detail = final_report['error'].get('message', 'خطأ غير معروف')
+                print(f"❌ [DEBUG] خطأ في التقرير النهائي: {error_detail}")
+                
                 result_text = (
                     "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
-                    f"السبب: {final_report['error']['message']}\n\n"
-                    "يرجى المحاولة في وقت لاحق أو استخدام الموقع الرسمي:\n"
-                    "https://www.virustotal.com"
+                    f"السبب: {error_detail}\n\n"
+                    f"🔗 يمكنك التحقق من التقرير هنا:\n{report_url}"
                 )
                 await loading_msg.edit(result_text)
                 return
 
             stats = final_report['data']['attributes']['last_analysis_stats']
             file_name = os.path.basename(file_path)
-            
-            # تحديث رابط التقرير ليكون باستخدام الـ SHA256 الصحيح
-            report_url = f"https://www.virustotal.com/gui/file/{file_hash}"
             
             result_text = (
                 f"**📊 نتائج فحص الملف:**\n"
@@ -4136,7 +4123,6 @@ async def virus_total_handler(event):
             if 'file_path' in locals() and os.path.exists(file_path):
                 os.remove(file_path)
             await loading_msg.edit(error_msg)
-
 
 
 async def is_authorized(user_id):
