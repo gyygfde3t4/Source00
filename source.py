@@ -9641,8 +9641,6 @@ async def pinterest_images_search(event):
         gc.collect()
 
 
-
-
 @client.on(events.NewMessage(pattern=r'\.اختصار(?:\s+(.+))?'))
 async def shorten_url(event):
     # التحقق من الصلاحيات
@@ -9681,10 +9679,6 @@ async def shorten_url(event):
                 else:
                     await event.reply("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
                 return
-    else:
-        # إذا كان الرابط صالحاً، تأكد من وجود بروتوكول
-        if not url.startswith(('http://', 'https://')):
-            url = 'http://' + url
 
     if event.out:
         loading_msg = await event.edit("**⎉╎جـاري إختصـار الرابـط . . .**")
@@ -9692,21 +9686,32 @@ async def shorten_url(event):
         loading_msg = await event.reply("**⎉╎جـاري إختصـار الرابـط . . .**")
 
     try:
-        # استخدام requests للاختصار
-        sample_url = "https://da.gd/s?url={}".format(url)
-        response_api = requests.get(sample_url).text
+        # ترميز الرابط وإضافة headers
+        encoded_url = urllib.parse.quote(url, safe='')
+        sample_url = f"https://da.gd/s?url={encoded_url}"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         
-        if response_api and validators.url(response_api.strip()):
+        response = requests.get(sample_url, headers=headers, timeout=10)
+        response_api = response.text.strip()
+        
+        print(f"DEBUG: URL: {url}")
+        print(f"DEBUG: Encoded URL: {encoded_url}")
+        print(f"DEBUG: Response Status: {response.status_code}")
+        print(f"DEBUG: Response Text: {response_api}")
+        
+        if response.status_code == 200 and response_api:
             await loading_msg.edit(
-                f"**⎉╎الرابـط المختصر :** {response_api.strip()}\n"
+                f"**⎉╎الرابـط المختصر :** {response_api}\n"
                 f"**⎉╎الرابـط :** {url}\n"
                 f"**⎉╎تم انشـاء الإختصـار .. بنجـاح**", 
                 link_preview=False
             )
         else:
+            print(f"DEBUG: Error - Status: {response.status_code}, Text: {response_api}")
             await loading_msg.edit("**⎉╎خـطأ بالاختصـار .. الرجـاء المحاولـة لاحقـاً**")
                     
     except Exception as e:
+        print(f"DEBUG: Exception: {str(e)}")
         await loading_msg.edit("**⎉╎خـطأ بالاختصـار .. الرجـاء المحاولـة لاحقـاً**")
 
 @client.on(events.NewMessage(pattern=r'\.الغاء اختصار(?:\s+(.+))?'))
@@ -9754,25 +9759,28 @@ async def unshorten_url(event):
         loading_msg = await event.reply("**⎉╎جـاري إلغـاء إختصـار الرابـط . . .**")
 
     try:
-        # استخدام requests لإلغاء الاختصار
-        response = requests.get(url, allow_redirects=False, timeout=10)
+        # استخدام requests لإلغاء الاختصار مع headers
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        response = requests.get(url, headers=headers, allow_redirects=False, timeout=10)
+        
+        print(f"DEBUG: Unshorten URL: {url}")
+        print(f"DEBUG: Unshorten Status: {response.status_code}")
+        print(f"DEBUG: Unshorten Headers: {dict(response.headers)}")
         
         if response.status_code in [301, 302] and 'Location' in response.headers:
             original_url = response.headers['Location']
             
-            # تحقق من أن الرابط الأصلي صالح
-            if validators.url(original_url):
-                await loading_msg.edit(
-                    f"**⎉╎الرابـط المختصر :** {url}\n"
-                    f"**⎉╎الرابـط الاصـلي :** {original_url}",
-                    link_preview=False
-                )
-            else:
-                await loading_msg.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+            await loading_msg.edit(
+                f"**⎉╎الرابـط المختصر :** {url}\n"
+                f"**⎉╎الرابـط الاصـلي :** {original_url}",
+                link_preview=False
+            )
         else:
+            print(f"DEBUG: Unshorten Error - No redirect found")
             await loading_msg.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
                     
     except Exception as e:
+        print(f"DEBUG: Unshorten Exception: {str(e)}")
         await loading_msg.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
 
 
