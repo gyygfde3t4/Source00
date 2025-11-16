@@ -35,6 +35,7 @@ import aiofiles
 import warnings
 import shutil
 import gc
+import validators
 
 # ========== مكتبات HTTP وطلبات الويب ==========
 import requests
@@ -9668,18 +9669,22 @@ async def shorten_url(event):
 
     url = input_str.strip()
     
-    # تحقق من أن الرابط صالح وإضافة البروتوكول إذا لم يكن موجوداً
-    try:
-        parsed = urlparse(url)
-        if not parsed.scheme:
-            # جرب https أولاً، ثم http إذا فشل
-            url = 'https://' + url
-    except Exception:
-        if event.out:
-            await event.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
-        else:
-            await event.reply("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
-        return
+    # استخدام validators للتحقق من صحة الرابط
+    if not validators.url(url):
+        # إذا لم يكن الرابط صالحاً، حاول إضافة http://
+        if not url.startswith(('http://', 'https://')):
+            url = 'http://' + url
+            # تحقق مرة أخرى بعد الإضافة
+            if not validators.url(url):
+                if event.out:
+                    await event.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+                else:
+                    await event.reply("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+                return
+    else:
+        # إذا كان الرابط صالحاً، تأكد من وجود بروتوكول
+        if not url.startswith(('http://', 'https://')):
+            url = 'http://' + url
 
     if event.out:
         loading_msg = await event.edit("**⎉╎جـاري إختصـار الرابـط . . .**")
@@ -9687,41 +9692,19 @@ async def shorten_url(event):
         loading_msg = await event.reply("**⎉╎جـاري إختصـار الرابـط . . .**")
 
     try:
-        async with aiohttp.ClientSession() as session:
-            # محاولة مع https أولاً
-            try:
-                async with session.get(f'https://da.gd/s?url={url}', timeout=10) as response:
-                    if response.status == 200:
-                        shortened_url = await response.text()
-                        shortened_url = shortened_url.strip()
-                        
-                        await loading_msg.edit(
-                            f"**⎉╎الرابـط المختصر :** {shortened_url}\n"
-                            f"**⎉╎الرابـط :** {url}\n"
-                            f"**⎉╎تم انشـاء الإختصـار .. بنجـاح**", 
-                            link_preview=False
-                        )
-                        return
-            except Exception:
-                pass
-            
-            # إذا فشل https، جرب http
-            try:
-                async with session.get(f'http://da.gd/s?url={url}', timeout=10) as response:
-                    if response.status == 200:
-                        shortened_url = await response.text()
-                        shortened_url = shortened_url.strip()
-                        
-                        await loading_msg.edit(
-                            f"**⎉╎الرابـط المختصر :** {shortened_url}\n"
-                            f"**⎉╎الرابـط :** {url}\n"
-                            f"**⎉╎تم انشـاء الإختصـار .. بنجـاح**", 
-                            link_preview=False
-                        )
-                    else:
-                        await loading_msg.edit("**⎉╎خـطأ بالاختصـار .. الرجـاء المحاولـة لاحقـاً**")
-            except Exception:
-                await loading_msg.edit("**⎉╎خـطأ بالاختصـار .. الرجـاء المحاولـة لاحقـاً**")
+        # استخدام requests للاختصار
+        sample_url = "https://da.gd/s?url={}".format(url)
+        response_api = requests.get(sample_url).text
+        
+        if response_api and validators.url(response_api.strip()):
+            await loading_msg.edit(
+                f"**⎉╎الرابـط المختصر :** {response_api.strip()}\n"
+                f"**⎉╎الرابـط :** {url}\n"
+                f"**⎉╎تم انشـاء الإختصـار .. بنجـاح**", 
+                link_preview=False
+            )
+        else:
+            await loading_msg.edit("**⎉╎خـطأ بالاختصـار .. الرجـاء المحاولـة لاحقـاً**")
                     
     except Exception as e:
         await loading_msg.edit("**⎉╎خـطأ بالاختصـار .. الرجـاء المحاولـة لاحقـاً**")
@@ -9752,17 +9735,18 @@ async def unshorten_url(event):
 
     url = input_str.strip()
     
-    # تحقق من أن الرابط صالح وإضافة البروتوكول إذا لم يكن موجوداً
-    try:
-        parsed = urlparse(url)
-        if not parsed.scheme:
-            url = 'https://' + url
-    except Exception:
-        if event.out:
-            await event.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
-        else:
-            await event.reply("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
-        return
+    # استخدام validators للتحقق من صحة الرابط
+    if not validators.url(url):
+        # إذا لم يكن الرابط صالحاً، حاول إضافة http://
+        if not url.startswith(('http://', 'https://')):
+            url = 'http://' + url
+            # تحقق مرة أخرى بعد الإضافة
+            if not validators.url(url):
+                if event.out:
+                    await event.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+                else:
+                    await event.reply("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+                return
 
     if event.out:
         loading_msg = await event.edit("**⎉╎جـاري إلغـاء إختصـار الرابـط . . .**")
@@ -9770,42 +9754,27 @@ async def unshorten_url(event):
         loading_msg = await event.reply("**⎉╎جـاري إلغـاء إختصـار الرابـط . . .**")
 
     try:
-        async with aiohttp.ClientSession() as session:
-            # محاولة مع https أولاً
-            try:
-                async with session.get(url, allow_redirects=False, timeout=10) as response:
-                    if response.status in [301, 302] and 'Location' in response.headers:
-                        original_url = response.headers['Location']
-                        
-                        await loading_msg.edit(
-                            f"**⎉╎الرابـط المختصر :** {url}\n"
-                            f"**⎉╎الرابـط الاصـلي :** {original_url}",
-                            link_preview=False
-                        )
-                        return
-            except Exception:
-                pass
+        # استخدام requests لإلغاء الاختصار
+        response = requests.get(url, allow_redirects=False, timeout=10)
+        
+        if response.status_code in [301, 302] and 'Location' in response.headers:
+            original_url = response.headers['Location']
             
-            # إذا فشل https، جرب http
-            try:
-                # تحويل الرابط إلى http إذا كان https
-                http_url = url.replace('https://', 'http://') if url.startswith('https://') else url
-                async with session.get(http_url, allow_redirects=False, timeout=10) as response:
-                    if response.status in [301, 302] and 'Location' in response.headers:
-                        original_url = response.headers['Location']
-                        
-                        await loading_msg.edit(
-                            f"**⎉╎الرابـط المختصر :** {url}\n"
-                            f"**⎉╎الرابـط الاصـلي :** {original_url}",
-                            link_preview=False
-                        )
-                    else:
-                        await loading_msg.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
-            except Exception:
+            # تحقق من أن الرابط الأصلي صالح
+            if validators.url(original_url):
+                await loading_msg.edit(
+                    f"**⎉╎الرابـط المختصر :** {url}\n"
+                    f"**⎉╎الرابـط الاصـلي :** {original_url}",
+                    link_preview=False
+                )
+            else:
                 await loading_msg.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+        else:
+            await loading_msg.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
                     
     except Exception as e:
         await loading_msg.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+
 
                           
 def run_server():
