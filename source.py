@@ -7959,7 +7959,7 @@ async def recognize_song(event):
         await loading_msg.delete()
         
         # إرسال الرسالة النهائية مرة واحدة مع كل شيء
-        final_msg = await event.reply(f"`{title} — {artist}`\n\n> ** جاري تحميل وإرسال المقطـٓع الصٓوتـي . . . 🎧♥️**\n[\u2060]({cover_url})", link_preview=True)
+        final_msg = await event.reply(f"<code>{title} — {artist}</code>\n\n<blockquote>جاري تحميل وإرسال المقطـٓع الصٓوتـي . . . [♥️]({cover_url})</blockquote>", link_preview=True, parse_mode='html')
 
         # البحث عن الأغنية في YouTube وتحميلها
         search_query = f"{artist} - {title}"
