@@ -3998,7 +3998,7 @@ async def virus_total_handler(event):
                 await loading_msg.edit(result_text)
                 return
 
-            # 🔥 الحل الصحيح: استخراج SHA256 من الرد مباشرة
+            # استخراج SHA256 من الرد مباشرة
             analysis_id = data['data']['id']
             print(f"🆔 [DEBUG] analysis_id: {analysis_id}")
 
@@ -4090,17 +4090,37 @@ async def virus_total_handler(event):
                 await loading_msg.edit(result_text)
                 return
 
-            stats = final_report['data']['attributes']['last_analysis_stats']
+            # 🔥 الإصلاح النهائي: حساب الإحصائيات من last_analysis_results بدلاً من last_analysis_stats
+            analysis_results = final_report['data']['attributes']['last_analysis_results']
+            
+            # حساب الإحصائيات يدوياً
+            malicious = 0
+            suspicious = 0
+            harmless = 0
+            undetected = 0
+            
+            for engine, result in analysis_results.items():
+                category = result.get('category')
+                if category == 'malicious':
+                    malicious += 1
+                elif category == 'suspicious':
+                    suspicious += 1
+                elif category == 'harmless':
+                    harmless += 1
+                elif category == 'undetected':
+                    undetected += 1
+            
+            total_engines = malicious + suspicious + harmless + undetected
             file_name = os.path.basename(file_path)
             
             result_text = (
                 f"**📊 نتائج فحص الملف:**\n"
                 f"• 🗂️ الملف: `{file_name}`\n"
                 f"• 📦 الحجم: {file_size:.2f} MB\n"
-                f"• 🔐 SHA256: `{file_hash[:16]}...`\n"
-                f"• ⚠️ ضار: {stats['malicious']}\n"
-                f"• ✅ نظيف: {stats['harmless']}\n"
-                f"• 🟡 مشبوه: {stats['suspicious']}\n"
+                f"• ⚠️ ضار: {malicious}/{total_engines}\n"
+                f"• ✅ نظيف: {harmless}/{total_engines}\n"
+                f"• 🟡 مشبوه: {suspicious}/{total_engines}\n"
+                f"• ⏳ غير محدد: {undetected}/{total_engines}\n"
                 f"• 🔗 التقرير الكامل: [اضغط هنا]({report_url})"
             )
 
