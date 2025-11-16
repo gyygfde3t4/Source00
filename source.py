@@ -62,6 +62,7 @@ from urllib.parse import quote
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3, APIC
 from mutagen import File
+from shazamio import Shazam
 
 # ========== Telethon - استيراد رئيسي ==========
 from telethon import TelegramClient, events, functions, types, Button
@@ -110,6 +111,7 @@ from telethon.errors import (
     FloodWaitError, ChannelInvalidError, ChannelPrivateError,
     ChatAdminRequiredError, ChatIdInvalidError, ChatRestrictedError
 )
+from telethon.tl.types import DocumentAttributeAudio, DocumentAttributeFilename
 
 # ========== Telethon - الأخطاء ==========
 from telethon.errors import (
@@ -7900,6 +7902,201 @@ async def progress(current, total, event, text):
     percent = (current / total) * 100
     bar = "█" * int(percent / 5) + "▒" * (20 - int(percent / 5))
     await event.edit(f"{text}\n\n**╮ 📊╎التقدم:** `{bar}`\n**╰ 💾╎النسبة:** `{percent:.1f}%`")
+
+
+
+@client.on(events.NewMessage(pattern=r'\.اغنية'))
+async def recognize_song(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
+    # التحقق من وجود رد
+    if not event.is_reply:
+        if event.out:
+            await event.edit("**⚠️ يرجى الرد على مقطع صوتي أو فيديو للتعرف على الأغنية**")
+        else:
+            await event.reply("**⚠️ يرجى الرد على مقطع صوتي أو فيديو للتعرف على الأغنية**")
+        return
+
+    reply_msg = await event.get_reply_message()
+    
+    # التحقق من نوع الملف
+    if not reply_msg.media:
+        if event.out:
+            await event.edit("**⚠️ يرجى الرد على مقطع صوتي أو فيديو**")
+        else:
+            await event.reply("**⚠️ يرجى الرد على مقطع صوتي أو فيديو**")
+        return
+
+    # تحميل الملف
+    if event.out:
+        loading_msg = await event.edit("**╮ جـارِ البحث ؏ـن الأغـنـيـٓـة . . . 🎧♥️╰**")
+    else:
+        loading_msg = await event.reply("**╮ جـارِ البحث ؏ـن الأغـنـيـٓـة . . . 🎧♥️╰**")
+
+    try:
+        # تحميل الملف
+        media_path = await reply_msg.download_media(file='downloads/')
+        
+        if not media_path:
+            await loading_msg.edit("**⚠️ فشل في تحميل الملف**")
+            return
+
+        # التعرف على الأغنية باستخدام Shazam
+        shazam = Shazam()
+        result = await shazam.recognize_song(media_path)
+        
+        if not result or 'track' not in result:
+            await loading_msg.edit("**⚠️ لم أتمكن من التعرف على الأغنية**")
+            # تنظيف الملف
+            if os.path.exists(media_path):
+                os.remove(media_path)
+            return
+
+        # استخراج معلومات الأغنية
+        track = result['track']
+        title = track.get('title', 'غير معروف')
+        artist = track.get('subtitle', 'غير معروف')
+        cover_url = track.get('images', {}).get('coverart', '')
+        
+        # عرض نتيجة التعرف
+        song_info = f"`{title} — {artist}`"
+        if cover_url:
+            # إرسال رسالة مع معاينة الصورة بدون ظهور الرابط
+            await loading_msg.edit(f"{song_info}\n\n**╮ جـارِ تحميل . . . 🎧♥️╰**")
+            # إرسال رسالة منفصلة للمعاينة (سيتم حذفها لاحقاً)
+            preview_msg = await event.reply(f"[‎]({cover_url})", link_preview=True)
+        else:
+            await loading_msg.edit(f"{song_info}\n\n**╮ جـارِ تحميل . . . 🎧♥️╰**")
+            preview_msg = None
+
+        # الآن البحث عن الأغنية في YouTube وتحميلها
+        search_query = f"{artist} - {title}"
+        
+        # استخدام إعدادات yt-dlp المشابهة لأمر البحث
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': 'downloads/%(id)s.%(ext)s',
+            'quiet': True,
+            'no_warnings': True,
+            'ignoreerrors': True,
+            'noplaylist': True,
+            'socket_timeout': 20,
+            'retries': 3,
+            'external_downloader': 'aria2c',
+            'external_downloader_args': ['-x', '10', '-k', '1M', '--quiet'],
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '96',
+            }],
+        }
+
+        from yt_dlp import YoutubeDL
+        
+        with YoutubeDL(ydl_opts) as ydl:
+            # البحث عن الأغنية
+            search_result = await asyncio.to_thread(ydl.extract_info, f"ytsearch1:{search_query}", download=False)
+            
+            if not search_result or not search_result.get('entries'):
+                await loading_msg.edit("**⚠️ لم أتمكن من العثور على الأغنية في YouTube**")
+                # تنظيف الملفات
+                if os.path.exists(media_path):
+                    os.remove(media_path)
+                if preview_msg:
+                    await preview_msg.delete()
+                return
+
+            video_info = search_result['entries'][0]
+            video_id = video_info.get('id')
+            video_url = video_info.get('webpage_url', f"https://www.youtube.com/watch?v={video_id}")
+            duration = video_info.get('duration', 0)
+            thumbnail = video_info.get('thumbnail', cover_url)
+
+            # تحميل الأغنية
+            await asyncio.to_thread(ydl.download, [video_url])
+            
+            # البحث عن الملف المحمل
+            audio_path = f'downloads/{video_id}.mp3'
+            if not os.path.exists(audio_path):
+                # محاولة العثور على الملف بامتداد آخر
+                for ext in ['webm', 'm4a', 'opus']:
+                    temp_path = f'downloads/{video_id}.{ext}'
+                    if os.path.exists(temp_path):
+                        await convert_to_mp3(temp_path, audio_path)
+                        break
+
+            # إرسال الملف الصوتي
+            if os.path.exists(audio_path):
+                # تحديث الرسالة قبل الإرسال
+                await loading_msg.edit(f"{song_info}\n\n**╮ ❐ جـارِ الرفع . . . 𓅫╰**")
+                
+                # إرسال الملف
+                await event.client.send_file(
+                    event.chat_id,
+                    audio_path,
+                    caption=f"**تم التعرف على:** `{title} — {artist}`",
+                    attributes=[
+                        DocumentAttributeAudio(
+                            duration=duration,
+                            voice=False,
+                            title=title,
+                            performer=artist
+                        )
+                    ],
+                    supports_streaming=True,
+                )
+                
+                # تحديث الرسالة النهائية
+                await loading_msg.edit(f"{song_info}\n\n**تـم تحلـيـل الصـٓوت وإرسـال المقطـٓع الصٓوتـي... 🎧♥️**")
+                
+                # حذف رسالة المعاينة إذا كانت موجودة
+                if preview_msg:
+                    await preview_msg.delete()
+
+    except Exception as e:
+        error_msg = f"**⚠️ خطأ:** {str(e)[:200]}"
+        await loading_msg.edit(error_msg)
+    
+    finally:
+        # تنظيف الملفات المؤقتة
+        if 'media_path' in locals() and os.path.exists(media_path):
+            os.remove(media_path)
+        if 'video_id' in locals():
+            for pattern in [f'downloads/{video_id}*', 'downloads/*.part']:
+                for file_path in glob.glob(pattern):
+                    try:
+                        os.remove(file_path)
+                    except Exception:
+                        pass
+
+async def convert_to_mp3(input_path, output_path):
+    """تحويل الملف إلى MP3"""
+    try:
+        cmd = [
+            'ffmpeg', '-i', input_path,
+            '-codec:a', 'libmp3lame', '-b:a', '96k', '-ac', '2', '-ar', '44100',
+            '-y', output_path
+        ]
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await process.communicate()
+        
+        if process.returncode == 0 and os.path.exists(input_path):
+            os.remove(input_path)
+            
+    except Exception as e:
+        print(f"فشل التحويل إلى MP3: {e}")
+        
+
 
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
