@@ -7895,6 +7895,7 @@ async def cleanup_files(video_id):
                 pass
 
 
+
 @client.on(events.NewMessage(pattern=r'\.اغنية'))
 async def recognize_song(event):
     # التحقق من الصلاحيات
@@ -7955,14 +7956,14 @@ async def recognize_song(event):
         artist = track.get('subtitle', 'غير معروف')
         cover_url = track.get('images', {}).get('coverart', '')
         
-        # عرض نتيجة التعرف في نفس الرسالة مع المعاينة
-        song_info = f"`{title} — {artist}`"
+        # حذف رسالة "جاري البحث" وإرسال النتيجة الجديدة مع المعاينة
+        await loading_msg.delete()
         
         if cover_url:
-            # تحديث الرسالة الحالية بنفس المعلومات والمعاينة
-            await loading_msg.edit(f"**البحث:** {song_info}\n\n**╮ جـارِ تحميل . . . 🎧♥️╰**", link_preview=True)
+            # إرسال رسالة جديدة مع المعاينة باستخدام رابط مخفي
+            result_msg = await event.reply(f"`{title} — {artist}`\n\n**╮ جـارِ تحميل . . . 🎧♥️╰**\n[\u2060]({cover_url})", link_preview=True)
         else:
-            await loading_msg.edit(f"**البحث:** {song_info}\n\n**╮ جـارِ تحميل . . . 🎧♥️╰**")
+            result_msg = await event.reply(f"`{title} — {artist}`\n\n**╮ جـارِ تحميل . . . 🎧♥️╰**")
 
         # البحث عن الأغنية في YouTube وتحميلها
         search_query = f"{artist} - {title}"
@@ -8017,12 +8018,12 @@ async def recognize_song(event):
                     search_result = await asyncio.to_thread(ydl_temp.extract_info, f"ytsearch1:{search_query}", download=False)
                 
                 if not search_result or not search_result.get('entries'):
-                    await loading_msg.edit("**⚠️ فشل في العثور على الأغنية في YouTube**")
+                    await result_msg.edit("**⚠️ فشل في العثور على الأغنية في YouTube**")
                     return
 
             video_info = search_result['entries'][0]
             if not video_info:
-                await loading_msg.edit("**⚠️ النتيجة فارغة من YouTube**")
+                await result_msg.edit("**⚠️ النتيجة فارغة من YouTube**")
                 return
 
             video_id = video_info.get('id')
@@ -8041,19 +8042,19 @@ async def recognize_song(event):
                         await convert_to_mp3(temp_path, audio_path)
                         break
                 else:
-                    await loading_msg.edit("**⚠️ فشل في العثور على الملف المحمل**")
+                    await result_msg.edit("**⚠️ فشل في العثور على الملف المحمل**")
                     return
 
             # التحقق من وجود الملف النهائي
             if not os.path.exists(audio_path):
-                await loading_msg.edit("**⚠️ فشل في إنشاء الملف الصوتي**")
+                await result_msg.edit("**⚠️ فشل في إنشاء الملف الصوتي**")
                 return
 
             # إرسال الملف الصوتي
             await event.client.send_file(
                 event.chat_id,
                 audio_path,
-                caption=f"**البحث:** `{title} — {artist}`",
+                caption=f"`{title} — {artist}`",
                 attributes=[
                     DocumentAttributeAudio(
                         duration=duration,
@@ -8065,12 +8066,15 @@ async def recognize_song(event):
                 supports_streaming=True,
             )
             
-            # تحديث الرسالة الأصلية فقط - بدون حذفها
-            await loading_msg.edit(f"`{title} — {artist}`\n\n**تـم إرسـال المقطـٓع الصٓوتـي... 🎧♥️**")
+            # تحديث الرسالة النهائية
+            await result_msg.edit(f"`{title} — {artist}`\n\n**تـم إرسـال المقطـٓع الصٓوتـي... 🎧♥️**")
 
     except Exception as e:
         error_msg = f"**⚠️ خطأ:** {str(e)[:200]}"
-        await loading_msg.edit(error_msg)
+        try:
+            await loading_msg.edit(error_msg)
+        except:
+            await event.reply(error_msg)
     
     finally:
         # تنظيف الملفات المؤقتة
