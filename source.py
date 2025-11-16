@@ -3756,15 +3756,19 @@ async def virus_total_handler(event):
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
     url_match = event.pattern_match.group(1)
+    url_from_reply = None
     
     # إذا لم يكن هناك رابط في الأمر، تحقق من الرسالة المردود عليها
     if not url_match and event.is_reply:
         reply_msg = await event.get_reply_message()
         # البحث عن رابط في الرسالة المردود عليها
         import re
-        url_match = re.search(r'http[s]?://\S+', reply_msg.text or '')
-        if url_match:
-            url_match = url_match.group()
+        url_search = re.search(r'http[s]?://\S+', reply_msg.text or '')
+        if url_search:
+            url_from_reply = url_search.group()
+
+    # تحديد الرابط الذي سيتم فحصه (الأولوية للأمر ثم الرد)
+    target_url = url_match or url_from_reply
 
     async def wait_for_completion(analysis_id, max_retries=10, delay=15):
         for _ in range(max_retries):
@@ -3780,8 +3784,8 @@ async def virus_total_handler(event):
         return None
 
     # ====== 🔗 فحص الرابط ======
-    if url_match:
-        url = url_match.strip()
+    if target_url:
+        url = target_url.strip()
         if event.out:
             loading_msg = await event.edit("**⏳ جاري فحص الرابط... (قد يستغرق دقيقة)**")
         else:
@@ -3843,9 +3847,9 @@ async def virus_total_handler(event):
     else:
         if not event.is_reply:
             if event.out:
-                await event.edit("**⚠️ يرجى الرد على الملف المراد فحصه**")
+                await event.edit("**⚠️ يرجى إرسال رابط مع الأمر أو الرد على ملف/رابط**")
             else:
-                await event.reply("**⚠️ يرجى الرد على الملف المراد فحصه**")
+                await event.reply("**⚠️ يرجى إرسال رابط مع الأمر أو الرد على ملف/رابط**")
             return
         
         reply_msg = await event.get_reply_message()
@@ -3961,7 +3965,7 @@ async def virus_total_handler(event):
             )
             if 'file_path' in locals() and os.path.exists(file_path):
                 os.remove(file_path)
-            await loading_msg.edit(error_msg)	
+            await loading_msg.edit(error_msg)
 
 
 async def is_authorized(user_id):
