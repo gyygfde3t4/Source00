@@ -3756,12 +3756,14 @@ async def virus_total_handler(event):
         return
 
     def extract_url_from_text(text):
-        """استخراج الروابط من النص بدعم للروابط المختصرة"""
+        """استخراج الروابط من النص بدعم لجميع أنواع الروابط"""
         import re
-        url_pattern = r'(?:https?://)?(?:www\.)?([a-zA-Z0-9-]+\.(?:com|org|net|io|ly|co|me|tk|ml|ga|cf|xyz|info|top|site|online|tech|store|shop|blog|app|dev|tv|uk|de|fr|es|it|ru|ca|au|in|jp|cn|br|mx)/?[^\s]*)'
+        # نمط محسن للتعرف على جميع أنواع الروابط
+        url_pattern = r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[/\w\.-]*\??[/\w\.-=&%]*|(?:[-\w.]+\.[a-zA-Z]{2,})[/\w\.-]*\??[/\w\.-=&%]*'
         match = re.search(url_pattern, text)
         if match:
             potential_url = match.group(0)
+            # إذا لم يبدأ بـ http/https، أضفها
             if not potential_url.startswith(('http://', 'https://')):
                 potential_url = 'https://' + potential_url
             return potential_url
@@ -3771,14 +3773,17 @@ async def virus_total_handler(event):
         """تطبيع الرابط وإضافة البروتوكول إذا لزم الأمر"""
         url = url.strip()
         url = url.split()[0]
+        # إزالة أي أحرف غير مرغوب فيها في نهاية الرابط
+        url = re.sub(r'[.,;!?]*$', '', url)
         if not url.startswith(('http://', 'https://')):
             url = 'https://' + url
         return url
 
     def is_valid_url(url):
-        """التحقق من أن الرابط صالح"""
+        """التحقق من أن الرابط صالح - قبول جميع الروابط"""
         import re
-        pattern = r'^https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[/\w\.-]*\??[/\w\.-=&]*$'
+        # قبول أي رابط يبدأ بـ http:// أو https://
+        pattern = r'^https?://.+'
         return re.match(pattern, url) is not None
 
     url_match = event.pattern_match.group(1)
@@ -3803,7 +3808,7 @@ async def virus_total_handler(event):
         
         try:
             if not is_valid_url(url):
-                await loading_msg.edit("**❌ الرابط غير صالح أو غير مدعوم**")
+                await loading_msg.edit("**❌ الرابط غير صالح**\n\nيرجى التأكد من كتابة الرابط بشكل صحيح.")
                 return
 
             response = requests.post(
@@ -3877,9 +3882,11 @@ async def virus_total_handler(event):
         
         reply_msg = await event.get_reply_message()
         
+        # التحقق أولاً إذا كانت الرسالة تحتوي على رابط
         if reply_msg.text:
             potential_url = extract_url_from_text(reply_msg.text)
             if potential_url:
+                # إذا وجد رابط، قم بفحصه بدلاً من الملف
                 normalized_url = normalize_url(potential_url)
                 if event.out:
                     loading_msg = await event.edit(f"**⏳ جاري فحص الرابط...**\n`{normalized_url}`")
@@ -3887,6 +3894,10 @@ async def virus_total_handler(event):
                     loading_msg = await event.reply(f"**⏳ جاري فحص الرابط...**\n`{normalized_url}`")
                 
                 try:
+                    if not is_valid_url(normalized_url):
+                        await loading_msg.edit("**❌ الرابط غير صالح**\n\nيرجى التأكد من كتابة الرابط بشكل صحيح.")
+                        return
+
                     response = requests.post(
                         "https://www.virustotal.com/api/v3/urls",
                         headers={"x-apikey": VIRUSTOTAL_API},
@@ -3973,7 +3984,6 @@ async def virus_total_handler(event):
 
             # إرسال الملف لـ VirusTotal
             await loading_msg.edit("**🔍 جاري فحص الملف على VirusTotal...**")
-            print(f"📤 [DEBUG] رفع الملف: {file_path} (الحجم: {file_size:.2f} MB)")
             
             with open(file_path, 'rb') as file:
                 response = requests.post(
@@ -3984,7 +3994,6 @@ async def virus_total_handler(event):
                 )
             
             data = response.json()
-            print(f"📥 [DEBUG] استجابة رفع الملف: {data}")
             
             if response.status_code != 200:
                 error_msg = data.get('error', {}).get('message', 'خطأ غير معروف')
@@ -4000,7 +4009,6 @@ async def virus_total_handler(event):
 
             # استخراج SHA256 من الرد مباشرة
             analysis_id = data['data']['id']
-            print(f"🆔 [DEBUG] analysis_id: {analysis_id}")
 
             # محاولة استخراج SHA256 بطرق متعددة
             file_hash = None
@@ -4008,23 +4016,18 @@ async def virus_total_handler(event):
             # الطريقة 1: من meta.file_info في استجابة الرفع
             if 'meta' in data and 'file_info' in data['meta']:
                 file_hash = data['meta']['file_info'].get('sha256')
-                print(f"🔑 [DEBUG] SHA256 من meta.file_info: {file_hash}")
             
             # الطريقة 2: من attributes إذا كانت موجودة
             if not file_hash and 'data' in data and 'attributes' in data['data']:
                 file_hash = data['data']['attributes'].get('sha256')
-                print(f"🔑 [DEBUG] SHA256 من attributes: {file_hash}")
             
             # الطريقة 3: الاستعلام عن التحليل للحصول على SHA256
             if not file_hash:
-                print("🔄 [DEBUG] جاري الاستعلام عن التحليل للحصول على SHA256...")
                 for attempt in range(5):
                     analysis_report = requests.get(
                         f'https://www.virustotal.com/api/v3/analyses/{analysis_id}',
                         headers={'x-apikey': VIRUSTOTAL_API}
                     ).json()
-                    
-                    print(f"📊 [DEBUG] تقرير التحليل (المحاولة {attempt + 1}): {analysis_report}")
                     
                     # البحث عن SHA256 في أماكن مختلفة من الرد
                     file_hash = (
@@ -4034,7 +4037,6 @@ async def virus_total_handler(event):
                     )
                     
                     if file_hash:
-                        print(f"✅ [DEBUG] تم الحصول على SHA256: {file_hash}")
                         break
                     
                     await asyncio.sleep(3)
@@ -4056,7 +4058,6 @@ async def virus_total_handler(event):
             # التحقق من أن file_hash هو SHA256 صحيح (64 حرف hex)
             import re
             if not re.match(r'^[a-fA-F0-9]{64}$', file_hash):
-                print(f"❌ [DEBUG] file_hash ليس SHA256 صحيح: {file_hash}")
                 os.remove(file_path)
                 result_text = (
                     "**⚠️ خطأ في بصمة الملف**\n\n"
@@ -4068,19 +4069,15 @@ async def virus_total_handler(event):
 
             # الآن جلب التقرير النهائي باستخدام الـ SHA256 الصحيح
             report_url = f"https://www.virustotal.com/gui/file/{file_hash}"
-            print(f"🔗 [DEBUG] رابط التقرير: {report_url}")
             
             final_report = requests.get(
                 f'https://www.virustotal.com/api/v3/files/{file_hash}',
                 headers={'x-apikey': VIRUSTOTAL_API}
             ).json()
 
-            print(f"📄 [DEBUG] التقرير النهائي: {final_report}")
-
             if 'error' in final_report:
                 os.remove(file_path)
                 error_detail = final_report['error'].get('message', 'خطأ غير معروف')
-                print(f"❌ [DEBUG] خطأ في التقرير النهائي: {error_detail}")
                 
                 result_text = (
                     "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
@@ -4090,14 +4087,13 @@ async def virus_total_handler(event):
                 await loading_msg.edit(result_text)
                 return
 
-            # 🔥 الإصلاح النهائي: حساب الإحصائيات من last_analysis_results بدلاً من last_analysis_stats
+            # حساب الإحصائيات من last_analysis_results
             analysis_results = final_report['data']['attributes']['last_analysis_results']
             
-            # حساب الإحصائيات يدوياً
+            # حساب الإحصائيات يدوياً مع التصنيف الصحيح
             malicious = 0
             suspicious = 0
-            harmless = 0
-            undetected = 0
+            clean = 0  # نظيف = harmless + undetected
             
             for engine, result in analysis_results.items():
                 category = result.get('category')
@@ -4105,12 +4101,10 @@ async def virus_total_handler(event):
                     malicious += 1
                 elif category == 'suspicious':
                     suspicious += 1
-                elif category == 'harmless':
-                    harmless += 1
-                elif category == 'undetected':
-                    undetected += 1
+                elif category in ['harmless', 'undetected']:
+                    clean += 1
             
-            total_engines = malicious + suspicious + harmless + undetected
+            total_engines = malicious + suspicious + clean
             file_name = os.path.basename(file_path)
             
             result_text = (
@@ -4118,21 +4112,15 @@ async def virus_total_handler(event):
                 f"• 🗂️ الملف: `{file_name}`\n"
                 f"• 📦 الحجم: {file_size:.2f} MB\n"
                 f"• ⚠️ ضار: {malicious}/{total_engines}\n"
-                f"• ✅ نظيف: {harmless}/{total_engines}\n"
+                f"• ✅ نظيف: {clean}/{total_engines}\n"
                 f"• 🟡 مشبوه: {suspicious}/{total_engines}\n"
-                f"• ⏳ غير محدد: {undetected}/{total_engines}\n"
                 f"• 🔗 التقرير الكامل: [اضغط هنا]({report_url})"
             )
 
             await loading_msg.edit(result_text)
             os.remove(file_path)
-            print("✅ [DEBUG] فحص الملف اكتمل بنجاح")
 
         except Exception as e:
-            print(f"❌ [DEBUG] خطأ عام في فحص الملف: {str(e)}")
-            import traceback
-            print(f"🔍 [DEBUG] تفاصيل الخطأ: {traceback.format_exc()}")
-            
             error_msg = (
                 "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
                 "السبب المحتمل:\n"
