@@ -3771,6 +3771,7 @@ async def virus_total_handler(event):
 
     def normalize_url(url):
         """تطبيع الرابط وإضافة البروتوكول إذا لزم الأمر"""
+        import re  # إضافة import هنا
         url = url.strip()
         url = url.split()[0]
         # إزالة أي أحرف غير مرغوب فيها في نهاية الرابط
@@ -4131,7 +4132,6 @@ async def virus_total_handler(event):
             if 'file_path' in locals() and os.path.exists(file_path):
                 os.remove(file_path)
             await loading_msg.edit(error_msg)
-
 
 async def is_authorized(user_id):
     me = await client.get_me()
