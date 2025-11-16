@@ -888,7 +888,7 @@ async def show_user_info(event):
             
             # جمع المعلومات الأساسية
             user_id = target_user.id
-            username = target_user.username if target_user.username else "غير متوفر"
+            username = target_user.username if target_user.username else None
             user_name = target_user.first_name or "غير متوفر"
 
             # البايو
@@ -967,18 +967,24 @@ async def show_user_info(event):
             try:
                 if hasattr(target_user, 'usernames') and target_user.usernames:
                     for username_obj in target_user.usernames:
-                        if username_obj.username != target_user.username:
+                        if username_obj.username:
                             additional_usernames.append(f"@{username_obj.username}")
             except:
                 pass
+
+            # إضافة اليوزر الأساسي إذا كان موجوداً
+            if username:
+                additional_usernames.insert(0, f"@{username}")
+
+            # بناء اسم المستخدم مع هايبر لينك باستخدام الأيدي (الأفضل)
+            user_name_link = f'<a href="tg://user?id={user_id}">{user_name}</a>'
 
             # بناء رسالة المعلومات
             user_info_message = f"""<blockquote>⧉ مـعلومـات المسـتخـدم | سـورس إيــريــن
 ═════════════════════════════
 
-✦ الاســم: {user_name}
-✦ اليـوزر: @{username}
-✦ الايـدي: {user_id}
+✦ الاســم: {user_name_link}
+✦ الايـدي: <code>{user_id}</code>
 ✦ الرتبــه: {rank}
 ✦ الحساب: {account_type}
 ✦ الصـور: {num_photos}
@@ -987,13 +993,13 @@ async def show_user_info(event):
 ✦ الإنشـاء: {creation_date}
 ✦ البايـو: {bio}"""
 
-            # إضافة عدد الهدايا فقط إذا كان أكبر من صفر
-            if gifts_count > 0:
-                user_info_message += f"\n✦ عدد الهدايا : {gifts_count}"
-
-            # إضافة اليوزرات الإضافية إذا وجدت
+            # إضافة اليوزرات إذا وجدت
             if additional_usernames:
                 user_info_message += f"\n✦ اليوزرات: {', '.join(additional_usernames)}"
+
+            # إضافة عدد الهدايا فقط إذا كان أكبر من صفر
+            if gifts_count > 0:
+                user_info_message += f"\n✦ عدد الهدايا: {gifts_count}"
 
             user_info_message += "\n\n⧉ قنـاة السـورس @EREN_PYTHON</blockquote>"
 
@@ -2119,7 +2125,7 @@ async def eren_check(event):
 ┃ • ᴠᴇʀsɪᴏɴ ➪ {EREN_VERSION}
 ┃ • ᴘʏᴛʜᴏɴ ➪ {pyver}
 ┃ • ᴛᴇʟᴇᴛʜᴏɴ ➪ {version.__version__}
-┃ • ᴘʟᴀᴛғᴏʀᴍ ➪ KOYEB
+┃ • ᴘʟᴀᴛғᴏʀᴍ ➪ 𐌺᧐yᥱδ
 ┃ • ᴘɪɴɢ ➪ {ping_time:.2f} ms
 ┃ • ᴜᴘᴛɪᴍᴇ ➪ {get_readable_time(time.time() - StartTime)}
 ┃ • sᴛᴀʀᴛᴇᴅ ➪ {datetime.fromtimestamp(StartTime).strftime('%Y/%m/%d %H:%M:%S')}
