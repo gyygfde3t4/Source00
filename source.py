@@ -3755,38 +3755,6 @@ async def virus_total_handler(event):
     if not is_bot_owner and sender_id not in allowed_users:
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
-    url_match = event.pattern_match.group(1)
-    url_from_reply = None
-    
-    # إذا لم يكن هناك رابط في الأمر، تحقق من الرسالة المردود عليها
-    if not url_match and event.is_reply:
-        reply_msg = await event.get_reply_message()
-        # البحث عن رابط في الرسالة المردود عليها باستخدام دالة محسنة
-        url_from_reply = extract_url_from_text(reply_msg.text or '')
-
-    # تحديد الرابط الذي سيتم فحصه (الأولوية للأمر ثم الرد)
-    target_url = url_match or url_from_reply
-    
-    # إذا كان هناك رابط محتمل، قم بتنظيفه وإضافة البروتوكول إذا لزم الأمر
-    if target_url:
-        target_url = normalize_url(target_url)
-
-    async def wait_for_completion(analysis_id, max_retries=10, delay=15):
-        for _ in range(max_retries):
-            try:
-                report = requests.get(
-                    f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
-                    headers={"x-apikey": VIRUSTOTAL_API}
-                ).json()
-                
-                status = report.get("data", {}).get("attributes", {}).get("status")
-                if status == "completed":
-                    return report
-                await asyncio.sleep(delay)
-            except Exception:
-                await asyncio.sleep(delay)
-        return None
-
     def extract_url_from_text(text):
         """استخراج الروابط من النص بدعم للروابط المختصرة"""
         import re
@@ -3815,6 +3783,44 @@ async def virus_total_handler(event):
             url = 'https://' + url
             
         return url
+
+    def is_valid_url(url):
+        """التحقق من أن الرابط صالح"""
+        import re
+        pattern = r'^https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[/\w\.-]*\??[/\w\.-=&]*$'
+        return re.match(pattern, url) is not None
+
+    async def wait_for_completion(analysis_id, max_retries=10, delay=15):
+        for _ in range(max_retries):
+            try:
+                report = requests.get(
+                    f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+                    headers={"x-apikey": VIRUSTOTAL_API}
+                ).json()
+                
+                status = report.get("data", {}).get("attributes", {}).get("status")
+                if status == "completed":
+                    return report
+                await asyncio.sleep(delay)
+            except Exception:
+                await asyncio.sleep(delay)
+        return None
+
+    url_match = event.pattern_match.group(1)
+    url_from_reply = None
+    
+    # إذا لم يكن هناك رابط في الأمر، تحقق من الرسالة المردود عليها
+    if not url_match and event.is_reply:
+        reply_msg = await event.get_reply_message()
+        # البحث عن رابط في الرسالة المردود عليها باستخدام دالة محسنة
+        url_from_reply = extract_url_from_text(reply_msg.text or '')
+
+    # تحديد الرابط الذي سيتم فحصه (الأولوية للأمر ثم الرد)
+    target_url = url_match or url_from_reply
+    
+    # إذا كان هناك رابط محتمل، قم بتنظيفه وإضافة البروتوكول إذا لزم الأمر
+    if target_url:
+        target_url = normalize_url(target_url)
 
     # ====== 🔗 فحص الرابط ======
     if target_url:
@@ -4069,12 +4075,6 @@ async def virus_total_handler(event):
             if 'file_path' in locals() and os.path.exists(file_path):
                 os.remove(file_path)
             await loading_msg.edit(error_msg)
-
-def is_valid_url(url):
-    """التحقق من أن الرابط صالح"""
-    import re
-    pattern = r'^https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[/\w\.-]*\??[/\w\.-=&]*$'
-    return re.match(pattern, url) is not None
 
 
 async def is_authorized(user_id):
