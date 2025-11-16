@@ -7895,7 +7895,7 @@ async def cleanup_files(video_id):
                 pass
 
 
-@client.on(events.NewMessage(pattern=r'\.اغنية')):
+@client.on(events.NewMessage(pattern=r'\.اغنية'))
 async def recognize_song(event):
     # التحقق من الصلاحيات
     allowed_users = [5683930416]
