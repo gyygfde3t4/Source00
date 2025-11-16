@@ -3745,7 +3745,7 @@ async def handle_floor(event):
 # قائمة المستخدمين المسموح لهم
 ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
 
-@client.on(events.NewMessage(pattern=r'^\.(?:تحليل|VT)(?:\s+(http[s]?://\S+))?'))
+@client.on(events.NewMessage(pattern=r'^\.(?:تحليل|VT)(?:\s+(\S+))?'))
 async def virus_total_handler(event):
     # التحقق من الصلاحيات
     allowed_users = [5683930416]
@@ -3761,27 +3761,60 @@ async def virus_total_handler(event):
     # إذا لم يكن هناك رابط في الأمر، تحقق من الرسالة المردود عليها
     if not url_match and event.is_reply:
         reply_msg = await event.get_reply_message()
-        # البحث عن رابط في الرسالة المردود عليها
-        import re
-        url_search = re.search(r'http[s]?://\S+', reply_msg.text or '')
-        if url_search:
-            url_from_reply = url_search.group()
+        # البحث عن رابط في الرسالة المردود عليها باستخدام دالة محسنة
+        url_from_reply = extract_url_from_text(reply_msg.text or '')
 
     # تحديد الرابط الذي سيتم فحصه (الأولوية للأمر ثم الرد)
     target_url = url_match or url_from_reply
+    
+    # إذا كان هناك رابط محتمل، قم بتنظيفه وإضافة البروتوكول إذا لزم الأمر
+    if target_url:
+        target_url = normalize_url(target_url)
 
     async def wait_for_completion(analysis_id, max_retries=10, delay=15):
         for _ in range(max_retries):
-            report = requests.get(
-                f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
-                headers={"x-apikey": VIRUSTOTAL_API}
-            ).json()
-            
-            status = report.get("data", {}).get("attributes", {}).get("status")
-            if status == "completed":
-                return report
-            await asyncio.sleep(delay)
+            try:
+                report = requests.get(
+                    f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+                    headers={"x-apikey": VIRUSTOTAL_API}
+                ).json()
+                
+                status = report.get("data", {}).get("attributes", {}).get("status")
+                if status == "completed":
+                    return report
+                await asyncio.sleep(delay)
+            except Exception:
+                await asyncio.sleep(delay)
         return None
+
+    def extract_url_from_text(text):
+        """استخراج الروابط من النص بدعم للروابط المختصرة"""
+        import re
+        # نمط محسن للتعرف على الروابط يشمل:
+        # - الروابط الكاملة مع http/https
+        # - الروابط المختصرة (cutt.ly, bit.ly, t.co, إلخ)
+        # - النطاقات الشائعة
+        url_pattern = r'(?:https?://)?(?:www\.)?([a-zA-Z0-9-]+\.(?:com|org|net|io|ly|co|me|tk|ml|ga|cf|xyz|info|top|site|online|tech|store|shop|blog|app|dev|tv|uk|de|fr|es|it|ru|ca|au|in|jp|cn|br|mx)/?[^\s]*)'
+        match = re.search(url_pattern, text)
+        if match:
+            potential_url = match.group(0)
+            # إذا لم يبدأ بـ http/https، أضفها
+            if not potential_url.startswith(('http://', 'https://')):
+                potential_url = 'https://' + potential_url
+            return potential_url
+        return None
+
+    def normalize_url(url):
+        """تطبيع الرابط وإضافة البروتوكول إذا لزم الأمر"""
+        url = url.strip()
+        # إذا كان الرابط يحتوي على مسافات، خذ第一部分 فقط
+        url = url.split()[0]
+        
+        # إذا لم يبدأ بـ http/https، أضف https://
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+            
+        return url
 
     # ====== 🔗 فحص الرابط ======
     if target_url:
@@ -3792,6 +3825,11 @@ async def virus_total_handler(event):
             loading_msg = await event.reply("**⏳ جاري فحص الرابط... (قد يستغرق دقيقة)**")
         
         try:
+            # التحقق من أن الرابط صالح
+            if not is_valid_url(url):
+                await loading_msg.edit("**❌ الرابط غير صالح أو غير مدعوم**")
+                return
+
             response = requests.post(
                 "https://www.virustotal.com/api/v3/urls",
                 headers={"x-apikey": VIRUSTOTAL_API},
@@ -3847,17 +3885,82 @@ async def virus_total_handler(event):
     else:
         if not event.is_reply:
             if event.out:
-                await event.edit("**⚠️ يرجى إرسال رابط مع الأمر أو الرد على ملف/رابط**")
+                await event.edit("**⚠️ يرجى إرسال رابط مع الأمر أو الرد على ملف/رابط**\n\n**مثال:**\n• `.VT cutt.ly/4tefhaRh`\n• `.تحليل https://example.com`\n• الرد على رسالة تحتوي على رابط")
             else:
-                await event.reply("**⚠️ يرجى إرسال رابط مع الأمر أو الرد على ملف/رابط**")
+                await event.reply("**⚠️ يرجى إرسال رابط مع الأمر أو الرد على ملف/رابط**\n\n**مثال:**\n• `.VT cutt.ly/4tefhaRh`\n• `.تحليل https://example.com`\n• الرد على رسالة تحتوي على رابط")
             return
         
         reply_msg = await event.get_reply_message()
+        
+        # التحقق أولاً إذا كانت الرسالة تحتوي على رابط
+        if reply_msg.text:
+            potential_url = extract_url_from_text(reply_msg.text)
+            if potential_url:
+                # إذا وجد رابط، قم بفحصه بدلاً من الملف
+                normalized_url = normalize_url(potential_url)
+                if event.out:
+                    loading_msg = await event.edit(f"**⏳ جاري فحص الرابط...**\n`{normalized_url}`")
+                else:
+                    loading_msg = await event.reply(f"**⏳ جاري فحص الرابط...**\n`{normalized_url}`")
+                
+                try:
+                    response = requests.post(
+                        "https://www.virustotal.com/api/v3/urls",
+                        headers={"x-apikey": VIRUSTOTAL_API},
+                        data={"url": normalized_url}
+                    )
+                    data = response.json()
+
+                    if "error" in data:
+                        error_msg = f"**❌ خطأ:** {data['error']['message']}"
+                        await loading_msg.edit(error_msg)
+                        return
+
+                    analysis_id = data["data"]["id"]
+                    encoded_url = base64.urlsafe_b64encode(normalized_url.encode()).decode().strip("=")
+                    report_url = f"https://www.virustotal.com/gui/url/{encoded_url}"
+
+                    report = await wait_for_completion(analysis_id)
+                    
+                    if not report:
+                        result_text = (
+                            f"**⏳ التقرير لم يكتمل بعد**\n"
+                            f"يمكنك مراجعة التقرير يدوياً: [اضغط هنا]({report_url})\n"
+                            f"(عادة ما يستغرق 1-2 دقيقة)"
+                        )
+                        await loading_msg.edit(result_text)
+                        return
+
+                    final_report = requests.get(
+                        f"https://www.virustotal.com/api/v3/urls/{encoded_url}",
+                        headers={"x-apikey": VIRUSTOTAL_API}
+                    ).json()
+
+                    stats = final_report["data"]["attributes"]["last_analysis_stats"]
+                    total_engines = sum(stats.values())
+                    
+                    result_text = (
+                        f"**🔍 نتائج فحص الرابط:**\n"
+                        f"• ⚠️ ضار: {stats.get('malicious', 0)}/{total_engines}\n"
+                        f"• ✅ نظيف: {stats.get('harmless', 0)}/{total_engines}\n"
+                        f"• 🟡 مشبوه: {stats.get('suspicious', 0)}/{total_engines}\n"
+                        f"• ⏳ غير محدد: {stats.get('undetected', 0)}/{total_engines}\n"
+                        f"• 🔗 رابط التقرير: [اضغط هنا]({report_url})\n"
+                        f"• 📊 تم الفحص بواسطة {total_engines} محرك تحليل"
+                    )
+
+                    await loading_msg.edit(result_text)
+                    return
+                except Exception as e:
+                    error_msg = f"**⚠️ حدث خطأ أثناء فحص الرابط:** {str(e)}"
+                    await loading_msg.edit(error_msg)
+                    return
+
         if not reply_msg.media:
             if event.out:
-                await event.edit("**⚠️ يجب الرد على ملف حقيقي**")
+                await event.edit("**⚠️ يجب الرد على ملف حقيقي أو رسالة تحتوي على رابط**")
             else:
-                await event.reply("**⚠️ يجب الرد على ملف حقيقي**")
+                await event.reply("**⚠️ يجب الرد على ملف حقيقي أو رسالة تحتوي على رابط**")
             return
 
         try:
@@ -3966,6 +4069,12 @@ async def virus_total_handler(event):
             if 'file_path' in locals() and os.path.exists(file_path):
                 os.remove(file_path)
             await loading_msg.edit(error_msg)
+
+def is_valid_url(url):
+    """التحقق من أن الرابط صالح"""
+    import re
+    pattern = r'^https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[/\w\.-]*\??[/\w\.-=&]*$'
+    return re.match(pattern, url) is not None
 
 
 async def is_authorized(user_id):
