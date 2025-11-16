@@ -22,6 +22,7 @@ aria2p
 tqdm
 aiofiles
 ShazamAPI
+shazamio
 
 # ========== الترجمة ==========
 googletrans
