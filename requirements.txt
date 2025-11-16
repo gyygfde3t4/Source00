@@ -42,3 +42,4 @@ gitpython
 
 # ========== System and process utilities ==========
 psutil
+validators
