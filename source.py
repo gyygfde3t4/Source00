@@ -7895,7 +7895,6 @@ async def cleanup_files(video_id):
                 pass
 
 
-
 @client.on(events.NewMessage(pattern=r'\.اغنية'))
 async def recognize_song(event):
     # التحقق من الصلاحيات
@@ -7956,14 +7955,11 @@ async def recognize_song(event):
         artist = track.get('subtitle', 'غير معروف')
         cover_url = track.get('images', {}).get('coverart', '')
         
-        # حذف رسالة "جاري البحث" وإرسال النتيجة الجديدة مع المعاينة
+        # حذف رسالة "جاري البحث" وإرسال النتيجة النهائية مرة واحدة
         await loading_msg.delete()
         
-        if cover_url:
-            # إرسال رسالة جديدة مع المعاينة باستخدام رابط مخفي
-            result_msg = await event.reply(f"`{title} — {artist}`\n\n**╮ جـارِ تحميل . . . 🎧♥️╰**\n[\u2060]({cover_url})", link_preview=True)
-        else:
-            result_msg = await event.reply(f"`{title} — {artist}`\n\n**╮ جـارِ تحميل . . . 🎧♥️╰**")
+        # إرسال الرسالة النهائية مرة واحدة مع كل شيء
+        final_msg = await event.reply(f"`{title} — {artist}`\n\n<blockquote>جاري تحميل وإرسال المقطـٓع الصٓوتـي . . . 🎧♥️</blockquote>\n[\u2060]({cover_url})", link_preview=True, parse_mode='html')
 
         # البحث عن الأغنية في YouTube وتحميلها
         search_query = f"{artist} - {title}"
@@ -8018,12 +8014,12 @@ async def recognize_song(event):
                     search_result = await asyncio.to_thread(ydl_temp.extract_info, f"ytsearch1:{search_query}", download=False)
                 
                 if not search_result or not search_result.get('entries'):
-                    await result_msg.edit("**⚠️ فشل في العثور على الأغنية في YouTube**")
+                    await final_msg.edit("**⚠️ فشل في العثور على الأغنية في YouTube**")
                     return
 
             video_info = search_result['entries'][0]
             if not video_info:
-                await result_msg.edit("**⚠️ النتيجة فارغة من YouTube**")
+                await final_msg.edit("**⚠️ النتيجة فارغة من YouTube**")
                 return
 
             video_id = video_info.get('id')
@@ -8042,12 +8038,12 @@ async def recognize_song(event):
                         await convert_to_mp3(temp_path, audio_path)
                         break
                 else:
-                    await result_msg.edit("**⚠️ فشل في العثور على الملف المحمل**")
+                    await final_msg.edit("**⚠️ فشل في العثور على الملف المحمل**")
                     return
 
             # التحقق من وجود الملف النهائي
             if not os.path.exists(audio_path):
-                await result_msg.edit("**⚠️ فشل في إنشاء الملف الصوتي**")
+                await final_msg.edit("**⚠️ فشل في إنشاء الملف الصوتي**")
                 return
 
             # إرسال الملف الصوتي
@@ -8065,9 +8061,6 @@ async def recognize_song(event):
                 ],
                 supports_streaming=True,
             )
-            
-            # تحديث الرسالة النهائية
-            await result_msg.edit(f"`{title} — {artist}`\n\n**تـم إرسـال المقطـٓع الصٓوتـي... 🎧♥️**")
 
     except Exception as e:
         error_msg = f"**⚠️ خطأ:** {str(e)[:200]}"
