@@ -556,6 +556,8 @@ async def show_protection_commands(event):
 7- ☆ `.اعاده` - **استعادة الهوية الأصلية** ☆
 8- ☆ `.احصائيات` - **عرض إحصائيات الحساب** ☆
 9- ☆ `.حذف البوتات` - **حذف جميع محادثات البوتات** ☆
+10- ☆ `.اختصار + رابط او بالرد` - ** لإختصار رابط** ☆
+11- ☆ `.الغاء اختصار + رابط او بالرد` - ** لأعادة رابط مختصر لحالته الأصلية** ☆
 ٴ⋆─┄─┄─┄─ 𝐄𝐑𝐄𝐍 ─┄─┄─┄─⋆
     """
     if event.out:
@@ -7959,7 +7961,7 @@ async def recognize_song(event):
         await loading_msg.delete()
         
         # إرسال الرسالة النهائية مرة واحدة مع كل شيء
-        final_msg = await event.reply(f"`{title} — {artist}`\n\n`جاري تحميل وإرسال المقطـٓع الصٓوتـي . . . 🎧♥️`\n[\u2060]({cover_url})", link_preview=True)
+        final_msg = await event.reply(f"`{title} — {artist}`\n\n`جاري تحميل وإرسال المقطـٓع الصٓوتـي . . . 🎧`\n[\u2060]({cover_url})", link_preview=True)
 
         # البحث عن الأغنية في YouTube وتحميلها
         search_query = f"{artist} - {title}"
@@ -9637,6 +9639,173 @@ async def pinterest_images_search(event):
         # تنظيف نهائي للذاكرة
         gc.collect()
 
+
+
+
+@client.on(events.NewMessage(pattern=r'\.اختصار(?:\s+(.+))?'))
+async def shorten_url(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
+    input_str = event.pattern_match.group(1)
+    
+    # إذا لم يكن هناك نص في الأمر، تحقق من الرسالة المردود عليها
+    if not input_str and event.is_reply:
+        reply_msg = await event.get_reply_message()
+        input_str = reply_msg.text or ''
+    
+    if not input_str:
+        if event.out:
+            await event.edit("**⎉╎بالـرد ع رابـط او باضافـة رابـط مع الامـر ...**")
+        else:
+            await event.reply("**⎉╎بالـرد ع رابـط او باضافـة رابـط مع الامـر ...**")
+        return
+
+    url = input_str.strip()
+    
+    # تحقق من أن الرابط صالح وإضافة البروتوكول إذا لم يكن موجوداً
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme:
+            # جرب https أولاً، ثم http إذا فشل
+            url = 'https://' + url
+    except Exception:
+        if event.out:
+            await event.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+        else:
+            await event.reply("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+        return
+
+    if event.out:
+        loading_msg = await event.edit("**⎉╎جـاري إختصـار الرابـط . . .**")
+    else:
+        loading_msg = await event.reply("**⎉╎جـاري إختصـار الرابـط . . .**")
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            # محاولة مع https أولاً
+            try:
+                async with session.get(f'https://da.gd/s?url={url}', timeout=10) as response:
+                    if response.status == 200:
+                        shortened_url = await response.text()
+                        shortened_url = shortened_url.strip()
+                        
+                        await loading_msg.edit(
+                            f"**⎉╎الرابـط المختصر :** {shortened_url}\n"
+                            f"**⎉╎الرابـط :** {url}\n"
+                            f"**⎉╎تم انشـاء الإختصـار .. بنجـاح**", 
+                            link_preview=False
+                        )
+                        return
+            except Exception:
+                pass
+            
+            # إذا فشل https، جرب http
+            try:
+                async with session.get(f'http://da.gd/s?url={url}', timeout=10) as response:
+                    if response.status == 200:
+                        shortened_url = await response.text()
+                        shortened_url = shortened_url.strip()
+                        
+                        await loading_msg.edit(
+                            f"**⎉╎الرابـط المختصر :** {shortened_url}\n"
+                            f"**⎉╎الرابـط :** {url}\n"
+                            f"**⎉╎تم انشـاء الإختصـار .. بنجـاح**", 
+                            link_preview=False
+                        )
+                    else:
+                        await loading_msg.edit("**⎉╎خـطأ بالاختصـار .. الرجـاء المحاولـة لاحقـاً**")
+            except Exception:
+                await loading_msg.edit("**⎉╎خـطأ بالاختصـار .. الرجـاء المحاولـة لاحقـاً**")
+                    
+    except Exception as e:
+        await loading_msg.edit("**⎉╎خـطأ بالاختصـار .. الرجـاء المحاولـة لاحقـاً**")
+
+@client.on(events.NewMessage(pattern=r'\.الغاء اختصار(?:\s+(.+))?'))
+async def unshorten_url(event):
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
+    input_str = event.pattern_match.group(1)
+    
+    # إذا لم يكن هناك نص في الأمر، تحقق من الرسالة المردود عليها
+    if not input_str and event.is_reply:
+        reply_msg = await event.get_reply_message()
+        input_str = reply_msg.text or ''
+    
+    if not input_str:
+        if event.out:
+            await event.edit("**⎉╎بالـرد ع رابـط او باضافـة رابـط مع الامـر ...**")
+        else:
+            await event.reply("**⎉╎بالـرد ع رابـط او باضافـة رابـط مع الامـر ...**")
+        return
+
+    url = input_str.strip()
+    
+    # تحقق من أن الرابط صالح وإضافة البروتوكول إذا لم يكن موجوداً
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme:
+            url = 'https://' + url
+    except Exception:
+        if event.out:
+            await event.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+        else:
+            await event.reply("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+        return
+
+    if event.out:
+        loading_msg = await event.edit("**⎉╎جـاري إلغـاء إختصـار الرابـط . . .**")
+    else:
+        loading_msg = await event.reply("**⎉╎جـاري إلغـاء إختصـار الرابـط . . .**")
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            # محاولة مع https أولاً
+            try:
+                async with session.get(url, allow_redirects=False, timeout=10) as response:
+                    if response.status in [301, 302] and 'Location' in response.headers:
+                        original_url = response.headers['Location']
+                        
+                        await loading_msg.edit(
+                            f"**⎉╎الرابـط المختصر :** {url}\n"
+                            f"**⎉╎الرابـط الاصـلي :** {original_url}",
+                            link_preview=False
+                        )
+                        return
+            except Exception:
+                pass
+            
+            # إذا فشل https، جرب http
+            try:
+                # تحويل الرابط إلى http إذا كان https
+                http_url = url.replace('https://', 'http://') if url.startswith('https://') else url
+                async with session.get(http_url, allow_redirects=False, timeout=10) as response:
+                    if response.status in [301, 302] and 'Location' in response.headers:
+                        original_url = response.headers['Location']
+                        
+                        await loading_msg.edit(
+                            f"**⎉╎الرابـط المختصر :** {url}\n"
+                            f"**⎉╎الرابـط الاصـلي :** {original_url}",
+                            link_preview=False
+                        )
+                    else:
+                        await loading_msg.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+            except Exception:
+                await loading_msg.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
+                    
+    except Exception as e:
+        await loading_msg.edit("**⎉╎عـذراً .. هـذا الرابـط غيـر مدعـوم ؟!**")
 
                           
 def run_server():
