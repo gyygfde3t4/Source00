@@ -7912,6 +7912,7 @@ import logging
 from telethon import events
 from telethon.tl.types import DocumentAttributeAudio
 import glob
+from yt_dlp import YoutubeDL
 
 # إعداد الـ logger لعرض التفاصيل
 logging.basicConfig(level=logging.INFO)
@@ -7978,7 +7979,7 @@ async def recognize_song(event):
         # استخدام الدالة recognize بدلاً من recognize_song
         result = await shazam.recognize(media_path)
         
-        logger.info(f"نتيجة Shazam: {result}")
+        logger.info(f"تم التعرف على الأغنية بنجاح")
         
         if not result:
             await loading_msg.edit("**⚠️ لم أتمكن من التعرف على الأغنية - لم ترد أي نتيجة**")
@@ -8004,24 +8005,30 @@ async def recognize_song(event):
         # تحديث الرسالة مع معلومات الأغنية
         await loading_msg.edit(f"{song_info}\n\n**╮ جـارِ تحميل . . . 🎧♥️╰**")
         
-        # إرسال معاينة الصورة إذا كانت موجودة
+        # إرسال معاينة الصورة إذا كانت موجودة - باستخدام الرمز الصحيح
         if cover_url:
             try:
-                preview_msg = await event.reply(f"[‎]({cover_url})", link_preview=True)
+                # استخدام U+2060 (WORD JOINER) بدلاً من الفراغ العادي
+                preview_msg = await event.reply(f"[\u2060]({cover_url})", link_preview=True)
                 logger.info(f"تم إرسال معاينة الغلاف: {cover_url}")
             except Exception as e:
                 logger.warning(f"فشل في إرسال معاينة الغلاف: {e}")
+                # محاولة بديلة بدون معاينة
+                try:
+                    preview_msg = await event.reply(f"**🎵 غلاف الأغنية:** {cover_url}")
+                except Exception:
+                    pass
 
         # الآن البحث عن الأغنية في YouTube وتحميلها
         search_query = f"{artist} - {title}"
         logger.info(f"جاري البحث في YouTube عن: {search_query}")
 
-        # استخدام إعدادات yt-dlp المشابهة لأمر البحث
+        # استخدام إعدادات yt-dlp المشابهة لأمر البحث مع cookies
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
-            'quiet': False,  # تغيير إلى False لرؤية التفاصيل
-            'no_warnings': False,
+            'quiet': True,
+            'no_warnings': True,
             'ignoreerrors': True,
             'noplaylist': True,
             'socket_timeout': 30,
@@ -8035,10 +8042,23 @@ async def recognize_song(event):
                 'preferredcodec': 'mp3',
                 'preferredquality': '96',
             }],
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            },
         }
 
-        from yt_dlp import YoutubeDL
-        
+        # استخدام كوكيز مثل أمر البحث
+        if os.path.exists('cookies.txt'):
+            ydl_opts['cookiefile'] = 'cookies.txt'
+            logger.info("تم تحميل ملف cookies.txt")
+
+        os.makedirs('downloads', exist_ok=True)
+
         with YoutubeDL(ydl_opts) as ydl:
             # البحث عن الأغنية
             logger.info("جاري البحث في YouTube...")
@@ -8048,7 +8068,21 @@ async def recognize_song(event):
                 error_msg = "**⚠️ لم أتمكن من العثور على الأغنية في YouTube**"
                 await loading_msg.edit(error_msg)
                 logger.warning("لم يتم العثور على نتائج في YouTube")
-                return
+                
+                # محاولة بديلة بدون كوكيز
+                logger.info("جاري المحاولة بدون كوكيز...")
+                temp_opts = ydl_opts.copy()
+                temp_opts.pop('cookiefile', None)
+                temp_opts.pop('external_downloader', None)
+                temp_opts.pop('external_downloader_args', None)
+                
+                with YoutubeDL(temp_opts) as ydl_temp:
+                    search_result = await asyncio.to_thread(ydl_temp.extract_info, f"ytsearch1:{search_query}", download=False)
+                
+                if not search_result or not search_result.get('entries'):
+                    error_msg = "**⚠️ فشل في العثور على الأغنية في YouTube**"
+                    await loading_msg.edit(error_msg)
+                    return
 
             video_info = search_result['entries'][0]
             if not video_info:
@@ -8068,7 +8102,14 @@ async def recognize_song(event):
             await loading_msg.edit(f"{song_info}\n\n**╮ جـارِ تحميل من YouTube . . . 🎧♥️╰**")
             logger.info("جاري تحميل الملف من YouTube...")
             
-            await asyncio.to_thread(ydl.download, [video_url])
+            try:
+                await asyncio.to_thread(ydl.download, [video_url])
+            except Exception as download_error:
+                logger.warning(f"فشل التحميل مع كوكيز: {download_error}")
+                # محاولة بديلة بدون كوكيز
+                logger.info("جاري المحاولة بدون كوكيز...")
+                with YoutubeDL(temp_opts) as ydl_temp:
+                    await asyncio.to_thread(ydl_temp.download, [video_url])
             
             # البحث عن الملف المحمل
             audio_path = f'downloads/{video_id}.mp3'
@@ -8100,7 +8141,7 @@ async def recognize_song(event):
             
             await loading_msg.edit(f"{song_info}\n\n**╮ ❐ جـارِ الرفع . . . 𓅫╰**")
             
-            # إرسال الملف
+            # إرسال الملف بنفس إعدادات أمر البحث
             await event.client.send_file(
                 event.chat_id,
                 audio_path,
@@ -8194,7 +8235,19 @@ async def convert_to_mp3(input_path, output_path):
         logger.error(f"فشل التحويل إلى MP3: {e}")
         
 
+@client.on(events.NewMessage(pattern=r'^منصب$'))
+async def command_mansib(event):
+    allowed_user = 5683930416  # ID المصرح له
 
+    if event.sender_id != allowed_user:
+        return  # تجاهل أي مستخدم آخر
+
+    # الرد على المستخدم بالخط العريض
+    if event.out:
+        await event.edit("**منصب ✔️**")
+    else:
+        await event.reply("**منصب ✔️**")
+        
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
     # التحقق من الصلاحيات
