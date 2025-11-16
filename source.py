@@ -3744,7 +3744,6 @@ async def handle_floor(event):
                
 # قائمة المستخدمين المسموح لهم
 ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
-
 @client.on(events.NewMessage(pattern=r'^\.(?:تحليل|VT)(?:\s+(\S+))?'))
 async def virus_total_handler(event):
     # التحقق من الصلاحيات
@@ -4011,10 +4010,13 @@ async def virus_total_handler(event):
                 return
 
             analysis_id = data['data']['id']
-            report_url = f"https://www.virustotal.com/gui/file/{analysis_id}"
+            report_url = f"https://www.virustotal.com/gui/file-analysis/{analysis_id}"
 
             # انتظار اكتمال التحليل
             await loading_msg.edit("**⏳ جاري تحليل الملف... (قد يستغرق 3-5 دقائق)**")
+            
+            # انتظار اكتمال التحليل والحصول على SHA256
+            file_hash = None
             for _ in range(15):  # 15 محاولة كل 20 ثانية
                 await asyncio.sleep(20)
                 analysis_report = requests.get(
@@ -4023,20 +4025,24 @@ async def virus_total_handler(event):
                 ).json()
                 
                 if analysis_report.get('data', {}).get('attributes', {}).get('status') == 'completed':
-                    break
-            else:
+                    # استخراج الـ SHA256 من التقرير
+                    file_hash = analysis_report.get('data', {}).get('attributes', {}).get('meta', {}).get('file_info', {}).get('sha256')
+                    if file_hash:
+                        break
+            
+            if not file_hash:
                 os.remove(file_path)
                 result_text = (
                     "**⚠️ عذرًا، خدمة فحص الملفات غير متاحة حاليًا**\n"
-                    "السبب: تجاوز وقت الانتظار\n\n"
+                    "السبب: تعذر الحصول على نتيجة التحليل\n\n"
                     f"يمكنك التحقق لاحقاً من الرابط:\n{report_url}"
                 )
                 await loading_msg.edit(result_text)
                 return
 
-            # جلب النتائج النهائية
+            # الآن جلب التقرير النهائي باستخدام الـ SHA256 الصحيح
             final_report = requests.get(
-                f'https://www.virustotal.com/api/v3/files/{analysis_id}',
+                f'https://www.virustotal.com/api/v3/files/{file_hash}',
                 headers={'x-apikey': VIRUSTOTAL_API}
             ).json()
 
@@ -4052,12 +4058,20 @@ async def virus_total_handler(event):
                 return
 
             stats = final_report['data']['attributes']['last_analysis_stats']
+            file_name = os.path.basename(file_path)
+            file_info = final_report['data']['attributes']
+            
+            # تحديث رابط التقرير ليكون باستخدام الـ SHA256 الصحيح
+            report_url = f"https://www.virustotal.com/gui/file/{file_hash}"
+            
             result_text = (
                 f"**📊 نتائج فحص الملف:**\n"
-                f"• 🗂️ الملف: `{os.path.basename(file_path)}`\n"
+                f"• 🗂️ الملف: `{file_name}`\n"
                 f"• 📦 الحجم: {file_size:.2f} MB\n"
+                f"• 🔐 SHA256: `{file_hash[:16]}...`\n"
                 f"• ⚠️ ضار: {stats['malicious']}\n"
                 f"• ✅ نظيف: {stats['harmless']}\n"
+                f"• 🟡 مشبوه: {stats['suspicious']}\n"
                 f"• 🔗 التقرير الكامل: [اضغط هنا]({report_url})"
             )
 
@@ -4075,6 +4089,7 @@ async def virus_total_handler(event):
             if 'file_path' in locals() and os.path.exists(file_path):
                 os.remove(file_path)
             await loading_msg.edit(error_msg)
+
 
 
 async def is_authorized(user_id):
