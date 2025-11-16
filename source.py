@@ -7895,7 +7895,7 @@ async def cleanup_files(video_id):
                 pass
 
 
-@client.on(events.NewMessage(pattern=r'\.اغنية'))
+@client.on(events.NewMessage(pattern=r'\.اغنية')):
 async def recognize_song(event):
     # التحقق من الصلاحيات
     allowed_users = [5683930416]
@@ -7959,7 +7959,7 @@ async def recognize_song(event):
         await loading_msg.delete()
         
         # إرسال الرسالة النهائية مرة واحدة مع كل شيء
-        final_msg = await event.reply(f"`{title} — {artist}`[\u2060]({cover_url})\n\n<blockquote>جاري تحميل وإرسال المقطـٓع الصٓوتـي . . . 🎧♥️</blockquote>", link_preview=True, parse_mode='html')
+        final_msg = await event.reply(f"`{title} — {artist}`\n\n> ** جاري تحميل وإرسال المقطـٓع الصٓوتـي . . . 🎧♥️**\n[\u2060]({cover_url})", link_preview=True)
 
         # البحث عن الأغنية في YouTube وتحميلها
         search_query = f"{artist} - {title}"
@@ -8106,6 +8106,7 @@ async def convert_to_mp3(input_path, output_path):
             
     except Exception:
         pass
+
         
 # قائمة المستخدمين المسموح لهم
 ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
