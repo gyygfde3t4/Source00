@@ -272,7 +272,19 @@ seen_ids = set()
 monitoring_active = False
 monitoring_task = None
 
-# ===== تهيئة العميل ===== #
+# ============ الدوال المساعدة ============
+
+async def edit_or_reply(event, text, **kwargs):
+    """دالة مساعدة للتعديل أو الرد"""
+    if event.out:
+        # إذا كانت الرسالة من البوت نفسه
+        return await event.edit(text, **kwargs)
+    else:
+        # إذا كانت الرسالة من مستخدم آخر
+        return await event.reply(text, **kwargs)
+
+# ============ تعريف العميل ============
+
 client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
 
 async def start_client():
@@ -772,9 +784,9 @@ async def start_timed_update(event):
 
     if not timed_update_running:
         timed_update_running = True
-        await event.edit_or_reply("**•╎جـارِ تفعيـل الاسـم الوقتـي ⅏. . .**")
+        await edit_or_reply(event, "**•╎جـارِ تفعيـل الاسـم الوقتـي ⅏. . .**")
         await asyncio.sleep(2)
-        await event.edit_or_reply(f"**⎉╎تـم بـدء الاسـم الوقتـي 🝛 .. بنجـاح ✓**\n**⎉╎المكـان ⏜** {'الاسـم الأول' if name_position == 'first' else 'الاسـم الأخيـر'}")
+        await edit_or_reply(event, f"**⎉╎تـم بـدء الاسـم الوقتـي 🝛 .. بنجـاح ✓**\n**⎉╎المكـان ⏜** {'الاسـم الأول' if name_position == 'first' else 'الاسـم الأخيـر'}")
         await asyncio.sleep(5)
         await event.delete()
 
@@ -782,7 +794,7 @@ async def start_timed_update(event):
             await update_name(current_timezone, current_style)
             await asyncio.sleep(60)  # التحديث كل دقيقة
     else:
-        await event.edit_or_reply("**⚠️╎التحديـث التلقـائـي للاسـم يعمـل بالفعل**")
+        await edit_or_reply(event, "**⚠️╎التحديـث التلقـائـي للاسـم يعمـل بالفعل**")
 
 # أوامر لتفعيل الزخرفة المختلفة
 async def activate_style(event, style, style_name):
@@ -798,15 +810,15 @@ async def activate_style(event, style, style_name):
     global timed_update_running
 
     if current_style == style:
-        await event.edit_or_reply(f"**⚠️╎الزخرفـة {style_name} مفعلـه بالفعل**")
+        await edit_or_reply(event, f"**⚠️╎الزخرفـة {style_name} مفعلـه بالفعل**")
     else:
         current_style = style
-        await event.edit_or_reply("**✾╎جـاري اضـافة زخـرفـة الوقتيـه لـ بوتـك 💞🦾 . . .**")
+        await edit_or_reply(event, "**✾╎جـاري اضـافة زخـرفـة الوقتيـه لـ بوتـك 💞🦾 . . .**")
         await asyncio.sleep(2)
         if timed_update_running:
-            await event.edit_or_reply(f"**✾╎تـم تغييـر زغـرفة الاسـم الوقتـي .. بنجـاح✓** \n**✾╎نـوع الزخـرفـه ⏜** {style_name}")
+            await edit_or_reply(event, f"**✾╎تـم تغييـر زغـرفة الاسـم الوقتـي .. بنجـاح✓** \n**✾╎نـوع الزخـرفـه ⏜** {style_name}")
         else:
-            await event.edit_or_reply(f"**✾╎تـم تغييـر زغـرفة الاسـم الوقتـي .. بنجـاح✓** \n**✾╎نـوع الزخـرفـه ⏜** {style_name}\n**✾╎الان ارسـل ↶** `.الاسم التلقائي`")
+            await edit_or_reply(event, f"**✾╎تـم تغييـر زغـرفة الاسـم الوقتـي .. بنجـاح✓** \n**✾╎نـوع الزخـرفـه ⏜** {style_name}\n**✾╎الان ارسـل ↶** `.الاسم التلقائي`")
 
 @client.on(events.NewMessage(pattern=r'^\.وقتيه1$'))
 async def activate_style1(event):
@@ -862,11 +874,11 @@ async def set_name_position(event):
         name_position = 'last'
     
     if timed_update_running:
-        await event.edit_or_reply(f"**✾╎تـم تغييـر مكـان الاسـم الوقتـي إلـى {'الاسـم الأول' if name_position == 'first' else 'الاسـم الأخيـر'} .. بنجـاح✓**")
+        await edit_or_reply(event, f"**✾╎تـم تغييـر مكـان الاسـم الوقتـي إلـى {'الاسـم الأول' if name_position == 'first' else 'الاسـم الأخيـر'} .. بنجـاح✓**")
         # Update immediately to reflect the change
         await update_name(current_timezone, current_style)
     else:
-        await event.edit_or_reply(f"**✾╎تـم تعييـن مكـان الاسـم الوقتـي إلـى {'الاسـم الأول' if name_position == 'first' else 'الاسـم الأخيـر'}**\n**✾╎الان ارسـل ↶** `.الاسم التلقائي`")
+        await edit_or_reply(event, f"**✾╎تـم تعييـن مكـان الاسـم الوقتـي إلـى {'الاسـم الأول' if name_position == 'first' else 'الاسـم الأخيـر'}**\n**✾╎الان ارسـل ↶** `.الاسم التلقائي`")
 
 # أمر لإيقاف الاسم التلقائي
 @client.on(events.NewMessage(pattern=r'^\.ايقاف الاسم التلقائي$'))
@@ -883,9 +895,9 @@ async def stop_timed_update(event):
     
     if timed_update_running:
         timed_update_running = False
-        await event.edit_or_reply("**⎉╎تـم إيقـاف الاسـم الوقتـي .. بنجـاح ✓**")
+        await edit_or_reply(event, "**⎉╎تـم إيقـاف الاسـم الوقتـي .. بنجـاح ✓**")
     else:
-        await event.edit_or_reply("**⚠️╎الاسـم التلقـائـي غيـر مفعـل حاليـاً**")
+        await edit_or_reply(event, "**⚠️╎الاسـم التلقـائـي غيـر مفعـل حاليـاً**")
   	    
 @client.on(events.NewMessage(pattern=r'^\.ايدي(?:\s+(.+))?$'))
 async def show_user_info(event):
@@ -1156,7 +1168,7 @@ async def delete_message(event):
         await client.delete_messages(event.chat_id, message_ids=[event.reply_to_msg_id])
         await event.delete()
     else:
-        await event.edit_or_reply("**⚠️╎يرجـى الـرد علـى الرسـالة الـتي تـريد حذفهـا**")
+        await edit_or_reply(event, "**⚠️╎يرجـى الـرد علـى الرسـالة الـتي تـريد حذفهـا**")
 
 @client.on(events.NewMessage(pattern=r'^\.مسح$'))
 async def delete_range(event):
@@ -1169,7 +1181,7 @@ async def delete_range(event):
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
     if not event.reply_to_msg_id:
-        await event.edit_or_reply("**⚠️╎يرجـى الـرد علـى الرسـالة الأولـى للمسـح**")
+        await edit_or_reply(event, "**⚠️╎يرجـى الـرد علـى الرسـالة الأولـى للمسـح**")
         return
 
     try:
@@ -1187,14 +1199,20 @@ async def delete_range(event):
         # إنشاء قائمة بجميع معرفات الرسائل بين النقطتين
         message_ids = list(range(min_id, max_id + 1))
         
+        # إعلام المستخدم بالعملية
+        count = len(message_ids)
+        await edit_or_reply(event, f"**✾╎جـاري حـذف {count} رسـالة ...**")
+        
         # حذف جميع الرسائل في النطاق
         await client.delete_messages(event.chat_id, message_ids=message_ids)
         
-        # حذف أمر المسح نفسه
-        await event.delete()
+        # إرسال رسالة تأكيد ثم حذفها بعد ثانيتين
+        confirm_msg = await event.respond(f"**✅╎تـم حـذف {count} رسـالة بنجـاح**")
+        await asyncio.sleep(2)
+        await confirm_msg.delete()
         
     except Exception as e:
-        await event.edit_or_reply(f"**❌╎حـدث خطـأ أثنـاء المسـح ⏜** {str(e)}")                
+        await edit_or_reply(event, f"**❌╎حـدث خطـأ أثنـاء المسـح ⏜** {str(e)}")    
 
 @client.on(events.NewMessage(pattern=r'^\.التوقيت$'))
 async def show_timezones(event):
@@ -1261,7 +1279,7 @@ async def show_entertainment_commands(event):
         "ٴ⋆─┄─┄─┄─ 𝐀𝐒𝐓𝐑𝐀 ─┄─┄─┄─⋆"
     )
     
-    await event.edit_or_reply(entertainment_commands) 
+    await edit_or_reply(event, entertainment_commands) 
 
 @client.on(events.NewMessage(pattern=r'^\.مسدس$'))
 async def draw_gun(event):
@@ -1283,7 +1301,7 @@ async def draw_gun(event):
         "░▐█▓▓▓▓▓░░░░░░░░░░░\n"
         "░▐██████▌░░░░░░░░░░"
     )
-    await event.edit_or_reply(gun_art)
+    await edit_or_reply(event, gun_art)
 
 @client.on(events.NewMessage(pattern=r'^\.كلب$'))
 async def draw_dog(event):
@@ -1303,7 +1321,7 @@ async def draw_dog(event):
         "╢┊┊┃┏┳┳━━┓┏┳┫┊┊┣\n"
         "╨━━┗┛┗┛━━┗┛┗┛━━┻"
     )
-    await event.edit_or_reply(dog_art)
+    await edit_or_reply(event, dog_art)
 
 @client.on(events.NewMessage(pattern=r'^\.سبونج بوب$'))
 async def draw_spongebob(event):
@@ -1325,7 +1343,7 @@ async def draw_spongebob(event):
         "▕┈╭▏╭╮┃┗┛┗┛┃┈ ╰▏\n"
         "▕┈╰▏╰╯╰━━━━╯┈┈ ▏I'm سبـونـج بــوب"
     )
-    await event.edit_or_reply(spongebob_art)
+    await edit_or_reply(event, spongebob_art)
 
 @client.on(events.NewMessage(pattern=r'^\.إبرة$'))
 async def draw_needle(event):
@@ -1343,7 +1361,7 @@ async def draw_needle(event):
         "─────▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀\n"
         "\n🚹 ╎ تنح واخذ الابره عزيزي 👨🏻‍⚕🤭😂"
     )
-    await event.edit_or_reply(needle_art)
+    await edit_or_reply(event, needle_art)
 
 @client.on(events.NewMessage(pattern=r'^\.وحش$'))
 async def draw_monster(event):
@@ -1364,7 +1382,7 @@ async def draw_monster(event):
         "█████████\n"
         "_████"
     )
-    await event.edit_or_reply(monster_art)
+    await edit_or_reply(event, monster_art)
 
 @client.on(events.NewMessage(pattern=r'^\.مدينة$'))
 async def draw_city(event):
@@ -1388,7 +1406,7 @@ async def draw_city(event):
         "   🌳|🚶        |   🚍     | 🌴🚴🚴\n"
         "  🌴|               |                |🌲"
     )
-    await event.edit_or_reply(city_art)    
+    await edit_or_reply(event, city_art)    
 
 @client.on(events.NewMessage(pattern=r'^\.مروحية$'))
 async def draw_helicopter(event):
@@ -1401,7 +1419,7 @@ async def draw_helicopter(event):
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
     helicopter_message = "بـدء اقـلاع المـروحيـه ...🚁"
-    await event.edit_or_reply(helicopter_message)
+    message = await edit_or_reply(event, helicopter_message)
 
     helicopter_art_1 = (
         "    🔲 ▬▬▬.◙.▬▬▬ 🔳\n"
@@ -1433,10 +1451,9 @@ async def draw_helicopter(event):
 
     for _ in range(8):
         await asyncio.sleep(2)
-        await event.edit_or_reply(helicopter_art_1)
+        await message.edit(helicopter_art_1)
         await asyncio.sleep(1)
-        await event.edit_or_reply(helicopter_art_2)
-
+        await message.edit(helicopter_art_2)
                                                                             
 @client.on(events.NewMessage(pattern=r'^\.كتم$'))
 async def mute_user(event):
@@ -1457,11 +1474,11 @@ async def mute_user(event):
 
         if user_id:
             muted_users.add(user_id)
-            await event.edit_or_reply(f"**✾╎تـم كتـم المسـتخدم .. بنجـاح 🝛**")
+            await edit_or_reply(event, f"**✾╎تـم كتـم المسـتخدم .. بنجـاح 🝛**")
         else:
-            await event.edit_or_reply("**⚠️╎لـم استطـع تعييـن المسـتخدم**")
+            await edit_or_reply(event, "**⚠️╎لـم استطـع تعييـن المسـتخدم**")
     else:
-        await event.edit_or_reply("**⚠️╎يرجـى الـرد علـى رسـالة المسـتخدم الـذي تـريد كتـمه**")
+        await edit_or_reply(event, "**⚠️╎يرجـى الـرد علـى رسـالة المسـتخدم الـذي تـريد كتـمه**")
 
 @client.on(events.NewMessage(pattern=r'^\.الغاء الكتم$'))
 async def unmute_user(event):
@@ -1483,13 +1500,13 @@ async def unmute_user(event):
         if user_id:
             if user_id in muted_users:
                 muted_users.remove(user_id)
-                await event.edit_or_reply(f"**✾╎تـم الغـاء كتـم المسـتخدم .. بنجـاح ✓**")
+                await edit_or_reply(event, f"**✾╎تـم الغـاء كتـم المسـتخدم .. بنجـاح ✓**")
             else:
-                await event.edit_or_reply(f"**⚠️╎المسـتخدم ليـس مكتـوم**") 
+                await edit_or_reply(event, f"**⚠️╎المسـتخدم ليـس مكتـوم**") 
         else:
-            await event.edit_or_reply("**⚠️╎لـم استطـع تعييـن المسـتخدم**")
+            await edit_or_reply(event, "**⚠️╎لـم استطـع تعييـن المسـتخدم**")
     else:
-        await event.edit_or_reply("**⚠️╎يرجـى الـرد علـى رسـالة المسـتخدم الـذي تـريد الغـاء كتـمه**")
+        await edit_or_reply(event, "**⚠️╎يرجـى الـرد علـى رسـالة المسـتخدم الـذي تـريد الغـاء كتـمه**")
 
 @client.on(events.NewMessage(pattern=r'^\.المكتومين$'))
 async def list_muted_users(event):
@@ -1502,7 +1519,7 @@ async def list_muted_users(event):
         return
 
     if not muted_users:
-        await event.edit_or_reply("**⅏╎لا يوجـد مسـتخدمين مكتـومين حاليـاً**")
+        await edit_or_reply(event, "**⅏╎لا يوجـد مسـتخدمين مكتـومين حاليـاً**")
         return
 
     muted_list = []
@@ -1514,7 +1531,7 @@ async def list_muted_users(event):
     count = len(muted_users)
     response = f"**✾╎عـدد المسـتخدمين المكتـومين ⏜** {count}\n{muted_list_str}"
     
-    await event.edit_or_reply(response)
+    await edit_or_reply(event, response)
 
 
 
@@ -1613,13 +1630,13 @@ async def handle_ai_command(event):
 
     parts = event.message.text.split(maxsplit=1)
     if len(parts) < 2:
-        await event.edit_or_reply("**⚠️╎يرجـى إدخـال السـؤال بعـد الأمـر** `.س`")
+        await edit_or_reply(event, "**⚠️╎يرجـى إدخـال السـؤال بعـد الأمـر** `.س`")
         return
 
     question = parts[1]
 
     # إرسال رسالة "⏳ GPT-4o يعمل على طلبك. يرجى الانتظار لحظة . . ."
-    processing_message = await event.edit_or_reply("**⏳ D𝑒𝑒𝑝S𝑒𝑒𝑘 يعمل على طلبك. يرجى الانتظار لحظة. . .**")
+    processing_message = await edit_or_reply(event, "**⏳ D𝑒𝑒𝑝S𝑒𝑒𝑘 يعمل على طلبك. يرجى الانتظار لحظة. . .**")
 
     try:
         async with httpx.AsyncClient() as client:
@@ -1631,17 +1648,17 @@ async def handle_ai_command(event):
                 # تحويل التنسيق Markdown إلى كيانات تليجرام
                 try:
                     entities = await parse_markdown_to_entities(response)
-                    await event.edit_or_reply(response, formatting_entities=entities)
+                    await edit_or_reply(event, response, formatting_entities=entities)
                 except Exception as e:
                     print(f"Error parsing markdown: {e}")
                     # إذا فشل التحليل، إرسال الرسالة بدون تنسيق
-                    await event.edit_or_reply(f"**✾╎الإجابـة ⏜**\n{response}")
+                    await edit_or_reply(event, f"**✾╎الإجابـة ⏜**\n{response}")
             else:
                 await processing_message.edit("**⚠️╎لـم استطـع الحصـول علـى رد**\n**⅏╎يرجـى المحـاولة مـرة أخـرى**")
                 
     except Exception as e:
         await processing_message.delete()
-        await event.edit_or_reply(f"**⚠️╎حـدث خطـأ ⏜** {str(e)}")
+        await edit_or_reply(event, f"**⚠️╎حـدث خطـأ ⏜** {str(e)}")
 
 
 @client.on(events.NewMessage(pattern=r'^\.تلجراف$'))
@@ -1738,22 +1755,22 @@ async def create_multiple_groups(event):
     
     # التحقق من عدم وجود عملية إنشاء جارية
     if is_creating_groups:
-        await event.edit_or_reply("**⛔️╎هـنـاك عمليـة إنشـاء جاريـه بالفعل**\n\n**✾╎اسـتخدم** `.الغاء جروبات` **لإيقـاف العمليـه الحاليـه**")
+        await edit_or_reply(event, "**⛔️╎هـنـاك عمليـة إنشـاء جاريـه بالفعل**\n\n**✾╎اسـتخدم** `.الغاء جروبات` **لإيقـاف العمليـه الحاليـه**")
         return
     
     # استخراج العدد من الأمر
     try:
         num_groups = int(event.pattern_match.group(1))
         if num_groups <= 0:
-            await event.edit_or_reply("**⚠️╎يرجـى إدخـال عـدد صحيـح أكبـر مـن الصفـر**")
+            await edit_or_reply(event, "**⚠️╎يرجـى إدخـال عـدد صحيـح أكبـر مـن الصفـر**")
             return
     except ValueError:
-        await event.edit_or_reply("**⚠️╎يرجـى إدخـال عـدد صحيـح صحيـح**")
+        await edit_or_reply(event, "**⚠️╎يرجـى إدخـال عـدد صحيـح صحيـح**")
         return
     
     # التحقق من أن العدد معقول
     if num_groups > 100:
-        await event.edit_or_reply("**⚠️╎الحـد الأقـصى المسـموح بـه هـو 100 جـروب فـي المـرة الواحـده**")
+        await edit_or_reply(event, "**⚠️╎الحـد الأقـصى المسـموح بـه هـو 100 جـروب فـي المـرة الواحـده**")
         return
     
     # تعيين حالة التشغيل
@@ -1761,7 +1778,7 @@ async def create_multiple_groups(event):
     
     try:
         # بدء العملية
-        message = await event.edit_or_reply("**🔄╎جـاري إعـداد المجموعـات . . .**")
+        message = await edit_or_reply(event, "**🔄╎جـاري إعـداد المجموعـات . . .**")
         
         created_groups = 0
         failed_groups = 0
@@ -1959,11 +1976,11 @@ async def cancel_groups_creation(event):
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
     
     if not is_creating_groups:
-        await event.edit_or_reply("**⚠️╎لا توجـد عمليـة إنشـاء جـروب جاريـه حاليـاً**")
+        await edit_or_reply(event, "**⚠️╎لا توجـد عمليـة إنشـاء جـروب جاريـه حاليـاً**")
         return
     
     is_creating_groups = False
-    await event.edit_or_reply("**⏹️╎تـم طلـب إيقـاف عمليـة الإنشـاء...**\n\n**🔄╎جـاري التوقـف عنـد الجـروب التالـي...**")
+    await edit_or_reply(event, "**⏹️╎تـم طلـب إيقـاف عمليـة الإنشـاء...**\n\n**🔄╎جـاري التوقـف عنـد الجـروب التالـي...**")
 
 # ✅ أمر يدوي لحفظ وسائط ذاتية عبر الرد
 @client.on(events.NewMessage(pattern=r'^\.ذاتيه$', func=lambda e: e.is_reply))
@@ -2380,14 +2397,7 @@ async def eren_ping(event):
     ping_time = (end - start).microseconds / 1000
     await ping_msg.edit(f"**🏓 Ping:** `{ping_time:.2f} ms`")
 
-async def edit_or_reply(event, text):
-    """دالة مساعدة للتعديل أو الرد"""
-    if event.is_reply:
-        return await event.reply(text)
-    return await event.edit(text)
-
 # ============ نظام الحماية ============
-
 @client.on(events.NewMessage(pattern=r'^\.الحمايه تفعيل$'))
 async def enable_protection(event):
     # التحقق من الصلاحيات
@@ -2402,7 +2412,7 @@ async def enable_protection(event):
         return
     global protection_enabled
     protection_enabled = True
-    await event.edit_or_reply("**✾╎تـم تفعيـل امـر حمايـه الخـاص .. بنجـاح 🝛**")
+    await edit_or_reply(event, "**✾╎تـم تفعيـل امـر حمايـه الخـاص .. بنجـاح 🝛**")
 
 @client.on(events.NewMessage(pattern=r'^\.الحمايه تعطيل$'))
 async def disable_protection(event):
@@ -2418,7 +2428,7 @@ async def disable_protection(event):
         return
     global protection_enabled
     protection_enabled = False
-    await event.edit_or_reply("**✾╎تـم تعطيـل أمـر حمايـة الخـاص .. بنجـاح ✓**")
+    await edit_or_reply(event, "**✾╎تـم تعطيـل أمـر حمايـة الخـاص .. بنجـاح ✓**")
 
 @client.on(events.NewMessage(incoming=True))
 async def auto_reply(event):
@@ -2476,7 +2486,7 @@ async def accept_user(event):
         
     reply = await event.get_reply_message()
     if not reply:
-        return await event.edit_or_reply("**⚠️╎يجب الـرد علـى رسـالة المسـتخدم لقبـوله**")
+        return await edit_or_reply(event, "**⚠️╎يجب الـرد علـى رسـالة المسـتخدم لقبـوله**")
     
     user = await client.get_entity(reply.sender_id)
     accepted_users[user.id] = {'name': user.first_name, 'reason': "لـم يـذكـر"}
@@ -2488,7 +2498,7 @@ async def accept_user(event):
         except:
             pass
     
-    await event.edit_or_reply(f"""
+    await edit_or_reply(event, f"""
 **✾╎المستخـدم ⏜**  {user.first_name}
 **✾╎تـم السـمـاح لـه بـإرسـال الـرسـائـل 💬✓**
 **⅏╎السـبـب ⏜ لـم يـذكـر 🤷🏻‍♂**
@@ -2509,7 +2519,7 @@ async def reject_user(event):
         
     reply = await event.get_reply_message()
     if not reply:
-        return await event.edit_or_reply("**⚠️╎يجب الـرد علـى رسـالة المسـتخدم لرفـضه**")
+        return await edit_or_reply(event, "**⚠️╎يجب الـرد علـى رسـالة المسـتخدم لرفـضه**")
     
     user = await client.get_entity(reply.sender_id)
     await client(BlockRequest(user.id))
@@ -2521,7 +2531,7 @@ async def reject_user(event):
         except:
             pass
     
-    await event.edit_or_reply(f"""
+    await edit_or_reply(event, f"""
 **✾╎المستخـدم ⏜** {user.first_name}
 **✾╎تـم رفـضـه مـن أرسـال الـرسـائـل ⚠️**
 **⅏╎السـبـب ⏜ لـم يـذكـر 💭**
@@ -2541,14 +2551,15 @@ async def show_accepted(event):
         return
         
     if not accepted_users:
-        return await event.edit_or_reply("**⅏╎لا يوجـد مسـتخدمين مقبـولين حاليـاً**")
+        return await edit_or_reply(event, "**⅏╎لا يوجـد مسـتخدمين مقبـولين حاليـاً**")
     
     message = "**✾╎قائمـة المسمـوح لهـم ( المقبـوليـن ) ⏜**\n\n"
     for user_id, info in accepted_users.items():
         user = await client.get_entity(user_id)
         message += f"**•╎👤 الاسـم ⏜** {info['name']}\n**✾╎الايـدي ⏜** {user_id}\n**✾╎المعـرف ⏜** @{user.username or 'لـايـوجـد'}\n**⅏╎السـبب ⏜** {info['reason']}\n\n"
     
-    await event.edit_or_reply(message)
+    await edit_or_reply(event, message)
+
 
 # متغيرات تجميع في بوت دعمكم
 is_collecting = False
@@ -3468,7 +3479,7 @@ async def show_stats(event):
 
     try:
         start_time = time.time()
-        msg = await event.edit_or_reply("**✾╎جـاري حسـاب الإحصائيـات... 0%**")
+        msg = await edit_or_reply(event, "**✾╎جـاري حسـاب الإحصائيـات... 0%**")
         
         dialogs = await client.get_dialogs()
         total_dialogs = len(dialogs)
@@ -3550,7 +3561,7 @@ async def show_stats(event):
                 pass
         
     except Exception as e:
-        await event.edit_or_reply(f"**⚠️╎حـدث خطـأ أثنـاء حسـاب الإحصائيـات ⏜** {str(e)}")
+        await edit_or_reply(event, f"**⚠️╎حـدث خطـأ أثنـاء حسـاب الإحصائيـات ⏜** {str(e)}")
 
 @client.on(events.NewMessage(pattern=r'^\.مغادرة القنوات$'))
 async def leave_all_channels(event):
@@ -3564,7 +3575,7 @@ async def leave_all_channels(event):
 
     try:
         start_time = time.time()
-        msg = await event.edit_or_reply("**✾╎جـاري جمـع معلومـات القنـوات...**")
+        msg = await edit_or_reply(event, "**✾╎جـاري جمـع معلومـات القنـوات...**")
         
         dialogs = await client.get_dialogs()
         channels = [dialog for dialog in dialogs if 
@@ -3632,7 +3643,7 @@ async def leave_all_channels(event):
         await msg.edit(result_message)
         
     except Exception as e:
-        await event.edit_or_reply(f"**⚠️╎حـدث خطـأ أثنـاء مغـادرة القنـوات ⏜** {str(e)}")
+        await edit_or_reply(event, f"**⚠️╎حـدث خطـأ أثنـاء مغـادرة القنـوات ⏜** {str(e)}")
 
 @client.on(events.NewMessage(pattern=r'^\.مغادرة الجروبات$'))
 async def leave_all_groups(event):
@@ -3646,7 +3657,7 @@ async def leave_all_groups(event):
 
     try:
         start_time = time.time()
-        msg = await event.edit_or_reply("**✾╎جـاري جمـع معلومـات الجـروبات...**")
+        msg = await edit_or_reply(event, "**✾╎جـاري جمـع معلومـات الجـروبات...**")
         
         dialogs = await client.get_dialogs()
         groups = [dialog for dialog in dialogs if 
@@ -3707,7 +3718,7 @@ async def leave_all_groups(event):
         await msg.edit(result_message)
         
     except Exception as e:
-        await event.edit_or_reply(f"**⚠️╎حـدث خطـأ أثنـاء مغـادرة الجـروبات ⏜** {str(e)}")
+        await edit_or_reply(event, f"**⚠️╎حـدث خطـأ أثنـاء مغـادرة الجـروبات ⏜** {str(e)}")
  
 @client.on(events.NewMessage(pattern=r'^\.حذف البوتات$'))
 async def delete_all_bots(event):
@@ -3721,7 +3732,7 @@ async def delete_all_bots(event):
 
     try:
         start_time = time.time()
-        msg = await event.edit_or_reply("**✾╎جـاري البـحث عـن البوتـات...**")
+        msg = await edit_or_reply(event, "**✾╎جـاري البـحث عـن البوتـات...**")
         
         dialogs = await client.get_dialogs()
         bots = [dialog for dialog in dialogs 
@@ -3768,10 +3779,7 @@ async def delete_all_bots(event):
                 
         
     except Exception as e:
-        await event.edit_or_reply(f"**⚠️╎حـدث خطـأ أثنـاء حـذف البوتـات ⏜** {str(e)}")
-        
-
-
+        await edit_or_reply(event, f"**⚠️╎حـدث خطـأ أثنـاء حـذف البوتـات ⏜** {str(e)}")
 
 
 @client.on(events.NewMessage(pattern=r'^\.إنشاء صورة (.+)'))
