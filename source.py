@@ -49,8 +49,6 @@ import pytz
 from PIL import Image, ImageDraw, ImageFont
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
-import yt_dlp as youtube_dl
-import youtube_dl as yt_dlp
 from yt_dlp import YoutubeDL
 from googletrans import Translator
 from deep_translator import GoogleTranslator
@@ -97,13 +95,31 @@ from telethon.tl.types import (
     MessageMediaPhoto,
     MessageMediaDocument
 )
+
+from telethon.tl.functions.messages import (
+    ImportChatInviteRequest,
+    CheckChatInviteRequest,
+    ExportChatInviteRequest
+)
+
 from telethon.errors import (
     PeerIdInvalidError,
     ChannelPrivateError,
     AuthKeyError,
     FloodWaitError,
-    RPCError
-)	
+    RPCError,
+    InviteHashExpiredError,
+    InviteHashInvalidError,
+    UserAlreadyParticipantError,
+    UsernameNotOccupiedError,
+    ChatAdminRequiredError,
+    SessionPasswordNeededError,
+    FileReferenceExpiredError,
+    UserPrivacyRestrictedError,
+    MediaEmptyError,
+    WebpageCurlFailedError,
+    WebpageMediaEmptyError
+)
 
 from telethon import TelegramClient, events
 from telethon.tl.functions.channels import CreateChannelRequest
@@ -113,18 +129,6 @@ from telethon.errors import (
     ChatAdminRequiredError, ChatIdInvalidError, ChatRestrictedError
 )
 from telethon.tl.types import DocumentAttributeAudio, DocumentAttributeFilename
-
-# ========== Telethon - الأخطاء ==========
-from telethon.errors import (
-    SessionPasswordNeededError,
-    ChannelPrivateError,
-    FileReferenceExpiredError,
-    RPCError,
-    UserPrivacyRestrictedError,
-    MediaEmptyError,
-    WebpageCurlFailedError,
-    WebpageMediaEmptyError
-)
 
 # ========== Telethon - دوال API ==========
 from telethon.tl.functions import (
@@ -158,7 +162,6 @@ from asyncio.exceptions import CancelledError
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 import psutil
-from platform import python_version
 from telethon import version
 from telethon.tl.types import InputMessagesFilterPhotos, InputMessagesFilterVideo
 from datetime import datetime
@@ -2398,9 +2401,10 @@ async def eren_ping(event):
     await ping_msg.edit(f"**🏓 Ping:** `{ping_time:.2f} ms`")
 
 # ============ نظام الحماية ============
+
 @client.on(events.NewMessage(pattern=r'^\.الحمايه تفعيل$'))
 async def enable_protection(event):
-    # التحقق من الصلاحيات
+    # التحقق من الصلاحيات والتحقق من أن الأمر في الخاص فقط
     allowed_users = [5683930416]
     sender_id = event.sender_id
     is_bot_owner = event.out
@@ -2408,15 +2412,17 @@ async def enable_protection(event):
     if not is_bot_owner and sender_id not in allowed_users:
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
-    if not event.is_private or not await event.get_sender() == await client.get_me():
-        return
+    # التأكد من أن الأمر يعمل فقط في الخاص - بدون رسالة
+    if not event.is_private:
+        return  # تجاهل تماماً بدون إرسال أي رد
+    
     global protection_enabled
     protection_enabled = True
     await edit_or_reply(event, "**✾╎تـم تفعيـل امـر حمايـه الخـاص .. بنجـاح 🝛**")
 
 @client.on(events.NewMessage(pattern=r'^\.الحمايه تعطيل$'))
 async def disable_protection(event):
-    # التحقق من الصلاحيات
+    # التحقق من الصلاحيات والتحقق من أن الأمر في الخاص فقط
     allowed_users = [5683930416]
     sender_id = event.sender_id
     is_bot_owner = event.out
@@ -2424,56 +2430,17 @@ async def disable_protection(event):
     if not is_bot_owner and sender_id not in allowed_users:
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
-    if not event.is_private or not await event.get_sender() == await client.get_me():
-        return
+    # التأكد من أن الأمر يعمل فقط في الخاص - بدون رسالة
+    if not event.is_private:
+        return  # تجاهل تماماً بدون إرسال أي رد
+    
     global protection_enabled
     protection_enabled = False
     await edit_or_reply(event, "**✾╎تـم تعطيـل أمـر حمايـة الخـاص .. بنجـاح ✓**")
 
-@client.on(events.NewMessage(incoming=True))
-async def auto_reply(event):
-    global protection_enabled, user_auto_messages
-    if not protection_enabled or not event.is_private:
-        return
-
-    sender = await event.get_sender()
-    user_id = sender.id
-    user_name = sender.first_name
-
-    if user_id not in accepted_users and not sender.bot:
-        # حذف الرسالة السابقة إن وجدت
-        if user_id in user_auto_messages:
-            try:
-                await client.delete_messages(event.chat_id, user_auto_messages[user_id])
-            except:
-                pass
-
-        # زيادة عدد التحذيرات
-        warned_users[user_id] = warned_users.get(user_id, 0) + 1
-
-        # إرسال التحذير
-        reply_message = await event.respond(f"""
-**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - الـرد التلقـائي 〽️**
-•─────────────────•
-**❞ مرحبـاً** {user_name} ❝
-**⤶ قـد اكـون مشغـول او غيـر موجـود حـاليـاً ؟!**
-**⤶ ❨ لديـك هنـا** {warned_users[user_id]} **مـن** {MAX_WARNINGS} **تحذيـرات ⚠️❩**
-**⤶ لا تقـم بـ إزعاجـي والا سـوف يتم حظـرك تلقـائياً . . .**
-**⤶ فقـط قل سبـب مجيئك وانتظـر الـرد ⏳**
-        """)
-        
-        user_auto_messages[user_id] = reply_message.id
-
-        # الحظر عند الوصول للحد الأقصى
-        if warned_users[user_id] >= MAX_WARNINGS:
-            await event.respond("**❌╎تـم حظـرك تلقائيـاً بسـبب تكـرار الإزعـاج**")
-            await client(BlockRequest(user_id))
-            if user_id in user_auto_messages:
-                del user_auto_messages[user_id]
-
 @client.on(events.NewMessage(pattern=r'^\.قبول$'))
 async def accept_user(event):
-    # التحقق من الصلاحيات
+    # التحقق من الصلاحيات والتحقق من أن الأمر في الخاص فقط
     allowed_users = [5683930416]
     sender_id = event.sender_id
     is_bot_owner = event.out
@@ -2481,8 +2448,9 @@ async def accept_user(event):
     if not is_bot_owner and sender_id not in allowed_users:
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
-    if not event.is_private or not await event.get_sender() == await client.get_me():
-        return
+    # التأكد من أن الأمر يعمل فقط في الخاص - بدون رسالة
+    if not event.is_private:
+        return  # تجاهل تماماً بدون إرسال أي رد
         
     reply = await event.get_reply_message()
     if not reply:
@@ -2506,7 +2474,7 @@ async def accept_user(event):
 
 @client.on(events.NewMessage(pattern=r'^\.رفض$'))
 async def reject_user(event):
-    # التحقق من الصلاحيات
+    # التحقق من الصلاحيات والتحقق من أن الأمر في الخاص فقط
     allowed_users = [5683930416]
     sender_id = event.sender_id
     is_bot_owner = event.out
@@ -2514,8 +2482,9 @@ async def reject_user(event):
     if not is_bot_owner and sender_id not in allowed_users:
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
-    if not event.is_private or not await event.get_sender() == await client.get_me():
-        return
+    # التأكد من أن الأمر يعمل فقط في الخاص - بدون رسالة
+    if not event.is_private:
+        return  # تجاهل تماماً بدون إرسال أي رد
         
     reply = await event.get_reply_message()
     if not reply:
@@ -2539,7 +2508,7 @@ async def reject_user(event):
 
 @client.on(events.NewMessage(pattern=r'^\.المقبولين$'))
 async def show_accepted(event):
-    # التحقق من الصلاحيات
+    # التحقق من الصلاحيات والتحقق من أن الأمر في الخاص فقط
     allowed_users = [5683930416]
     sender_id = event.sender_id
     is_bot_owner = event.out
@@ -2547,8 +2516,9 @@ async def show_accepted(event):
     if not is_bot_owner and sender_id not in allowed_users:
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
-    if not event.is_private or not await event.get_sender() == await client.get_me():
-        return
+    # التأكد من أن الأمر يعمل فقط في الخاص - بدون رسالة
+    if not event.is_private:
+        return  # تجاهل تماماً بدون إرسال أي رد
         
     if not accepted_users:
         return await edit_or_reply(event, "**⅏╎لا يوجـد مسـتخدمين مقبـولين حاليـاً**")
@@ -2559,7 +2529,6 @@ async def show_accepted(event):
         message += f"**•╎👤 الاسـم ⏜** {info['name']}\n**✾╎الايـدي ⏜** {user_id}\n**✾╎المعـرف ⏜** @{user.username or 'لـايـوجـد'}\n**⅏╎السـبب ⏜** {info['reason']}\n\n"
     
     await edit_or_reply(event, message)
-
 
 # متغيرات تجميع في بوت دعمكم
 is_collecting = False
@@ -2917,23 +2886,46 @@ async def translate_to_english(event):
         else:
             await event.reply(error_msg)
 
+
+
 def extract_username_or_invite(link):
     """
-    استخراج اسم المستخدم أو رابط الدعوة من النص
+    استخراج اسم المستخدم أو رابط الدعوة من النص - إصدار محسن
     """
-    # حاول استخراج رابط دعوة للمجموعات الخاصة
-    invite_match = re.search(r'(t\.me\/joinchat\/[A-Za-z0-9_-]+)', link)
-    if invite_match:
-        return invite_match.group(0)
+    # تنظيف النص من المسافات
+    link = link.strip()
     
-    # حاول استخراج اسم مستخدم قناة/مجموعة
-    username_match = re.search(r'(t\.me\/|@)([A-Za-z0-9_]+)', link)
+    # روابط الدعوة الحديثة: t.me/+abc123 أو t.me/joinchat/abc123
+    invite_match = re.search(r't\.me/(?:\+|joinchat/)([A-Za-z0-9_-]+)', link)
+    if invite_match:
+        return f"+{invite_match.group(1)}"
+    
+    # روابط القنوات/المجموعات الخاصة: t.me/c/123456789/123
+    private_channel_match = re.search(r't\.me/c/(\d+)/\d+', link)
+    if private_channel_match:
+        return f"-100{private_channel_match.group(1)}"
+    
+    # أسماء المستخدمين: @username أو t.me/username
+    username_match = re.search(r'(?:t\.me/|@)([A-Za-z0-9_]{5,32})', link)
     if username_match:
-        return username_match.group(2)
-
+        return username_match.group(1)
+    
     return None
 
-@client.on(events.NewMessage(pattern=r'^\.انضم(?:\s+(.+))?'))
+async def is_user_member(client, entity):
+    """
+    التحقق مما إذا كان المستخدم منضم بالفعل
+    """
+    try:
+        # محاولة الحصول على صلاحيات المستخدم في الكيان
+        permissions = await client.get_permissions(entity, 'me')
+        return permissions is not None
+    except (ValueError, ChannelPrivateError, ChannelInvalidError):
+        return False
+    except Exception:
+        return False
+
+@client.on(events.NewMessage(pattern=r'^\.انضم(?:\s+(.+))?$'))
 async def join_channel_or_group(event):
     # التحقق من الصلاحيات
     allowed_users = [5683930416]
@@ -2951,86 +2943,112 @@ async def join_channel_or_group(event):
         reply_message = await event.get_reply_message()
         text = reply_message.text
 
-    if text:
-        try:
-            # استخراج اسم المستخدم أو رابط الدعوة من الرسالة
-            identifier = extract_username_or_invite(text)
+    if not text:
+        error_msg = "**⚠️╎يرجـى تقديـم اسـم المسـتخدم أو رابـط الدعـوة أو الـرد علـى رسـالة تحتـوي علـى رابـط**"
+        await edit_or_reply(event, error_msg)
+        return
 
-            if not identifier:
-                error_msg = 'لم أتمكن من استخراج اسم المستخدم أو رابط الدعوة.'
-                if event.out:
-                    await event.edit(error_msg)
-                else:
-                    await event.reply(error_msg)
-                return
+    try:
+        # استخراج اسم المستخدم أو رابط الدعوة من الرسالة
+        identifier = extract_username_or_invite(text)
 
-            # محاولة الحصول على الكيان (قناة أو مجموعة)
-            if 'joinchat' in identifier:
-                # إذا كان رابط دعوة لمجموعة خاصة
-                invite_hash = identifier.split('/')[-1]
-                await client(functions.messages.ImportChatInviteRequest(invite_hash))
-                success_msg = 'تم الانضمام إلى المجموعة عبر رابط الدعوة.'
-                if event.out:
-                    await event.edit(success_msg)
-                else:
-                    await event.reply(success_msg)
-            else:
-                # محاولة الحصول على الكيان سواء كان قناة أو مجموعة
-                entity = await client.get_entity(identifier)
+        if not identifier:
+            error_msg = "**❌╎لـم استطـع استخـراج اسـم المسـتخدم أو رابـط الدعـوة**"
+            await edit_or_reply(event, error_msg)
+            return
 
-                # الانضمام للقناة أو المجموعة بناءً على نوعها
-                if entity.broadcast:  # قناة
-                    await client(functions.channels.JoinChannelRequest(entity))
-                    success_msg = f'تم الانضمام إلى القناة: @{identifier}'
-                    if event.out:
-                        await event.edit(success_msg)
-                    else:
-                        await event.reply(success_msg)
-                elif entity.megagroup:  # مجموعة عامة
-                    await client(functions.channels.JoinChannelRequest(entity))
-                    success_msg = f'تم الانضمام إلى المجموعة: @{identifier}'
-                    if event.out:
-                        await event.edit(success_msg)
-                    else:
-                        await event.reply(success_msg)
+        processing_msg = await edit_or_reply(event, "**✾╎جـاري التحقـق ومحـاولة الانضمـام...**")
+
+        # التعامل مع روابط الدعوة
+        if identifier.startswith('+'):
+            # رابط دعوة حديث: t.me/+abc123 أو t.me/joinchat/abc123
+            try:
+                # التحقق أولاً مما إذا كنا منضمين بالفعل
+                try:
+                    invite = await client(CheckChatInviteRequest(identifier))
+                    if invite.already_participant:
+                        await processing_msg.edit("**ℹ️╎أنـت منضـم بالفعل إلـى هـذه المجموعـة**")
+                        return
+                except Exception:
+                    pass  # إذا فشل التحقق، نتابع المحاولة
+
+                # محاولة الانضمام
+                await client(ImportChatInviteRequest(identifier))
+                success_msg = f"**✅╎تـم الانضمـام إلـى المجموعـة بنجـاح**\n**✾╎الرابـط ⏜** `{identifier}`"
+                await processing_msg.edit(success_msg)
+                
+            except InviteHashExpiredError:
+                await processing_msg.edit("**❌╎رابـط الدعـوة منتهـي الصلاحيـة**")
+            except InviteHashInvalidError:
+                await processing_msg.edit("**❌╎رابـط الدعـوة غيـر صالـح**")
+            except UserAlreadyParticipantError:
+                await processing_msg.edit("**ℹ️╎أنـت منضـم بالفعل إلـى هـذه المجموعـة**")
+            except Exception as e:
+                await processing_msg.edit(f"**❌╎حـدث خطـأ أثنـاء الانضمـام ⏜** `{str(e)}`")
+
+        # التعامل مع القنوات/المجموعات الخاصة برقم ID
+        elif identifier.startswith('-100'):
+            try:
+                entity = await client.get_entity(int(identifier))
+                
+                # التحقق مما إذا كنا منضمين بالفعل
+                if await is_user_member(client, entity):
+                    await processing_msg.edit("**ℹ️╎أنـت منضـم بالفعل إلـى هـذه القنـاة/المجموعـة**")
+                    return
+                
+                # الانضمام بناءً على نوع الكيان
+                if hasattr(entity, 'broadcast') and entity.broadcast:
+                    await client(JoinChannelRequest(entity))
+                    success_msg = f"**✅╎تـم الانضمـام إلـى القنـاة بنجـاح**\n**✾╎اسـم القنـاة ⏜** `{entity.title}`"
+                elif hasattr(entity, 'megagroup') and entity.megagroup:
+                    await client(JoinChannelRequest(entity))
+                    success_msg = f"**✅╎تـم الانضمـام إلـى المجموعـة بنجـاح**\n**✾╎اسـم المجموعـة ⏜** `{entity.title}`"
                 else:
-                    error_msg = 'تعذر التعرف على نوع الكيان.'
-                    if event.out:
-                        await event.edit(error_msg)
-                    else:
-                        await event.reply(error_msg)
-        except Exception as e:
-            error_msg = f'حدث خطأ أثناء الانضمام: {str(e)}'
-            if event.out:
-                await event.edit(error_msg)
-            else:
-                await event.reply(error_msg)
-    else:
-        error_msg = 'يرجى تقديم اسم مستخدم القناة أو المجموعة أو الرد على رسالة تحتوي على رابط.'
-        if event.out:
-            await event.edit(error_msg)
+                    await client(JoinChannelRequest(entity))
+                    success_msg = f"**✅╎تـم الانضمـام إلـى الدردشـة بنجـاح**\n**✾╎الاسـم ⏜** `{entity.title}`"
+                
+                await processing_msg.edit(success_msg)
+                
+            except ChannelPrivateError:
+                await processing_msg.edit("**❌╎القنـاة/المجموعـة خاصـة ولا يمكـن الانضمـام إليهـا**")
+            except Exception as e:
+                await processing_msg.edit(f"**❌╎حـدث خطـأ أثنـاء الانضمـام ⏜** `{str(e)}`")
+
+        # التعامل مع أسماء المستخدمين العادية
         else:
-            await event.reply(error_msg)
+            try:
+                entity = await client.get_entity(identifier)
+                
+                # التحقق مما إذا كنا منضمين بالفعل
+                if await is_user_member(client, entity):
+                    await processing_msg.edit(f"**ℹ️╎أنـت منضـم بالفعل إلـى ⏜** `{entity.title}`")
+                    return
+                
+                # الانضمام بناءً على نوع الكيان
+                if hasattr(entity, 'broadcast') and entity.broadcast:
+                    await client(JoinChannelRequest(entity))
+                    success_msg = f"**✅╎تـم الانضمـام إلـى القنـاة بنجـاح**\n**✾╎اسـم القنـاة ⏜** `{entity.title}`\n**✾╎المعـرف ⏜** @{identifier}"
+                elif hasattr(entity, 'megagroup') and entity.megagroup:
+                    await client(JoinChannelRequest(entity))
+                    success_msg = f"**✅╎تـم الانضمـام إلـى المجموعـة بنجـاح**\n**✾╎اسـم المجموعـة ⏜** `{entity.title}`\n**✾╎المعـرف ⏜** @{identifier}"
+                else:
+                    await client(JoinChannelRequest(entity))
+                    success_msg = f"**✅╎تـم الانضمـام إلـى الدردشـة بنجـاح**\n**✾╎الاسـم ⏜** `{entity.title}`\n**✾╎المعـرف ⏜** @{identifier}"
+                
+                await processing_msg.edit(success_msg)
+                
+            except ChannelPrivateError:
+                await processing_msg.edit("**❌╎القنـاة/المجموعـة خاصـة ولا يمكـن الانضمـام إليهـا**")
+            except UsernameNotOccupiedError:
+                await processing_msg.edit("**❌╎اسـم المسـتخدم غيـر موجـود**")
+            except Exception as e:
+                await processing_msg.edit(f"**❌╎حـدث خطـأ أثنـاء الانضمـام ⏜** `{str(e)}`")
 
+    except Exception as e:
+        error_msg = f"**❌╎حـدث خطـأ ⏜** `{str(e)}`"
+        await edit_or_reply(event, error_msg)
 
-
-def extract_username_or_invite(link):
-    """
-    استخراج اسم المستخدم أو رابط الدعوة من النص
-    """
-    # حاول استخراج رابط دعوة للمجموعات الخاصة
-    invite_match = re.search(r'(t\.me\/joinchat\/[A-Za-z0-9_-]+)', link)
-    if invite_match:
-        return invite_match.group(0)
-    
-    # حاول استخراج اسم مستخدم قناة/مجموعة
-    username_match = re.search(r'(t\.me\/|@)([A-Za-z0-9_]+)', link)
-    if username_match:
-        return username_match.group(2)
-
-    return None
-
-@client.on(events.NewMessage(pattern=r'^\.غادر(?:\s+(.+))?'))
+@client.on(events.NewMessage(pattern=r'^\.غادر(?:\s+(.+))?$'))
 async def leave_channel_or_group(event):
     # التحقق من الصلاحيات
     allowed_users = [5683930416]
@@ -3047,64 +3065,61 @@ async def leave_channel_or_group(event):
         reply_message = await event.get_reply_message()
         text = reply_message.text
 
-    if text:
+    if not text:
+        error_msg = "**⚠️╎يرجـى تقديـم اسـم المسـتخدم أو رابـط أو الـرد علـى رسـالة تحتـوي علـى رابـط**"
+        await edit_or_reply(event, error_msg)
+        return
+
+    try:
+        # استخراج اسم المستخدم أو رابط الدعوة من الرسالة
+        identifier = extract_username_or_invite(text)
+
+        if not identifier:
+            error_msg = "**❌╎لـم استطـع استخـراج اسـم المسـتخدم أو الرابـط**"
+            await edit_or_reply(event, error_msg)
+            return
+
+        processing_msg = await edit_or_reply(event, "**✾╎جـاري التحقـق ومحـاولة المغـادرة...**")
+
+        # التعامل مع جميع أنواع المعرفات
+        if identifier.startswith('+') or identifier.startswith('-100'):
+            # روابط الدعوة أو IDs الخاصة - لا يمكن مغادرتها بهذه الطريقة
+            error_msg = "**❌╎لا يمكـن مغـادرة المجموعـات الخاصـة باستخـدام رابـط الدعـوة**\n**✾╎استخـدم معـرف القنـاة/المجموعـة مباشـرة**"
+            await processing_msg.edit(error_msg)
+            return
+
+        # التعامل مع أسماء المستخدمين العادية
         try:
-            # استخراج اسم المستخدم أو رابط الدعوة من الرسالة
-            identifier = extract_username_or_invite(text)
-
-            if not identifier:
-                error_msg = 'لم أتمكن من استخراج اسم المستخدم أو رابط الدعوة.'
-                if event.out:
-                    await event.edit(error_msg)
-                else:
-                    await event.reply(error_msg)
+            entity = await client.get_entity(identifier)
+            
+            # التحقق مما إذا كنا منضمين بالفعل
+            if not await is_user_member(client, entity):
+                await processing_msg.edit(f"**ℹ️╎أنـت لسـت منضمـاً إلـى ⏜** `{entity.title}`")
                 return
-
-            # محاولة الحصول على الكيان (قناة أو مجموعة)
-            if 'joinchat' in identifier:
-                # إذا كان رابط دعوة لمجموعة خاصة
-                error_msg = 'لا يمكن مغادرة مجموعة خاصة باستخدام رابط الدعوة.'
-                if event.out:
-                    await event.edit(error_msg)
-                else:
-                    await event.reply(error_msg)
+            
+            # المغادرة بناءً على نوع الكيان
+            if hasattr(entity, 'broadcast') and entity.broadcast:
+                await client(LeaveChannelRequest(entity))
+                success_msg = f"**✅╎تـم مغـادرة القنـاة بنجـاح**\n**✾╎اسـم القنـاة ⏜** `{entity.title}`\n**✾╎المعـرف ⏜** @{identifier}"
+            elif hasattr(entity, 'megagroup') and entity.megagroup:
+                await client(LeaveChannelRequest(entity))
+                success_msg = f"**✅╎تـم مغـادرة المجموعـة بنجـاح**\n**✾╎اسـم المجموعـة ⏜** `{entity.title}`\n**✾╎المعـرف ⏜** @{identifier}"
             else:
-                # الحصول على الكيان سواء كان قناة أو مجموعة
-                entity = await client.get_entity(identifier)
-
-                # مغادرة القناة أو المجموعة بناءً على نوعها
-                if entity.broadcast:  # قناة
-                    await client(functions.channels.LeaveChannelRequest(entity))
-                    success_msg = f'تم مغادرة القناة: @{identifier}'
-                    if event.out:
-                        await event.edit(success_msg)
-                    else:
-                        await event.reply(success_msg)
-                elif entity.megagroup:  # مجموعة عامة
-                    await client(functions.channels.LeaveChannelRequest(entity))
-                    success_msg = f'تم مغادرة المجموعة: @{identifier}'
-                    if event.out:
-                        await event.edit(success_msg)
-                    else:
-                        await event.reply(success_msg)
-                else:
-                    error_msg = 'تعذر التعرف على نوع الكيان.'
-                    if event.out:
-                        await event.edit(error_msg)
-                    else:
-                        await event.reply(error_msg)
+                await client(LeaveChannelRequest(entity))
+                success_msg = f"**✅╎تـم مغـادرة الدردشـة بنجـاح**\n**✾╎الاسـم ⏜** `{entity.title}`\n**✾╎المعـرف ⏜** @{identifier}"
+            
+            await processing_msg.edit(success_msg)
+            
+        except ChannelPrivateError:
+            await processing_msg.edit("**❌╎القنـاة/المجموعـة خاصـة ولا يمكـن الوصـول إليهـا**")
+        except UsernameNotOccupiedError:
+            await processing_msg.edit("**❌╎اسـم المسـتخدم غيـر موجـود**")
         except Exception as e:
-            error_msg = f'حدث خطأ أثناء المغادرة: {str(e)}'
-            if event.out:
-                await event.edit(error_msg)
-            else:
-                await event.reply(error_msg)
-    else:
-        error_msg = 'يرجى تقديم اسم مستخدم القناة أو المجموعة أو الرد على رسالة تحتوي على رابط.'
-        if event.out:
-            await event.edit(error_msg)
-        else:
-            await event.reply(error_msg)
+            await processing_msg.edit(f"**❌╎حـدث خطـأ أثنـاء المغـادرة ⏜** `{str(e)}`")
+
+    except Exception as e:
+        error_msg = f"**❌╎حـدث خطـأ ⏜** `{str(e)}`"
+        await edit_or_reply(event, error_msg)
 
 # قائمة المستخدمين المسموح لهم
 ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
@@ -3466,7 +3481,6 @@ async def process_conversion(event, amount, source_coin, target_coin):
         error_msg = f"⚠️ حدث خطأ في التحويل: {str(e)}"
         await loading_msg.edit(error_msg)
 
-
 @client.on(events.NewMessage(pattern=r'^\.احصائيات$'))
 async def show_stats(event):
     # التحقق من الصلاحيات
@@ -3479,9 +3493,13 @@ async def show_stats(event):
 
     try:
         start_time = time.time()
-        msg = await edit_or_reply(event, "**✾╎جـاري حسـاب الإحصائيـات... 0%**")
+        msg = await edit_or_reply(event, "**✾╎جـاري جمـع معلومـات الدردشـات... 0%**")
         
-        dialogs = await client.get_dialogs()
+        # استخدام iter_dialogs للحصول على جميع الدردشات
+        dialogs = []
+        async for dialog in client.iter_dialogs():
+            dialogs.append(dialog)
+        
         total_dialogs = len(dialogs)
         processed = 0
         
@@ -3492,27 +3510,44 @@ async def show_stats(event):
         admin_channels = 0
         admin_groups = 0
         
-        last_progress = -1  # متغير لتتبع آخر نسبة تقدم تم عرضها
+        last_progress = -1
         
         for dialog in dialogs:
             entity = dialog.entity
+            
+            # التصنيف الدقيق لأنواع الدردشات
             if isinstance(entity, types.Channel):
                 if entity.broadcast:
+                    # قناة بث
                     channels.append(entity)
-                    # التحقق من الإشراف بشكل دقيق
+                    # فحص الإشراف بدقة
                     try:
-                        if dialog.is_admin:
+                        participant = await client.get_permissions(entity, await client.get_me())
+                        if participant.is_admin:
                             admin_channels += 1
-                    except:
+                    except (ValueError, TypeError, ChannelPrivateError):
+                        # تجاهل القنوات الخاصة أو التي لا يمكن الوصول إليها
+                        pass
+                    except Exception:
+                        pass
+                elif entity.megagroup:
+                    # مجموعة سوبر (مجموعة)
+                    groups.append(entity)
+                    # فحص الإشراف بدقة
+                    try:
+                        participant = await client.get_permissions(entity, await client.get_me())
+                        if participant.is_admin:
+                            admin_groups += 1
+                    except (ValueError, TypeError, ChannelPrivateError):
+                        pass
+                    except Exception:
                         pass
                 else:
-                    groups.append(entity)
-                    # التحقق من الإشراف بشكل دقيق
-                    try:
-                        if dialog.is_admin:
-                            admin_groups += 1
-                    except:
-                        pass
+                    # قناة عادية (نادر)
+                    channels.append(entity)
+            elif isinstance(entity, types.Chat):
+                # مجموعة عادية (قديمة)
+                groups.append(entity)
             elif isinstance(entity, types.User):
                 if entity.bot:
                     bots.append(entity)
@@ -3522,37 +3557,47 @@ async def show_stats(event):
             processed += 1
             progress = int((processed / total_dialogs) * 100)
             
-            # تحديث فقط إذا كان هناك تغيير في النسبة وكل 10%
+            # تحديث التقدم مع تجنب التكرار
             if progress % 10 == 0 and progress != last_progress and progress < 100:
                 remaining_time = (time.time() - start_time) * (100 - progress) / max(progress, 1)
                 try:
-                    await msg.edit(f"**✾╎جـاري حسـاب الإحصائيـات... {progress}%\n⏳╎المتبقـي ⏜** {int(remaining_time)} **ثانيـه**")
+                    await msg.edit(f"**✾╎جـاري جمـع معلومـات الدردشـات... {progress}%\n⏳╎المتبقـي ⏜** {int(remaining_time)} **ثانيـه**")
                     last_progress = progress
                 except Exception:
-                    pass  # تجاهل أخطاء التحديث المتكررة
+                    pass
+            
+            # تأخير بسيط لتجنب FloodWait
+            if processed % 50 == 0:
+                await asyncio.sleep(0.5)
         
-        # التأكد من أن الرسالة النهائية مختلفة
+        # حساب الإحصائيات النهائية
         final_time = int(time.time() - start_time)
+        
         stats_message = f"""
 ╭━━━┳━━━━╮
 **✾╎إحصائيـات حسـابك ⎚**
 ╰━━━┻━━━━╯
 ٴ⋆─┄─┄─┄─ 𝐀𝐒𝐓𝐑𝐀 ─┄─┄─┄─⋆
+**📊╎المجمـوعـات العـامـه ⏜**
 **✾╎عـدد القنـوات ⏜** {len(channels)}
-**✾╎عـدد القنـوات المشـرف عليهـا ⏜** {admin_channels}
 **✾╎عـدد المجموعـات ⏜** {len(groups)}
-**✾╎عـدد المجموعـات المشـرف عليهـا ⏜** {admin_groups}
 **✾╎عـدد البوتـات ⏜** {len(bots)}
 **✾╎عـدد المحادثـات الخاصـه ⏜** {len(private_chats)}
 **✾╎إجمـالي الدردشـات ⏜** {total_dialogs}
-**✾╎الوقـت المسـتغرق ⏜** {final_time} **ثانيـه**
+
+**👑╎الإشـراف ⏜**
+**✾╎قنـوات مشـرف عليهـا ⏜** {admin_channels}
+**✾╎مجموعـات مشـرف عليهـا ⏜** {admin_groups}
+**✾╎نسـبة الإشـراف ⏜** {((admin_channels + admin_groups) / max(len(channels) + len(groups), 1)) * 100:.1f}%
+
+**⏱️╎الوقـت المسـتغرق ⏜** {final_time} **ثانيـه**
 ٴ⋆─┄─┄─┄─ 𝐀𝐒𝐓𝐑𝐀 ─┄─┄─┄─⋆
 """
         
-        # محاولة التحديث مع معالجة الخطأ
+        # إرسال النتيجة النهائية
         try:
             await msg.edit(stats_message)
-        except Exception as edit_error:
+        except Exception:
             # إذا فشل التحديث، إرسال رسالة جديدة
             await event.reply(stats_message)
             try:
@@ -3561,7 +3606,11 @@ async def show_stats(event):
                 pass
         
     except Exception as e:
-        await edit_or_reply(event, f"**⚠️╎حـدث خطـأ أثنـاء حسـاب الإحصائيـات ⏜** {str(e)}")
+        error_msg = f"**⚠️╎حـدث خطـأ أثنـاء حسـاب الإحصائيـات ⏜** {str(e)}"
+        try:
+            await msg.edit(error_msg)
+        except:
+            await edit_or_reply(event, error_msg)
 
 @client.on(events.NewMessage(pattern=r'^\.مغادرة القنوات$'))
 async def leave_all_channels(event):
