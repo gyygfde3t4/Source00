@@ -1173,8 +1173,11 @@ async def delete_message(event):
     else:
         await edit_or_reply(event, "**⚠️╎يرجـى الـرد علـى الرسـالة الـتي تـريد حذفهـا**")
 
+# قاموس لتخزين الرسائل المحددة لكل مستخدم
+user_selections = {}
+
 @client.on(events.NewMessage(pattern=r'^\.مسح$'))
-async def delete_range(event):
+async def delete_or_select_message(event):
     # التحقق من الصلاحيات
     allowed_users = [5683930416]
     sender_id = event.sender_id
@@ -1184,39 +1187,97 @@ async def delete_range(event):
         return  # تجاهل completamente للمستخدمين غير المسموح لهم
 
     if not event.reply_to_msg_id:
-        await edit_or_reply(event, "**⚠️╎يرجـى الـرد علـى الرسـالة الأولـى للمسـح**")
+        await edit_or_reply(event, "**⚠️╎يرجـى الـرد علـى الرسـالة**")
         return
 
     try:
-        # الحصول على الرسالة الأولى (التي تم الرد عليها)
-        first_msg = await event.get_reply_message()
-        first_msg_id = first_msg.id
-        
-        # الحصول على الرسالة الثانية (الرسالة الحالية)
-        second_msg_id = event.id
-        
-        # تحديد الحد الأدنى والأقصى لمعرفات الرسائل
-        min_id = min(first_msg_id, second_msg_id)
-        max_id = max(first_msg_id, second_msg_id)
-        
-        # إنشاء قائمة بجميع معرفات الرسائل بين النقطتين
-        message_ids = list(range(min_id, max_id + 1))
-        
-        # إعلام المستخدم بالعملية
-        count = len(message_ids)
-        await edit_or_reply(event, f"**✾╎جـاري حـذف {count} رسـالة ...**")
-        
-        # حذف جميع الرسائل في النطاق
-        await client.delete_messages(event.chat_id, message_ids=message_ids)
-        
-        # إرسال رسالة تأكيد ثم حذفها بعد ثانيتين
-        confirm_msg = await event.respond(f"**✅╎تـم حـذف {count} رسـالة بنجـاح**")
+        # إذا لم يكن هناك رسالة أولى محددة، نقوم بتحديدها
+        if sender_id not in user_selections:
+            # الحصول على الرسالة التي تم الرد عليها
+            first_msg = await event.get_reply_message()
+            first_msg_id = first_msg.id
+            
+            # تخزين الرسالة المحددة للمستخدم
+            user_selections[sender_id] = {
+                'chat_id': event.chat_id,
+                'first_msg_id': first_msg_id
+            }
+            
+            # تأكيد التحديد
+            confirm_msg = await edit_or_reply(event, "**✅╎تـم تحديد الرسـالة الأولـى\n⦗ الـرد على الرسـالة الثانيـة وإرسـال .مسح للحـذف ⦘**")
+            
+            # حذف رسالة التأكيد بعد 3 ثواني
+            await asyncio.sleep(3)
+            await confirm_msg.delete()
+            
+        else:
+            # إذا كان هناك رسالة أولى محددة، نقوم بالحذف
+            selection_data = user_selections[sender_id]
+            first_chat_id = selection_data['chat_id']
+            first_msg_id = selection_data['first_msg_id']
+            
+            # التحقق من أن العملية في نفس الدردشة
+            if first_chat_id != event.chat_id:
+                await edit_or_reply(event, "**⚠️╎يجب أن تكـون العمليـة في نفـس الدردشـة**")
+                del user_selections[sender_id]  # حذف التحديد القديم
+                return
+            
+            # الحصول على الرسالة الثانية (التي تم الرد عليها)
+            second_msg = await event.get_reply_message()
+            second_msg_id = second_msg.id
+            
+            # تحديد الحد الأدنى والأقصى لمعرفات الرسائل
+            min_id = min(first_msg_id, second_msg_id)
+            max_id = max(first_msg_id, second_msg_id)
+            
+            # إنشاء قائمة بجميع معرفات الرسائل بين النقطتين
+            message_ids = list(range(min_id, max_id + 1))
+            
+            # إعلام المستخدم بالعملية
+            count = len(message_ids)
+            status_msg = await edit_or_reply(event, f"**✾╎جـاري حـذف {count} رسـالة ...**")
+            
+            # حذف جميع الرسائل في النطاق
+            await client.delete_messages(event.chat_id, message_ids=message_ids)
+            
+            # مسح التحديد من الذاكرة
+            del user_selections[sender_id]
+            
+            # حذف رسالة الحالة
+            await asyncio.sleep(1)
+            await status_msg.delete()
+            
+            # إرسال رسالة تأكيد ثم حذفها بعد ثانيتين
+            confirm_msg = await event.respond(f"**✅╎تـم حـذف {count} رسـالة بنجـاح**")
+            await asyncio.sleep(2)
+            await confirm_msg.delete()
+            
+    except Exception as e:
+        await edit_or_reply(event, f"**❌╎حـدث خطـأ ⏜** {str(e)}")
+        # في حالة الخطأ، مسح التحديد إذا كان موجوداً
+        if sender_id in user_selections:
+            del user_selections[sender_id]
+
+# أمر إضافي لإلغاء التحديد إذا رغب المستخدم
+@client.on(events.NewMessage(pattern=r'^\.الغاء$'))
+async def cancel_selection(event):
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+
+    if sender_id in user_selections:
+        del user_selections[sender_id]
+        confirm_msg = await edit_or_reply(event, "**✅╎تـم إلغـاء التحديـد**")
         await asyncio.sleep(2)
         await confirm_msg.delete()
+    else:
+        msg = await edit_or_reply(event, "**⚠️╎لايـوجـد تـحـديـد لـإلغـائـه**")
+        await asyncio.sleep(2)
+        await msg.delete()
         
-    except Exception as e:
-        await edit_or_reply(event, f"**❌╎حـدث خطـأ أثنـاء المسـح ⏜** {str(e)}")    
-
 @client.on(events.NewMessage(pattern=r'^\.التوقيت$'))
 async def show_timezones(event):
     timezone_message = (
@@ -2402,55 +2463,108 @@ async def eren_ping(event):
 
 # ============ نظام الحماية ============
 
+# إضافة هذا في بداية الكود (إذا لم يكن موجوداً)
+protection_enabled = False
+user_auto_messages = {}
+warned_users = {}
+accepted_users = {}
+MAX_WARNINGS = 3
+
 @client.on(events.NewMessage(pattern=r'^\.الحمايه تفعيل$'))
 async def enable_protection(event):
-    # التحقق من الصلاحيات والتحقق من أن الأمر في الخاص فقط
+    # التحقق من الصلاحيات
     allowed_users = [5683930416]
     sender_id = event.sender_id
-    is_bot_owner = event.out
     
-    if not is_bot_owner and sender_id not in allowed_users:
-        return  # تجاهل completamente للمستخدمين غير المسموح لهم
-
     # التأكد من أن الأمر يعمل فقط في الخاص - بدون رسالة
     if not event.is_private:
         return  # تجاهل تماماً بدون إرسال أي رد
     
+    # التحقق من صلاحيات المستخدم
+    if sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     global protection_enabled
     protection_enabled = True
     await edit_or_reply(event, "**✾╎تـم تفعيـل امـر حمايـه الخـاص .. بنجـاح 🝛**")
 
 @client.on(events.NewMessage(pattern=r'^\.الحمايه تعطيل$'))
 async def disable_protection(event):
-    # التحقق من الصلاحيات والتحقق من أن الأمر في الخاص فقط
+    # التحقق من الصلاحيات
     allowed_users = [5683930416]
     sender_id = event.sender_id
-    is_bot_owner = event.out
     
-    if not is_bot_owner and sender_id not in allowed_users:
-        return  # تجاهل completamente للمستخدمين غير المسموح لهم
-
     # التأكد من أن الأمر يعمل فقط في الخاص - بدون رسالة
     if not event.is_private:
         return  # تجاهل تماماً بدون إرسال أي رد
     
+    # التحقق من صلاحيات المستخدم
+    if sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     global protection_enabled
     protection_enabled = False
     await edit_or_reply(event, "**✾╎تـم تعطيـل أمـر حمايـة الخـاص .. بنجـاح ✓**")
 
+@client.on(events.NewMessage(incoming=True))
+async def auto_reply(event):
+    global protection_enabled, user_auto_messages
+    if not protection_enabled or not event.is_private:
+        return
+
+    # تجاهل الرسائل من المستخدمين المسموح لهم
+    allowed_users = [5683930416]
+    if event.sender_id in allowed_users:
+        return
+
+    sender = await event.get_sender()
+    user_id = sender.id
+    user_name = sender.first_name
+
+    if user_id not in accepted_users and not sender.bot:
+        # حذف الرسالة السابقة إن وجدت
+        if user_id in user_auto_messages:
+            try:
+                await client.delete_messages(event.chat_id, user_auto_messages[user_id])
+            except:
+                pass
+
+        # زيادة عدد التحذيرات
+        warned_users[user_id] = warned_users.get(user_id, 0) + 1
+
+        # إرسال التحذير
+        reply_message = await event.respond(f"""
+**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - الـرد التلقـائي 〽️**
+•─────────────────•
+**❞ مرحبـاً** {user_name} ❝
+**⤶ قـد اكـون مشغـول او غيـر موجـود حـاليـاً ؟!**
+**⤶ ❨ لديـك هنـا** {warned_users[user_id]} **مـن** {MAX_WARNINGS} **تحذيـرات ⚠️❩**
+**⤶ لا تقـم بـ إزعاجـي والا سـوف يتم حظـرك تلقـائياً . . .**
+**⤶ فقـط قل سبـب مجيئك وانتظـر الـرد ⏳**
+        """)
+        
+        user_auto_messages[user_id] = reply_message.id
+
+        # الحظر عند الوصول للحد الأقصى
+        if warned_users[user_id] >= MAX_WARNINGS:
+            await event.respond("**❌╎تـم حظـرك تلقائيـاً بسـبب تكـرار الإزعـاج**")
+            await client(BlockRequest(user_id))
+            if user_id in user_auto_messages:
+                del user_auto_messages[user_id]
+
 @client.on(events.NewMessage(pattern=r'^\.قبول$'))
 async def accept_user(event):
-    # التحقق من الصلاحيات والتحقق من أن الأمر في الخاص فقط
+    # التحقق من الصلاحيات
     allowed_users = [5683930416]
     sender_id = event.sender_id
-    is_bot_owner = event.out
     
-    if not is_bot_owner and sender_id not in allowed_users:
-        return  # تجاهل completamente للمستخدمين غير المسموح لهم
-
     # التأكد من أن الأمر يعمل فقط في الخاص - بدون رسالة
     if not event.is_private:
         return  # تجاهل تماماً بدون إرسال أي رد
+    
+    # التحقق من صلاحيات المستخدم
+    if sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
         
     reply = await event.get_reply_message()
     if not reply:
@@ -2474,17 +2588,17 @@ async def accept_user(event):
 
 @client.on(events.NewMessage(pattern=r'^\.رفض$'))
 async def reject_user(event):
-    # التحقق من الصلاحيات والتحقق من أن الأمر في الخاص فقط
+    # التحقق من الصلاحيات
     allowed_users = [5683930416]
     sender_id = event.sender_id
-    is_bot_owner = event.out
     
-    if not is_bot_owner and sender_id not in allowed_users:
-        return  # تجاهل completamente للمستخدمين غير المسموح لهم
-
     # التأكد من أن الأمر يعمل فقط في الخاص - بدون رسالة
     if not event.is_private:
         return  # تجاهل تماماً بدون إرسال أي رد
+    
+    # التحقق من صلاحيات المستخدم
+    if sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
         
     reply = await event.get_reply_message()
     if not reply:
@@ -2508,17 +2622,17 @@ async def reject_user(event):
 
 @client.on(events.NewMessage(pattern=r'^\.المقبولين$'))
 async def show_accepted(event):
-    # التحقق من الصلاحيات والتحقق من أن الأمر في الخاص فقط
+    # التحقق من الصلاحيات
     allowed_users = [5683930416]
     sender_id = event.sender_id
-    is_bot_owner = event.out
     
-    if not is_bot_owner and sender_id not in allowed_users:
-        return  # تجاهل completamente للمستخدمين غير المسموح لهم
-
     # التأكد من أن الأمر يعمل فقط في الخاص - بدون رسالة
     if not event.is_private:
         return  # تجاهل تماماً بدون إرسال أي رد
+    
+    # التحقق من صلاحيات المستخدم
+    if sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
         
     if not accepted_users:
         return await edit_or_reply(event, "**⅏╎لا يوجـد مسـتخدمين مقبـولين حاليـاً**")
@@ -7358,25 +7472,16 @@ async def stop_game(event):
     del active_games[chat_id]
     await event.reply(f"**🛑 تم إيقاف لعبة {game_type}**")
 
-
-
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")    
-
 # سيتم تعبئة هذه المتغيرات تلقائياً
 KOYEB_APP_NAME = None
 KOYEB_SERVICE_ID = None
+KOYEB_APP_ID = None
 
 # إعدادات ثابتة
 REPO_REMOTE_NAME = "temponame"
 NO_KOYEB_APP_CFGD = "no koyeb application found, but a key given? 😕 "
 RESTARTING_APP = "re-starting koyeb application"
 koyeb_api = "https://app.koyeb.com/v1"
-
-# مسارات النظام
-requirements_path = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "requirements.txt"
-)
-
 
 async def get_koyeb_app_info():
     """جلب معلومات التطبيق والخدمة من Koyeb تلقائياً"""
@@ -7411,9 +7516,9 @@ async def get_koyeb_app_info():
                 if apps_data.get('apps'):
                     # نأخذ أول تطبيق في القائمة
                     app = apps_data['apps'][0]
-                    global KOYEB_APP_NAME, KOYEB_SERVICE_ID
+                    global KOYEB_APP_NAME, KOYEB_SERVICE_ID, KOYEB_APP_ID
                     KOYEB_APP_NAME = app.get('name')
-                    app_id = app.get('id')
+                    KOYEB_APP_ID = app.get('id')
                     
                     # أولاً: محاولة الحصول على معرف الخدمة من بيانات التطبيق مباشرة
                     if 'services' in app and app['services']:
@@ -7423,7 +7528,7 @@ async def get_koyeb_app_info():
                     
                     # ثانياً: استخدام الطريقة الجديدة للحصول على الخدمات
                     async with session.get(
-                        f"{koyeb_api}/services?app_id={app_id}",
+                        f"{koyeb_api}/services?app_id={KOYEB_APP_ID}",
                         headers=headers
                     ) as svc_response:
                         
@@ -7445,7 +7550,7 @@ async def get_koyeb_app_info():
                                     # البحث عن خدمة تخص تطبيقنا
                                     app_services = [
                                         svc for svc in all_services.get('services', [])
-                                        if svc.get('app_id') == app_id
+                                        if svc.get('app_id') == KOYEB_APP_ID
                                     ]
                                     
                                     if app_services:
@@ -7453,7 +7558,7 @@ async def get_koyeb_app_info():
                                         return True
                                     else:
                                         # محاولة أخيرة: استخدام app_id كـ service_id
-                                        KOYEB_SERVICE_ID = app_id
+                                        KOYEB_SERVICE_ID = KOYEB_APP_ID
                                         return True
                                 else:
                                     return None
@@ -7466,30 +7571,6 @@ async def get_koyeb_app_info():
         return None
     except asyncio.TimeoutError:
         return None
-    except Exception:
-        return None
-
-async def get_koyeb_service_info():
-    """جلب معلومات الخدمة من Koyeb"""
-    if not KOYEB_API_TOKEN or not KOYEB_SERVICE_ID:
-        return None
-    
-    headers = {
-        "Authorization": f"Bearer {KOYEB_API_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    
-    try:
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(
-                f"{koyeb_api}/services/{KOYEB_SERVICE_ID}",
-                headers=headers
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    return None
     except Exception:
         return None
 
@@ -7515,196 +7596,65 @@ async def redeploy_koyeb_service():
     except Exception:
         return False
 
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-#                                              🛠️ دوال مساعدة للنظام
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-async def gen_chlog(repo, diff):
-    """إنشاء سجل التغييرات"""
-    d_form = "%d/%m/%y"
-    return "".join(
-        f"  • {c.summary} ({c.committed_datetime.strftime(d_form)}) <{c.author}>\n"
-        for c in repo.iter_commits(diff)
-    )
-
-async def update_requirements():
-    """تحديث المتطلبات من requirements.txt"""
-    reqs = str(requirements_path)
-    try:
-        process = await asyncio.create_subprocess_shell(
-            " ".join([sys.executable, "-m", "pip", "install", "-r", reqs]),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await process.communicate()
-        return process.returncode
-    except Exception as e:
-        return repr(e)
-
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-#                                            🚀 دوال التحديث الرئيسية
-# ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-async def update_bot(event, repo, ups_rem, ac_br):
-    """تحديث البوت محلياً فقط"""
-    try:
-        ups_rem.pull(ac_br)
-    except GitCommandError:
-        repo.git.reset("--hard", "FETCH_HEAD")
+async def delete_koyeb_app():
+    """حذف التطبيق من Koyeb"""
+    if not KOYEB_API_TOKEN or not KOYEB_APP_ID:
+        return False
     
-    await update_requirements()
-    
-    await event.edit(
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
-        "**•─────────────────•**\n\n"
-        "**•⎆┊تم التحـديث ⎌ بنجـاح**\n"
-        "**•⎆┊جـارِ إعـادة تشغيـل البـوت ⎋ **\n"
-        "**•⎆┊انتظـࢪ مـن 2 - 1 دقيقـه . . .📟**"
-    )
-    
-    # إضافة تأخير قبل قطع الاتصال
-    await asyncio.sleep(3)
-    try:
-        await event.client.disconnect()
-    except:
-        pass
-
-async def deploy(event, repo, ups_rem, ac_br, txt):
-    """تنفيذ التحديث الكامل مع Koyeb"""
-    if not KOYEB_API_TOKEN:
-        return await event.edit(
-            "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
-            "**•─────────────────•**\n"
-            "** ⪼ لم تقـم بوضـع متغيـر KOYEB_API_TOKEN\n"
-            "قم بضبـط المتغيـر أولاً لتحديث البوت ..؟!**"
-        )
-    
-    # التحقق من وجود معلومات التطبيق والخدمة
-    if not KOYEB_APP_NAME or not KOYEB_SERVICE_ID:
-        return await event.edit(
-            f"{txt}\n**❌ معلومات التطبيق أو الخدمة غير متوفرة**"
-        )
-    
-    service_info = await get_koyeb_service_info()
-    if not service_info:
-        await event.edit(f"{txt}\n**❌ بيانات اعتماد كويب غير صالحة لتنصيب التحديث**")
-        return repo.__del__()
-    
-    await event.edit(
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
-        "**•─────────────────•**\n"
-        "**✾╎جـارِ تنصـيب التحـديث الجـذري ⎌**\n"
-        "**✾╎يُرجـى الانتظـار حتى تنتهـي العمليـة ⎋**\n"
-        "**✾╎عـادة ما يستغـرق هـذا التحـديث مـن 5 - 4 دقائـق 📟**"
-    )
+    headers = {
+        "Authorization": f"Bearer {KOYEB_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
     
     try:
-        ups_rem.fetch(ac_br)
-        repo.git.reset("--hard", "FETCH_HEAD")
-        
-        # إعداد URL مع GitHub token إذا كان متوفراً
-        if GITHUB_TOKEN and UPSTREAM_REPO_URL:
-            # تحويل HTTPS URL لتشمل التوكن
-            if UPSTREAM_REPO_URL.startswith("https://github.com/"):
-                auth_url = UPSTREAM_REPO_URL.replace("https://github.com/", f"https://{GITHUB_TOKEN}@github.com/")
-            else:
-                auth_url = UPSTREAM_REPO_URL
-        else:
-            auth_url = UPSTREAM_REPO_URL
-        
-        # التحقق من وجود remote origin وإعداده
-        if "origin" in [remote.name for remote in repo.remotes]:
-            origin = repo.remote("origin")
-            # تحديث URL للـ remote
-            origin.set_url(auth_url)
-        else:
-            # إنشاء origin جديد
-            origin = repo.create_remote("origin", auth_url)
-        
-        # محاولة Push مع التعامل مع الأخطاء
-        try:
-            origin.push(f"HEAD:{UPSTREAM_REPO_BRANCH}", force=True)
-        except Exception as push_error:
-            # في حالة فشل Push، نكمل مع Koyeb فقط
-            await event.edit(
-                "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
-                "**•─────────────────•**\n"
-                "**⚠️ تحذير: فشل في رفع التحديثات للـ repository**\n"
-                "**لكن سيتم المتابعة مع إعادة نشر Koyeb...**"
-            )
-            
-            await asyncio.sleep(3)
-        
-    except Exception as error:
-        await event.edit(
-            f"{txt}\n**❌ خطأ في العملية:**\n`{str(error)[:300]}...`\n\n"
-            "**تحقق من:**\n"
-            "• صحة UPSTREAM_REPO_URL\n"
-            "• وجود GITHUB_TOKEN (إذا كان repository خاص)\n"
-            "• صلاحيات الوصول للـ repository"
-        )
-        return repo.__del__()
-    
-    redeploy_success = await redeploy_koyeb_service()
-    if not redeploy_success:
-        return await event.edit(
-            "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
-            "**•─────────────────•**\n"
-            "**❌ فشل إعادة النشر على Koyeb!**\n"
-            "**حدثت بعض الأخطاء في Koyeb...**"
-        )
-    
-    await event.edit(
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
-        "**•─────────────────•**\n\n"
-        "**•⎆┊تم تحـديث البـوت بنجـاح ✅**\n"
-        "**•⎆┊جـارِ إعـادة تشغيـل الخدمـة على كويـب 🌐**\n"
-        "**•⎆┊قد يستغـرق الأمـر حتى 5 دقائـق ⏰**\n"
-        "**•⎆┊انتظـر حتى يعـود البـوت للعمـل . . .📟**"
-    )
-    
-    await asyncio.sleep(10)
-    try:
-        await event.client.disconnect()
-    except:
-        pass
-
-
+        timeout = aiohttp.ClientTimeout(total=60)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.delete(
+                f"{koyeb_api}/apps/{KOYEB_APP_ID}",
+                headers=headers
+            ) as response:
+                success = response.status in [200, 201, 202, 204]
+                return success
+    except Exception:
+        return False
 
 async def progress_bar(event, steps=10):
     """عرض شريط تقدم مرئي للتحديث"""
     messages = [
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**",
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟷𝟶 ▬▭▭▭▭▭▭▭▭▭",
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟸𝟶 ▬▬▭▭▭▭▭▭▭▭",
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟹𝟶 ▬▬▬▭▭▭▭▭▭▭",
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟺𝟶 ▬▬▬▬▭▭▭▭▭▭",
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟻𝟶 ▬▬▬▬▬▭▭▭▭▭",
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟼𝟶 ▬▬▬▬▬▬▭▭▭▭",
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟽𝟶 ▬▬▬▬▬▬▬▭▭▭",
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟾𝟶 ▬▬▬▬▬▬▬▬▭▭",
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟿𝟶 ▬▬▬▬▬▬▬▬▬▭",
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟷𝟶𝟶 ▬▬▬▬▬▬▬▬▬▬💯"
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**",
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟷𝟶 ▬▭▭▭▭▭▭▭▭▭",
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟸𝟶 ▬▬▭▭▭▭▭▭▭▭",
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟹𝟶 ▬▬▬▭▭▭▭▭▭▭",
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟺𝟶 ▬▬▬▬▭▭▭▭▭▭",
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟻𝟶 ▬▬▬▬▬▭▭▭▭▭",
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟼𝟶 ▬▬▬▬▬▬▭▭▭▭",
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟽𝟶 ▬▬▬▬▬▬▬▭▭▭",
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟾𝟶 ▬▬▬▬▬▬▬▬▭▭",
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟿𝟶 ▬▬▬▬▬▬▬▬▬▭",
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n**•─────────────────•**\n\n**⇜ يتـم تحـديث البـوت .. انتظـر . . .🌐**\n\n%𝟷𝟶𝟶 ▬▬▬▬▬▬▬▬▬▬💯"
     ]
     
     for i in range(min(steps + 1, len(messages))):
         await event.edit(messages[i])
         await asyncio.sleep(1)
 
-
 @client.on(events.NewMessage(pattern=r'^\.تحديث البوت$'))
 async def update_command(event):
     """
-    🚀 المعالج الرئيسي لأمر تحديث البوت
-    
-    الاستخدام: .تحديث البوت
-    يتطلب وضع المتغيرات في Koyeb Environment Variables
+    🚀 تحديث البوت عن طريق إعادة نشر التطبيق على Koyeb
     """
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
     
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
     # فحص أولي للمتغيرات المطلوبة
     if not KOYEB_API_TOKEN:
-        return await event.edit(
-            "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+        return await edit_or_reply(event,
+            "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n"
             "**•─────────────────•**\n\n"
             "**❌ يجب تعيين متغير KOYEB_API_TOKEN أولاً**\n\n"
             "**📋 خطوات الإعداد:**\n"
@@ -7714,19 +7664,9 @@ async def update_command(event):
             "• 🔒 فعل Secret option"
         )
     
-    if not UPSTREAM_REPO_URL or "github.com" not in UPSTREAM_REPO_URL:
-        return await event.edit(
-            "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
-            "**•─────────────────•**\n\n"
-            "**❌ يجب تعيين متغير UPSTREAM_REPO_URL**\n\n"
-            "**📋 مثال:**\n"
-            "`https://github.com/username/repository.git`\n\n"
-            "**ضعه في Koyeb Environment Variables**"
-        )
-    
     # إظهار رسالة التحميل
-    loading_msg = await event.edit(
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+    loading_msg = await edit_or_reply(event,
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n"
         "**•─────────────────•**\n\n"
         "**🔍 جاري فحص التطبيقات على Koyeb...**\n"
         "**⏳ قد يستغرق هذا بضع ثوانٍ...**"
@@ -7736,7 +7676,7 @@ async def update_command(event):
     app_info = await get_koyeb_app_info()
     if not app_info:
         return await loading_msg.edit(
-            "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+            "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n"
             "**•─────────────────•**\n\n"
             "**❌ فشل في جلب معلومات التطبيق والخدمة**\n\n"
             "**🔍 الأسباب المحتملة:**\n"
@@ -7747,73 +7687,145 @@ async def update_command(event):
         )
     
     await loading_msg.edit(
-        "ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗘𝗥𝗘𝗡 - تحـديث إيرين\n"
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n"
         "**•─────────────────•**\n\n"
         f"**✅ تم العثور على التطبيق بنجاح**\n"
-        f"**✅ تم العثور على الخدمة بنجاح**\n"
-        f"**✅ تم ربط المستودع بنجاح**\n\n"
+        f"**✾╎الاسـم ⏜** `{KOYEB_APP_NAME}`\n"
+        f"**✅ تم العثور على الخدمة بنجاح**\n\n"
         "**🔧 جاري تحضير التحديث...**"
     )
-    
-    # تحديد المجلد الحالي
-    current_dir = os.getcwd()
-    
-    # محاولة الانتقال للمجلد المناسب
-    if "/app" in current_dir or "koyeb" in current_dir.lower():
-        os.chdir(current_dir)
-    else:
-        if os.path.exists("/app"):
-            os.chdir("/app")
-        elif os.path.exists("./"):
-            os.chdir("./")
-    
-    # إعداد repository
-    try:
-        txt = (
-            "`❌ لا يمكن المتابعة بسبب حدوث بعض المشاكل`\n\n"
-            "**سجل الأخطاء:**\n"
-        )
-        repo = Repo()
-        
-    except NoSuchPathError as error:
-        await loading_msg.edit(f"{txt}\n\n**❌ المسـار** {error} **غيـر مـوجـود**")
-        return
-    except GitCommandError as error:
-        await loading_msg.edit(f"{txt}\n**❌ خطـأ في Git:**\n`{str(error)[:500]}...`")
-        return
-    except InvalidGitRepositoryError:
-        repo = Repo.init()
-        origin = repo.create_remote("upstream", UPSTREAM_REPO_URL)
-        origin.fetch()
-        try:
-            repo.create_head(UPSTREAM_REPO_BRANCH, origin.refs[UPSTREAM_REPO_BRANCH])
-            repo.heads[UPSTREAM_REPO_BRANCH].set_tracking_branch(origin.refs[UPSTREAM_REPO_BRANCH])
-            repo.heads[UPSTREAM_REPO_BRANCH].checkout(True)
-        except:
-            repo.create_head("main", origin.refs.main)
-            repo.heads.main.set_tracking_branch(origin.refs.main)
-            repo.heads.main.checkout(True)
     
     # تشغيل شريط التقدم
     await progress_bar(loading_msg)
     
-    # بدء عملية النشر
-    ac_br = repo.active_branch.name
+    # إعادة نشر الخدمة مباشرة
+    redeploy_success = await redeploy_koyeb_service()
     
-    # التحقق من وجود upstream remote
-    if "upstream" in [remote.name for remote in repo.remotes]:
-        ups_rem = repo.remote("upstream")
-    else:
-        ups_rem = repo.create_remote("upstream", UPSTREAM_REPO_URL)
+    if not redeploy_success:
+        return await loading_msg.edit(
+            "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n"
+            "**•─────────────────•**\n\n"
+            "**❌ فشل إعادة النشر على Koyeb!**\n"
+            "**حدثت بعض الأخطاء في Koyeb...**"
+        )
     
+    await loading_msg.edit(
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - تحـديث أســتــرا**\n"
+        "**•─────────────────•**\n\n"
+        "**•⎆┊تم تحـديث البـوت بنجـاح ✅**\n"
+        "**•⎆┊جـارِ إعـادة تشغيـل الخدمـة على كويـب 🌐**\n"
+        "**•⎆┊قد يستغـرق الأمـر حتى 5 دقائـق ⏰**\n"
+        "**•⎆┊اذا لم يعمل بعد 5 دقائق قم بالدخول إلى كويـب واعد التشغيل يدوياً . . .📟**"
+    )
+
+@client.on(events.NewMessage(pattern=r'^\.حذف التنصيب$'))
+async def delete_deployment_command(event):
+    """
+    🗑️ حذف التطبيق من Koyeb لإيقاف البوت
+    """
+    # التحقق من الصلاحيات
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+
+    if not KOYEB_API_TOKEN:
+        return await edit_or_reply(event,
+            "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - إيقـاف أســتــرا**\n"
+            "**•─────────────────•**\n\n"
+            "**❌ يجب تعيين متغير KOYEB_API_TOKEN أولاً**"
+        )
+    
+    # إظهار رسالة التحميل
+    loading_msg = await edit_or_reply(event,
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - إيقـاف أســتــرا**\n"
+        "**•─────────────────•**\n\n"
+        "**🔍 جاري البحث عن التطبيق على Koyeb...**"
+    )
+    
+    # جلب معلومات التطبيق والخدمة تلقائياً
+    app_info = await get_koyeb_app_info()
+    if not app_info:
+        return await loading_msg.edit(
+            "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - إيقـاف أســتــرا**\n"
+            "**•─────────────────•**\n\n"
+            "**❌ فشل في العثور على التطبيق**\n"
+            "**✾╎التطبيق غير موجود أو الـ API Token غير صحيح**"
+        )
+    
+    # تأكيد الحذف
+    confirm_msg = await loading_msg.edit(
+        "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - إيقـاف أســتــرا**\n"
+        "**•─────────────────•**\n\n"
+        f"**⚠️ تأكيـد حـذف التطبيـق ⚠️**\n\n"
+        f"**✾╎اسـم التطبيـق ⏜** `{KOYEB_APP_NAME}`\n"
+        f"**✾╎معـرف التطبيـق ⏜** `{KOYEB_APP_ID}`\n\n"
+        "**❌ هـذا الإجـراء لا يمكـن التراجـع عنـه!**\n"
+        "**✾╎لتأكيـد الحـذف ارسـل ⏜** `.تأكيد الحذف`\n"
+        "**✾╎للإلغـاء ارسـل أي رسـالة أخـرى**"
+    )
+    
+    # انتظار التأكيد
     try:
-        ups_rem.fetch(ac_br)
-    except Exception:
-        # المتابعة رغم الخطأ
-        pass
-    
-    # تنفيذ التحديث
-    await deploy(loading_msg, repo, ups_rem, ac_br, txt)
+        confirmation = await client.wait_for(
+            events.NewMessage(
+                from_users=[event.sender_id],
+                chats=[event.chat_id]
+            ),
+            timeout=30
+        )
+        
+        if confirmation.message.text == '.تأكيد الحذف':
+            # تنفيذ الحذف
+            await confirm_msg.edit(
+                "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - إيقـاف أســتــرا**\n"
+                "**•─────────────────•**\n\n"
+                "**🗑️ جـاري حـذف التطبيـق...**\n"
+                "**⏳ قد يستغرق هذا بضع ثوانٍ...**"
+            )
+            
+            delete_success = await delete_koyeb_app()
+            
+            if delete_success:
+                await confirm_msg.edit(
+                    "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - إيقـاف أســتــرا**\n"
+                    "**•─────────────────•**\n\n"
+                    "**✅ تم حـذف التطبيـق بنجـاح**\n\n"
+                    "**✾╎تم إيقـاف البـوت وتـم حـذف التطبيـق مـن كويـب**\n"
+                    "**✾╎لإعـادة التنصيـب قـم بإنشـاء تطبيـق جديـد**"
+                )
+                
+                # إيقاف البوت بعد 5 ثواني
+                await asyncio.sleep(5)
+                try:
+                    await event.client.disconnect()
+                except:
+                    pass
+            else:
+                await confirm_msg.edit(
+                    "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - إيقـاف أســتــرا**\n"
+                    "**•─────────────────•**\n\n"
+                    "**❌ فشـل في حـذف التطبيـق**\n"
+                    "**✾╎قد تكـون ليس لـك الصلاحيـات الكافيـة**"
+                )
+        else:
+            await confirm_msg.edit(
+                "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - إيقـاف أســتــرا**\n"
+                "**•─────────────────•**\n\n"
+                "**✅ تم الإلغـاء**\n"
+                "**✾╎لم يتـم حـذف التطبيـق**"
+            )
+            
+    except asyncio.TimeoutError:
+        await confirm_msg.edit(
+            "**ᯓ 𝗦𝗢𝗨𝗥𝗖𝗘 𝗔𝗦𝗧𝗥𝗔 - إيقـاف أســتــرا**\n"
+            "**•─────────────────•**\n\n"
+            "**⏰ انتهـى الوقـت**\n"
+            "**✾╎لم يتـم تأكيـد العمليـة**"
+        )
+
 
 
 # قائمة المستخدمين المسموح لهم
