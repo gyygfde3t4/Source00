@@ -490,6 +490,7 @@ async def show_ai_commands(event):
 1- `.س` + سؤال - **سؤال الذكاء الاصطناعي**
 2- `.إنشاء صورة` + وصف - **إنشاء صورة بالذكاء الاصطناعي**
 3- `.تعديل صورة` + وصف - **تعديل الصورة بالرد (بالذكاء الاصطناعي)**
+4- `.معاينة` + رابط - ** لمعاينة رابط **
 ٴ⋆─┄─┄─┄─ 𝐀𝐒𝐓𝐑𝐀 ─┄─┄─┄─⋆
     """
     if event.out:
@@ -1597,6 +1598,174 @@ async def list_muted_users(event):
     
     await edit_or_reply(event, response)
 
+
+@client.on(events.NewMessage(pattern=r'^\.معاينة(?:\s+(.+))?$'))
+async def preview_site(event):
+    """أمر لمعاينة موقع عبر التقاط لقطة شاشة"""
+    
+    # التحقق من الصلاحيات (نفس نظام .كتم)
+    allowed_users = [5683930416]
+    sender_id = event.sender_id
+    is_bot_owner = event.out
+    
+    if not is_bot_owner and sender_id not in allowed_users:
+        return
+    
+    # استخراج الرابط من الأمر
+    match = event.pattern_match
+    url_input = match.group(1)
+    
+    # إذا لم يتم إدخال رابط
+    if not url_input:
+        await edit_or_reply(event, "**⚠️╎يـرجـى إدخـال رابط للمعاينة\nمثـال:** `.معاينة https://google.com`")
+        return
+    
+    # تنظيف الرابط
+    url_input = url_input.strip()
+    
+    # التحقق من صحة الرابط
+    if not is_valid_url(url_input):
+        await edit_or_reply(event, "**⚠️╎الرابط غير صحيح\nيجب إدخال رابط صالح مثل:** `google.com` أو `https://example.com`")
+        return
+    
+    # إضافة https:// إذا لم يكن موجوداً
+    if not url_input.startswith(('http://', 'https://')):
+        url = 'https://' + url_input
+    else:
+        url = url_input
+    
+    # إرسال رسالة "جاري المعاينة"
+    processing_msg = await edit_or_reply(event, "**✾╎جاري معاينة الرابط . . .**")
+    
+    try:
+        # إعداد معلمات API
+        api_key = "516d62"
+        base_url = "https://api.screenshotmachine.com"
+        
+        params = {
+            "key": api_key,
+            "url": url,
+            "dimension": "1024x768",
+            "format": "PNG",
+            "cacheLimit": 0,
+            "delay": 2000  # تأخير 2 ثانية لتحميل الصفحة
+        }
+        
+        # طلب لقطة الشاشة
+        response = requests.get(base_url, params=params, timeout=30)
+        
+        # التحقق مما إذا كانت الاستجابة صورة PNG أم خطأ JSON
+        content_type = response.headers.get('Content-Type', '').lower()
+        
+        if response.status_code == 200 and 'image' in content_type:
+            # حفظ الصورة
+            filename = f"screenshot_{hash(url) % 10000}.png"
+            with open(filename, "wb") as f:
+                f.write(response.content)
+            
+            # حذف رسالة الانتظار
+            try:
+                await processing_msg.delete()
+            except:
+                pass
+            
+            # إرسال الصورة مع التنسيق
+            caption = f"**✾╎تمت معاينة الموقع بنجاح**\n**• الرابط:** `{url}`"
+            
+            # محاولة إرسال الصورة كرد
+            try:
+                # إذا كان الأمر رَدًا على رسالة
+                if event.reply_to_msg_id:
+                    await event.client.send_file(
+                        event.chat_id,
+                        filename,
+                        caption=caption,
+                        reply_to=event.reply_to_msg_id,
+                        force_document=False  # إرسال كصورة وليس ملف
+                    )
+                else:
+                    # إذا كان الأمر جديدًا
+                    await event.client.send_file(
+                        event.chat_id,
+                        filename,
+                        caption=caption,
+                        force_document=False
+                    )
+            except Exception as e:
+                print(f"خطأ في إرسال الصورة: {e}")
+                await edit_or_reply(event, f"**✾╎تم التقاط الصورة ولكن حدث خطأ في الإرسال**\n**الرابط:** `{url}`")
+            
+            # حذف الملف المؤقت
+            try:
+                os.remove(filename)
+            except:
+                pass
+            
+        else:
+            # محاولة قراءة الخطأ من JSON إذا كان موجوداً
+            error_text = "خطأ غير معروف"
+            try:
+                error_data = response.json()
+                if 'message' in error_data:
+                    error_text = error_data['message']
+            except:
+                # إذا لم يكن JSON، نستخدم النص الخام
+                if response.text and len(response.text) < 100:
+                    error_text = response.text
+            
+            # خطأ في API
+            error_msg = f"**⚠️╎خطأ في الخدمة: {response.status_code}**\n**التفاصيل:** {error_text}"
+            try:
+                await processing_msg.edit(error_msg)
+            except:
+                await edit_or_reply(event, error_msg)
+            
+    except requests.exceptions.Timeout:
+        error_msg = "**⚠️╎انتهـت المهـلة\nالموقع يأخـذ وقت طويـل للتحميـل.**"
+        try:
+            await processing_msg.edit(error_msg)
+        except:
+            await edit_or_reply(event, error_msg)
+    
+    except requests.exceptions.RequestException as e:
+        error_msg = f"**⚠️╎خطأ في الاتصال بالخادم:** `{str(e)[:100]}`"
+        try:
+            await processing_msg.edit(error_msg)
+        except:
+            await edit_or_reply(event, error_msg)
+    
+    except Exception as e:
+        error_msg = f"**⚠️╎حدث خطأ غير متوقع:** `{str(e)[:100]}`"
+        try:
+            await processing_msg.edit(error_msg)
+        except:
+            await edit_or_reply(event, error_msg)
+
+def is_valid_url(url_string):
+    """التحقق من صحة الرابط"""
+    # إذا كان يبدأ بـ http/https، تحقق مباشرة
+    if url_string.startswith(('http://', 'https://')):
+        try:
+            result = urlparse(url_string)
+            return all([result.scheme, result.netloc])
+        except:
+            return False
+    
+    # إذا كان بدون بروتوكول، أضف مؤقتاً للتحقق
+    temp_url = 'https://' + url_string if not url_string.startswith('//') else 'http:' + url_string
+    try:
+        result = urlparse(temp_url)
+        # تحقق من وجود نطاق وليس مجرد مسار
+        if result.netloc and '.' in result.netloc:
+            # تحقق من أن النطاق لا يحتوي مسافات
+            if ' ' in result.netloc:
+                return False
+            # تحقق من وجود امتداد نطاق صالح (مثل .com, .org, إلخ)
+            if re.search(r'\.[a-z]{2,}$', result.netloc, re.IGNORECASE):
+                return True
+        return False
+    except:
+        return False
 
 
 async def get_ai_response(client: httpx.AsyncClient, prompt: str) -> Optional[str]:
@@ -7876,10 +8045,6 @@ async def cancel_delete_command(event):
             "**•─────────────────•**\n\n"
             "**ℹ️ لا يوجد طلب حذف لإلغائه**"
         )
-
-
-
-
 
 # قائمة المستخدمين المسموح لهم
 ALLOWED_USERS = [5683930416]  # أضف أيديك هنا أيضاً إذا أردت
