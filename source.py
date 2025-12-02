@@ -279,10 +279,6 @@ monitoring_task = None
 
 async def edit_or_reply(event, text, **kwargs):
     """دالة مساعدة للتعديل أو الرد"""
-    # إضافة parse_mode إذا لم يكن موجود
-    if 'parse_mode' not in kwargs:
-        kwargs['parse_mode'] = 'markdown'  # أو 'markdown_v2' إذا تحب دقة أكثر
-
     if event.out:
         # إذا كانت الرسالة من البوت نفسه
         return await event.edit(text, **kwargs)
@@ -1593,11 +1589,8 @@ async def list_muted_users(event):
 
     muted_list = []
     for user_id in muted_users:
-        try:
-            user = await client.get_entity(user_id)
-            muted_list.append(f"**•╎** @{user.username or 'مسـتخدم بـدون يـوزر نـيم'} (ID: {user_id})")
-        except:
-            muted_list.append(f"**•╎** مسـتخدم (ID: {user_id})")
+        user = await client.get_entity(user_id)
+        muted_list.append(f"**•╎** @{user.username or 'مسـتخدم بـدون يـوزر نـيم'}")
 
     muted_list_str = "\n".join(muted_list)
     count = len(muted_users)
@@ -1605,37 +1598,6 @@ async def list_muted_users(event):
     
     await edit_or_reply(event, response)
 
-@client.on(events.NewMessage())
-async def delete_muted_user_messages(event):
-    """حذف رسائل المستخدمين المكتومين"""
-    global muted_users
-    
-    # تجاهل الرسائل من البوت نفسه
-    if event.out:
-        return
-    
-    # التحقق إذا كان المرسل مكتوم
-    if event.sender_id in muted_users:
-        try:
-            await event.delete()
-            
-            # إرسال إشعار بالحذف للمشرفين
-            allowed_users = [5683930416]
-            chat = await event.get_chat()
-            
-            for user_id in allowed_users:
-                try:
-                    await client.send_message(
-                        user_id,
-                        f"**✾╎تـم حـذف رسـالة من مسـتخدم مكتـوم**\n"
-                        f"**•╎المسـتخدم:** {event.sender_id}\n"
-                        f"**•╎المجموعـة:** {chat.title}\n"
-                        f"**•╎الرسـالة:** {event.text[:50]}..."
-                    )
-                except:
-                    pass
-        except Exception as e:
-            pass
 
 @client.on(events.NewMessage(pattern=r'^\.معاينة(?:\s+(.+))?$'))
 async def preview_site(event):
@@ -1653,64 +1615,24 @@ async def preview_site(event):
     match = event.pattern_match
     url_input = match.group(1)
     
-    # متغير لحفظ الرابط النهائي
-    final_url = None
-    
-    # الحالة 1: إذا تم إرسال الأمر مع رابط مباشر
-    if url_input:
-        url_input = url_input.strip()
-        if is_valid_url(url_input):
-            # إضافة https:// إذا لم يكن موجوداً
-            if not url_input.startswith(('http://', 'https://')):
-                final_url = 'https://' + url_input
-            else:
-                final_url = url_input
-    
-    # الحالة 2: إذا تم الرد على رسالة تحتوي على رابط
-    elif event.reply_to_msg_id:
-        try:
-            # الحصول على الرسالة التي تم الرد عليها
-            replied_msg = await event.get_reply_message()
-            
-            # استخراج الروابط من نص الرسالة
-            urls = extract_urls(replied_msg.text or replied_msg.raw_text or "")
-            
-            # استخراج الروابط من الوسائط (مثل التلغرام الخاص بروابط المواقع)
-            if not urls and replied_msg.entities:
-                for entity in replied_msg.entities:
-                    if hasattr(entity, 'url'):
-                        urls.append(entity.url)
-            
-            if urls:
-                # استخراج أول رابط صالح
-                for url in urls:
-                    if is_valid_url(url):
-                        if not url.startswith(('http://', 'https://')):
-                            final_url = 'https://' + url
-                        else:
-                            final_url = url
-                        break
-                
-                if not final_url:
-                    await edit_or_reply(event, "**⚠️╎تم الرد على رسالة تحتوي على روابط، لكن لا يوجد رابط صالح**")
-                    return
-            else:
-                await edit_or_reply(event, "**⚠️╎لم يتم العثور على أي روابط في الرسالة التي تم الرد عليها**")
-                return
-                
-        except Exception as e:
-            await edit_or_reply(event, f"**⚠️╎خطأ في قراءة الرسالة:** `{str(e)[:50]}`")
-            return
-    
-    # إذا لم يتم إدخال رابط ولم يتم الرد على رسالة
-    else:
-        await edit_or_reply(event, "**⚠️╎يـرجـى إدخـال رابط للمعاينة أو الرد على رسالة تحتوي على رابط\nمثـال:**\n`.معاينة https://google.com`\n**أو الرد على رسالة تحتوي على رابط**")
+    # إذا لم يتم إدخال رابط
+    if not url_input:
+        await edit_or_reply(event, "**⚠️╎يـرجـى إدخـال رابط للمعاينة\nمثـال:** `.معاينة https://google.com`")
         return
     
-    # إذا لم يتم العثور على رابط صالح
-    if not final_url:
+    # تنظيف الرابط
+    url_input = url_input.strip()
+    
+    # التحقق من صحة الرابط
+    if not is_valid_url(url_input):
         await edit_or_reply(event, "**⚠️╎الرابط غير صحيح\nيجب إدخال رابط صالح مثل:** `google.com` أو `https://example.com`")
         return
+    
+    # إضافة https:// إذا لم يكن موجوداً
+    if not url_input.startswith(('http://', 'https://')):
+        url = 'https://' + url_input
+    else:
+        url = url_input
     
     # إرسال رسالة "جاري المعاينة"
     processing_msg = await edit_or_reply(event, "**✾╎جاري معاينة الرابط . . .**")
@@ -1722,7 +1644,7 @@ async def preview_site(event):
         
         params = {
             "key": api_key,
-            "url": final_url,
+            "url": url,
             "dimension": "1024x768",
             "format": "PNG",
             "cacheLimit": 0,
@@ -1737,7 +1659,7 @@ async def preview_site(event):
         
         if response.status_code == 200 and 'image' in content_type:
             # حفظ الصورة
-            filename = f"screenshot_{hash(final_url) % 10000}.png"
+            filename = f"screenshot_{hash(url) % 10000}.png"
             with open(filename, "wb") as f:
                 f.write(response.content)
             
@@ -1747,18 +1669,31 @@ async def preview_site(event):
             except:
                 pass
             
-            # إعداد النص التوضيحي
-            caption = f"**✾╎تمت معاينة الموقع بنجاح**\n"
-            caption += f"**• الرابط:** `{final_url}`\n"
+            # إرسال الصورة مع التنسيق
+            caption = f"**✾╎تمت معاينة الموقع بنجاح**\n**• الرابط:** `{url}`"
             
-            # إرسال الصورة
-            await event.client.send_file(
-                event.chat_id,
-                filename,
-                caption=caption,
-                reply_to=event.reply_to_msg_id or event.id,
-                force_document=False
-            )
+            # محاولة إرسال الصورة كرد
+            try:
+                # إذا كان الأمر رَدًا على رسالة
+                if event.reply_to_msg_id:
+                    await event.client.send_file(
+                        event.chat_id,
+                        filename,
+                        caption=caption,
+                        reply_to=event.reply_to_msg_id,
+                        force_document=False  # إرسال كصورة وليس ملف
+                    )
+                else:
+                    # إذا كان الأمر جديدًا
+                    await event.client.send_file(
+                        event.chat_id,
+                        filename,
+                        caption=caption,
+                        force_document=False
+                    )
+            except Exception as e:
+                print(f"خطأ في إرسال الصورة: {e}")
+                await edit_or_reply(event, f"**✾╎تم التقاط الصورة ولكن حدث خطأ في الإرسال**\n**الرابط:** `{url}`")
             
             # حذف الملف المؤقت
             try:
@@ -1786,7 +1721,7 @@ async def preview_site(event):
                 await edit_or_reply(event, error_msg)
             
     except requests.exceptions.Timeout:
-        error_msg = f"**⚠️╎انتهـت المهـلة\nالموقع `{final_url}` يأخـذ وقت طويـل للتحميـل.**"
+        error_msg = "**⚠️╎انتهـت المهـلة\nالموقع يأخـذ وقت طويـل للتحميـل.**"
         try:
             await processing_msg.edit(error_msg)
         except:
@@ -1805,7 +1740,6 @@ async def preview_site(event):
             await processing_msg.edit(error_msg)
         except:
             await edit_or_reply(event, error_msg)
-
 
 def is_valid_url(url_string):
     """التحقق من صحة الرابط"""
@@ -1832,31 +1766,6 @@ def is_valid_url(url_string):
         return False
     except:
         return False
-
-
-def extract_urls(text):
-    """استخراج جميع الروابط من النص"""
-    if not text:
-        return []
-    
-    # نمط لاكتشاف الروابط الشائعة
-    url_pattern = r'(?:https?://|www\.)[\w\-]+\.[\w\-\.]+[\w\-\._~:/?#\[\]@!$&\'()*+,;=]*'
-    
-    urls = re.findall(url_pattern, text)
-    
-    # تنقية النتائج
-    cleaned_urls = []
-    for url in urls:
-        url = url.strip()
-        # إزالة أي علامات ترقيم في النهاية
-        url = re.sub(r'[.,;:!?]+$', '', url)
-        # إزالة الأقواس
-        url = url.strip('()[]{}')
-        
-        if url and not url.startswith('@') and not url.startswith('#'):
-            cleaned_urls.append(url)
-    
-    return cleaned_urls
 
 
 async def get_ai_response(client: httpx.AsyncClient, prompt: str) -> Optional[str]:
@@ -8759,102 +8668,8 @@ async def progress(current, total, event, text):
     await event.edit(f"{text}\n\n**╮ 📊╎التقدم:** `{bar}`\n**╰ 💾╎النسبة:** `{percent:.1f}%`")
 
 
-import os
-import asyncio
-import logging
-import traceback
-import re
-import json
-import time
-import math
-import httpx
-import glob
-from typing import Dict, List
-from yt_dlp import YoutubeDL
-from telethon import TelegramClient, events
-from telethon.tl.types import DocumentAttributeVideo
-from telethon.sessions import StringSession
-from telethon.errors import FloodWaitError
-from concurrent.futures import ThreadPoolExecutor
-import subprocess
-
-# إعدادات التليثون
-API_ID = 29984076
-API_HASH = "be3aaeef107fa2578ee47271b4aa5645"
-SESSION_STRING = "1BJWap1sBu7_GsaTPNu93VouLgkW7iPh--1O707IMAo1L6rABzDBUkniP3AltKOyhga0oCqqqGu29e9IVtV9eW5BaSXxTf8DQqWkWyvzj4cP3nFavaAcNr0-dHp_iWKveKoOFY7QLxK9C1uLyvDK8Si2bBx2y1GzYqhfO9lSFmCJYLGOoDANz0C0ecT9ujslrSyf_3bcpdCDUQibakFQn1ogEgwAv_e17CwjYd1xTZur6roTVivZ7rHo-V1Vo0P4AGwU-CwSCf-4qJaJdk5oQYAEOdctrj7w78TB_DvLUEhJ8TfBQ1h066mkykjJfwDmOmC99RkT9z6ab2uSrT9VRu4ylrfwcN5Q="
-
-# الصلاحيات
-ADMIN_ID = 5683930416
-ALLOWED_USERS = [ADMIN_ID]
-
-# إعدادات الرفع المحسنة
-UPLOAD_PART_SIZE_KB = 4096
-UPLOAD_WORKERS = 4
-
-# إعداد التسجيل
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# ThreadPoolExecutor
-executor = ThreadPoolExecutor(max_workers=4)
-
-# إنشاء المجلدات اللازمة
-def create_necessary_folders():
-    folders = ["downloads", "thumbs", "cookies"]
-    for folder in folders:
-        os.makedirs(folder, exist_ok=True)
-        logger.info(f"✅ تم إنشاء مجلد: {folder}")
-
-create_necessary_folders()
-
-# دالة مساعدة للرد أو التعديل
-async def edit_or_reply(event, text, parse_mode=None, link_preview=False):
-    """إرسال رد أو تعديل الرسالة بناءً على الحالة"""
-    try:
-        if event.is_private:
-            return await event.respond(text, parse_mode=parse_mode, link_preview=link_preview)
-        elif event.is_reply:
-            return await event.reply(text, parse_mode=parse_mode, link_preview=link_preview)
-        else:
-            try:
-                if event.out:
-                    return await event.edit(text, parse_mode=parse_mode, link_preview=link_preview)
-                else:
-                    return await event.respond(text, parse_mode=parse_mode, link_preview=link_preview)
-            except:
-                return await event.respond(text, parse_mode=parse_mode, link_preview=link_preview)
-    except Exception as e:
-        logger.error(f"Error in edit_or_reply: {e}")
-        return await event.respond(text, parse_mode=parse_mode, link_preview=link_preview)
-
-# دالة التحقق من الصلاحيات
-def is_allowed(user_id):
-    """التحقق مما إذا كان المستخدم مسموحاً له باستخدام البوت"""
-    return user_id in ALLOWED_USERS or user_id == ADMIN_ID
-
-# دالة شريط التقدم
-async def progress(current, total, event, status="Uploading"):
-    try:
-        percent = (current / total) * 100
-        progress_bar = "█" * int(percent // 5) + "░" * (20 - int(percent // 5))
-        
-        text = f"**{status}**\n\n"
-        text += f"**⏳ التقدم:** `{progress_bar}`\n"
-        text += f"**📊 النسبة:** `{percent:.1f}%`\n"
-        text += f"**💾 الحجم:** `{current/(1024*1024):.1f}MB / {total/(1024*1024):.1f}MB`"
-        
-        await edit_or_reply(event, text)
-    except Exception as e:
-        logger.error(f"Progress error: {e}")
-
-# أمر التحميل من يوتيوب
-@client.on(events.NewMessage(pattern=r'^\.يوت(?: |$)(.*)'))
+@client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
-    """أمر تحميل الفيديو من يوتيوب مع دمج الغلاف والميتاداتا"""
-    
     # التحقق من الصلاحيات
     allowed_users = [5683930416]
     sender_id = event.sender_id
@@ -8871,22 +8686,16 @@ async def download_and_send_video(event):
         input_url = reply.message.strip()
 
     if not input_url:  # إذا لم يكن هناك رابط في الرسالة أو الرد
-        error_msg = "**╮ ❐ يـرجى إرسـال الامـر مـع رابـط الفيـديـو .يوت + رابط او بالـرد ع رابـط 📹╰**"
-        await edit_or_reply(event, error_msg)
+        if event.out:
+            await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط الفيـديـو .يوت + رابط او بالـرد ع رابـط 📹╰**")
+        else:
+            await event.reply("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط الفيـديـو .يوت + رابط او بالـرد ع رابـط 📹╰**")
         return
 
-    loading_msg = await edit_or_reply(event, "**╮ جـارِ تحميـل الفيـديـو مـن يـوتيـوب... 📹♥️╰**")
-
-    # إعلان المتغيرات في البداية
-    video_id = None
-    video_file = None
-    thumbnail_file = None
-    final_video = None
-    video_title = "فيـديـو بـدون عـنوان"
-    video_duration = 0
-    video_width = 1280
-    video_height = 720
-    info = None
+    if event.out:
+        loading_msg = await event.edit("**╮ جـارِ تحميـل الفيـديـو مـن يـوتيـوب... 📹♥️╰**")
+    else:
+        loading_msg = await event.reply("**╮ جـارِ تحميـل الفيـديـو مـن يـوتيـوب... 📹♥️╰**")
 
     try:
         # التحقق من وجود ملف الكوكيز
@@ -8896,21 +8705,10 @@ async def download_and_send_video(event):
             await loading_msg.edit(error_msg)
             return
 
-        # ⭐⭐ إعدادات yt-dlp محسنة مع دعم الغلاف ⭐⭐
+        # إعدادات yt-dlp محسنة مع تنسيقات مرنة
         ydl_opts = {
-            # ✅ الصيغة المضمونة التي تعمل مع جميع الفيديوهات
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            
-            # ✅ نسخ احتياطي إذا فشلت الصيغة الأساسية
-            'format_sort': [
-                'quality',
-                'vcodec:h264',
-                'acodec:aac',
-                'size',
-                'br',
-                'fps'
-            ],
-            
+            # تنسيقات مرنة مع بدائل متعددة
+            'format': '(bestvideo[height<=720][ext=mp4]/bestvideo[height<=720]/bestvideo[ext=mp4]/bestvideo)+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[ext=mp4]/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
             'noplaylist': True,
             'quiet': True,
@@ -8921,9 +8719,24 @@ async def download_and_send_video(event):
             'retries': 10,
             'fragment_retries': 10,
             'skip_unavailable_fragments': True,
-            'concurrent_fragment_downloads': 4,
             
-            # ✅ إعدادات HTTP محسنة
+            # إعدادات التحميل المتوازي مع aria2c
+            'external_downloader': 'aria2c',
+            'external_downloader_args': [
+                '-x', '16',
+                '-k', '2M',
+                '-s', '16',
+                '-j', '16',
+                '--file-allocation=none',
+                '--summary-interval=0',
+                '--quiet'
+            ],
+            
+            # قائمة تنسيقات بديلة
+            'format_sort': ['res:720', 'ext:mp4:m4a', 'acodec:mp4a', 'vcodec:avc1'],
+            'merge_output_format': 'mp4',
+            
+            # إعدادات HTTP محسنة
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -8934,240 +8747,73 @@ async def download_and_send_video(event):
                 'Upgrade-Insecure-Requests': '1',
             },
             
-            # ✅ حفظ الغلاف بشكل منفصل
-            'writethumbnail': True,
-            'write_all_thumbnails': False,
-            'converttitle': False,
-            'embedsubtitles': False,
-            'embedmetadata': False,  # سنقوم بذلك يدوياً بعد دمج الغلاف
-            
-            # ✅ PostProcessors محسنة
-            'postprocessors': [
-                # تحويل الصورة المصغرة إلى jpg
-                {
-                    'key': 'FFmpegThumbnailsConvertor',
-                    'format': 'jpg',
-                    'when': 'before_dl'
-                },
-                # دمج الفيديو والصوت
-                {
-                    'key': 'FFmpegVideoConvertor',
-                    'preferedformat': 'mp4',
-                }
-            ],
-            
-            # ✅ إعدادات إضافية للتوافق
-            'allow_multiple_video_streams': True,
-            'allow_multiple_audio_streams': True,
-            'keepvideo': False,
-            'keepaudio': False,
+            # إعدادات PostProcessing
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
         }
 
         # إنشاء مجلد التحميل إذا لم يكن موجوداً
         os.makedirs('downloads', exist_ok=True)
 
-        # ✅ الحصول على معلومات الفيديو أولاً
+        video_file = None
+        video_title = "فيـديـو بـدون عـنوان"
+
         with YoutubeDL(ydl_opts) as ydl:
             try:
+                # استخراج المعلومات أولاً
                 info = await asyncio.to_thread(ydl.extract_info, input_url, download=False)
                 
                 if not info:
                     await loading_msg.edit("**⚠️ لم يتم العثور على الفيديو أو الرابط غير صحيح**")
                     return
                 
-                video_id = info.get('id', f'video_{int(time.time())}')
+                video_id = info.get('id', 'unknown')
                 video_title = info.get('title', 'فيـديـو بـدون عـنوان')
-                video_duration = info.get('duration', 0)
-                video_width = info.get('width', 1280)
-                video_height = info.get('height', 720)
-                
-                logger.info(f"✅ معلومات الفيديو: {video_title[:50]}... | المدة: {video_duration}ث | الأبعاد: {video_width}x{video_height}")
-                
-                # ✅ تحديد الجودة المتاحة
-                formats = info.get('formats', [])
-                max_height = 0
-                
-                for fmt in formats:
-                    height = fmt.get('height', 0)
-                    if height and height > max_height:
-                        max_height = height
-                
-                if max_height >= 1080:
-                    quality_text = "⏫ جـودة عـاليـة"
-                elif max_height >= 720:
-                    quality_text = "⬆️ جـودة متوسـطة"
-                elif max_height >= 480:
-                    quality_text = "↕️ جـودة قياسـية"
-                else:
-                    quality_text = "📱 جـودة منخفضـة"
-                
-                await loading_msg.edit(
-                    f"**╮ جـارِ تحميـل الفيـديـو... 📹╰**\n"
-                    f"**╰ العـنوان:** `{video_title[:50]}...`\n"
-                    f"**╰ الـجودة:** {quality_text}"
-                )
+                duration = info.get('duration', 0)
+                width = info.get('width', 1280)
+                height = info.get('height', 720)
 
-                # ✅ تحميل الفيديو والغلاف
+                await loading_msg.edit(f"**╮ جـارِ تحميـل الفيـديـو... 📹╰**\n**╰ العـنوان:** `{video_title}`")
+
+                # تحميل الفيديو
                 await asyncio.to_thread(ydl.download, [input_url])
                 
-                # ✅ البحث عن الملف المحمل
-                video_file = None
-                
-                # البحث عن ملف الفيديو
+                # البحث عن الملف المحمل
                 for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov']:
                     possible_path = f'downloads/{video_id}.{ext}'
                     if os.path.exists(possible_path):
                         video_file = possible_path
-                        logger.info(f"✅ تم العثور على الفيديو بالامتداد: {ext}")
                         break
-                
-                if not video_file:
-                    # البحث بأي ملف في المجلد
+                else:
+                    # إذا لم نجد بالـ ID، نبحث بأي ملف في المجلد
                     download_files = glob.glob('downloads/*.*')
-                    video_extensions = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv']
-                    for file_path in download_files:
-                        if any(file_path.lower().endswith(ext) for ext in video_extensions):
-                            video_file = file_path
-                            logger.info(f"✅ تم العثور على ملف بديل: {os.path.basename(video_file)}")
-                            break
-                
-                # ✅ البحث عن الغلاف
-                thumbnail_file = None
-                for ext in ['jpg', 'jpeg', 'png', 'webp']:
-                    possible_thumb = f'downloads/{video_id}.{ext}'
-                    if os.path.exists(possible_thumb):
-                        thumbnail_file = possible_thumb
-                        logger.info(f"✅ تم العثور على الغلاف: {ext}")
-                        break
-                
-                # إذا لم يوجد الغلاف، نحاول تحميله من معلومات الفيديو
-                if not thumbnail_file and info.get('thumbnail'):
-                    thumbnail_url = info['thumbnail']
-                    thumbnail_file = f'downloads/{video_id}_thumb.jpg'
-                    try:
-                        response = requests.get(thumbnail_url, timeout=10)
-                        if response.status_code == 200:
-                            with open(thumbnail_file, 'wb') as f:
-                                f.write(response.content)
-                            logger.info(f"✅ تم تحميل الغلاف من URL")
-                    except Exception as thumb_error:
-                        logger.warning(f"⚠️ فشل تحميل الغلاف: {thumb_error}")
+                    if download_files:
+                        video_file = download_files[0]
+                    else:
+                        await loading_msg.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
+                        return
 
-                if not video_file:
-                    await loading_msg.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
-                    return
-
-                # ✅ التحقق من حجم الملف
+                # التحقق من حجم الملف
                 file_size = os.path.getsize(video_file)
-                file_size_mb = file_size / (1024 * 1024)
-                logger.info(f"📊 حجم الملف: {file_size_mb:.2f}MB")
-                
                 if file_size > 2000 * 1024 * 1024:  # 2GB
-                    await loading_msg.edit(f"**⚠️ الملف كبير جداً للإرسال ({file_size_mb:.1f}MB)**")
+                    await loading_msg.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
                     return
-
-                # ✅ إذا كان هناك غلاف، نقوم بدمجه مع الفيديو
-                final_video = video_file
-                if thumbnail_file and os.path.exists(thumbnail_file):
-                    try:
-                        await loading_msg.edit("**╮ جـارِ دمـج الغـلاف مع الفيـديـو... 🖼️╰**")
-                        
-                        # إنشاء مسار للفيديو النهائي
-                        final_video = f'downloads/{video_id}_with_cover.mp4'
-                        
-                        # استخدام FFmpeg لدمج الغلاف
-                        ffmpeg_cmd = [
-                            'ffmpeg',
-                            '-i', video_file,          # ملف الفيديو المدخل
-                            '-i', thumbnail_file,      # ملف الغلاف
-                            '-map', '0:v',             # استخدام الفيديو من المدخل الأول
-                            '-map', '0:a',             # استخدام الصوت من المدخل الأول
-                            '-map', '1',               # استخدام الغلاف
-                            '-c:v', 'copy',           # نسخ الفيديو بدون إعادة ضغط
-                            '-c:a', 'copy',           # نسخ الصوت بدون إعادة ضغط
-                            '-c', 'copy',             # نسخ جميع التدفقات الأخرى
-                            '-disposition:v:0', 'default',  # الفيديو الأساسي
-                            '-disposition:v:1', 'attached_pic',  # الغلاف كصورة مرفقة
-                            '-metadata', f'title={video_title}',  # إضافة العنوان
-                            '-metadata', f'comment={quality_text}',  # إضافة الجودة
-                            '-y',                     # تجاوز الملف الموجود
-                            final_video
-                        ]
-                        
-                        # تنفيذ الأمر
-                        process = await asyncio.create_subprocess_exec(
-                            *ffmpeg_cmd,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
-                        )
-                        
-                        stdout, stderr = await process.communicate()
-                        
-                        if process.returncode == 0:
-                            logger.info("✅ تم دمج الغلاف بنجاح")
-                            final_video = final_video
-                        else:
-                            logger.warning(f"⚠️ فشل دمج الغلاف، استخدام الفيديو الأصلي: {stderr.decode()[:200]}")
-                            final_video = video_file
-                            
-                    except Exception as merge_error:
-                        logger.error(f"❌ خطأ في دمج الغلاف: {merge_error}")
-                        final_video = video_file
-                
-                # ✅ استخراج المدة الفعلية والأبعاد من الفيديو النهائي
-                try:
-                    # استخراج المدة
-                    duration_cmd = [
-                        'ffprobe', '-v', 'error',
-                        '-show_entries', 'format=duration',
-                        '-of', 'default=noprint_wrappers=1:nokey=1',
-                        final_video
-                    ]
-                    
-                    result = subprocess.run(duration_cmd, capture_output=True, text=True, timeout=10)
-                    if result.stdout:
-                        actual_duration = float(result.stdout.strip())
-                        if actual_duration > 0:
-                            video_duration = int(actual_duration)
-                            logger.info(f"⏱️ المدة المستخرجة: {video_duration} ثانية")
-                    
-                    # استخراج الأبعاد
-                    dim_cmd = [
-                        'ffprobe', '-v', 'error',
-                        '-select_streams', 'v:0',
-                        '-show_entries', 'stream=width,height',
-                        '-of', 'csv=p=0',
-                        final_video
-                    ]
-                    
-                    result = subprocess.run(dim_cmd, capture_output=True, text=True, timeout=10)
-                    if result.stdout:
-                        dimensions = result.stdout.strip().split(',')
-                        if len(dimensions) == 2:
-                            video_width = int(dimensions[0])
-                            video_height = int(dimensions[1])
-                            logger.info(f"📐 الأبعاد المستخرجة: {video_width}x{video_height}")
-                            
-                except Exception as probe_error:
-                    logger.warning(f"⚠️ فشل استخراج الميتاداتا: {probe_error}")
 
                 await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
 
-                # ✅ إعداد التسمية التوضيحية (الكابشن) البسيطة
-                caption = f"**📹╎العنوان:** `{video_title}`\n"
-                caption += f"**⚡╎الجودة:** {quality_text}"
-
-                # ✅ إرسال الفيديو
+                # إرسال الفيديو مع إعدادات الرفع المحسنة
                 await event.client.send_file(
                     event.chat_id,
-                    final_video,
-                    caption=caption,
+                    video_file,
+                    caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
                     supports_streaming=True,
                     attributes=[
                         DocumentAttributeVideo(
-                            duration=video_duration,
-                            w=video_width,
-                            h=video_height,
+                            duration=duration,
+                            w=width,
+                            h=height,
                             supports_streaming=True
                         )
                     ],
@@ -9175,138 +8821,80 @@ async def download_and_send_video(event):
                     workers=UPLOAD_WORKERS,
                     progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
                         progress(d, t, loading_msg, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
-                    ),
-                    reply_to=event.reply_to_msg_id if event.is_reply else None
+                    )
                 )
 
-                await loading_msg.edit(
-                    f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n"
-                    f"**╰ ❐ العـنوان:** `{video_title[:40]}...`\n"
-                    f"**╰ ❐ الجـودة:** {quality_text}"
-                )
+                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
 
             except Exception as download_error:
                 error_msg = str(download_error)
-                logger.error(f"❌ خطأ في التحميل: {error_msg}")
                 
-                # ✅ محاولة بديلة للشورتات والروابط الصعبة
-                if "Shorts" in video_title or "/shorts/" in input_url or "Requested format is not available" in error_msg:
-                    await loading_msg.edit("**╮ جـارِ تحميـل الفيـديـو... 📹╰**")
-                    
+                # محاولة بديلة بدون aria2c
+                if "Requested format is not available" in error_msg or "Format not available" in error_msg:
+                    await loading_msg.edit("**⚠️ جـارِ المحـاولة بطـريقة بديلـة...**")
                     try:
-                        # إعدادات مبسطة للتوافق القصوى
-                        simple_ydl_opts = {
-                            'format': 'best',
-                            'outtmpl': f'downloads/{video_id if video_id else "video"}.%(ext)s',
-                            'writethumbnail': True,
-                            'quiet': True,
-                            'no_warnings': True,
-                            'cookiefile': cookie_file,
-                            'ignoreerrors': True,
-                            'retries': 5,
-                        }
+                        # إعدادات بديلة بدون external downloader
+                        alt_ydl_opts = ydl_opts.copy()
+                        alt_ydl_opts.pop('external_downloader', None)
+                        alt_ydl_opts.pop('external_downloader_args', None)
+                        alt_ydl_opts['format'] = 'best[height<=480]/best'
                         
-                        with YoutubeDL(simple_ydl_opts) as simple_ydl:
-                            await asyncio.to_thread(simple_ydl.download, [input_url])
+                        with YoutubeDL(alt_ydl_opts) as alt_ydl:
+                            await asyncio.to_thread(alt_ydl.download, [input_url])
                             
                             # البحث عن الملف المحمل
                             for ext in ['mp4', 'webm', 'mkv']:
-                                search_path = f'downloads/{video_id if video_id else "video"}.{ext}'
-                                if os.path.exists(search_path):
-                                    video_file = search_path
+                                possible_path = f'downloads/{video_id}.{ext}'
+                                if os.path.exists(possible_path):
+                                    video_file = possible_path
                                     break
                             
-                            if video_file and os.path.exists(video_file):
-                                # البحث عن الغلاف
-                                for ext in ['jpg', 'jpeg', 'png']:
-                                    thumb_path = f'downloads/{video_id if video_id else "video"}.{ext}'
-                                    if os.path.exists(thumb_path):
-                                        thumbnail_file = thumb_path
-                                        break
-                                
-                                file_size = os.path.getsize(video_file)
-                                file_size_mb = file_size / (1024 * 1024)
-                                
-                                if file_size > 2000 * 1024 * 1024:
-                                    await loading_msg.edit(f"**⚠️ الملف كبير جداً ({file_size_mb:.1f}MB)**")
-                                    return
-                                
+                            if video_file:
                                 await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
-                                
                                 await event.client.send_file(
                                     event.chat_id,
                                     video_file,
-                                    caption=f"**📹╎{video_title}**\n**⚡╎جودة تلقائية**",
+                                    caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
                                     supports_streaming=True,
                                     part_size_kb=UPLOAD_PART_SIZE_KB,
                                     workers=UPLOAD_WORKERS,
-                                    reply_to=event.reply_to_msg_id if event.is_reply else None
                                 )
-                                
-                                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title[:40]}...`")
+                                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
                                 return
-                            else:
-                                raise Exception("لم يتم العثور على الملف بعد التحميل البديل")
-                                
                     except Exception as alt_error:
                         error_msg = str(alt_error)
-                        logger.error(f"❌ خطأ في التحميل البديل: {alt_error}")
                 
-                # ✅ رسائل خطأ محددة
+                # رسائل خطأ محددة
                 if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
                     await loading_msg.edit("**⚠️ YouTube يطلب التحقق. حدث الكوكيز أو جرب لاحقاً**")
-                elif "Video unavailable" in error_msg or "This video is unavailable" in error_msg:
+                elif "Video unavailable" in error_msg:
                     await loading_msg.edit("**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**")
                 elif "Private video" in error_msg:
                     await loading_msg.edit("**⚠️ الفيـديـو خـاص ولا يمكـن تحميـله**")
                 elif "Unsupported URL" in error_msg:
                     await loading_msg.edit("**⚠️ الرابـط غيـر مدعـوم أو غيـر صحيـح**")
-                elif "No video formats" in error_msg:
-                    await loading_msg.edit("**⚠️ لا يوجد تنسيقات فيديو متاحة**")
-                elif "Requested format is not available" in error_msg:
-                    await loading_msg.edit("**⚠️ الجودة المطلوبة غير متاحة، حاول مجدداً**")
                 else:
-                    # عرض جزء من الخطأ للمساعدة في التشخيص
-                    error_display = error_msg[:200] if len(error_msg) > 200 else error_msg
-                    await loading_msg.edit(f"**⚠️ خطـأ في التحـميل**: {error_display}")
+                    await loading_msg.edit(f"**⚠️ خطـأ في التحـميل**: {error_msg[:200]}")
+                return
 
     except Exception as e:
-        logger.error(f"❌ خطأ عام في أمر اليوت: {e}")
         await loading_msg.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)[:200]}")
     
     finally:
-        # ✅ تنظيف الملفات المؤقتة
+        # تنظيف الملفات المؤقتة
         try:
-            # حذف جميع الملفات المؤقتة
-            for pattern in [
-                'downloads/*.part', 
-                'downloads/*.ytdl', 
-                'downloads/*.temp',
-                f'downloads/{video_id}.*',
-                f'downloads/{video_id}_*',
-                'downloads/*.jpg',
-                'downloads/*.jpeg',
-                'downloads/*.png',
-                'downloads/*.webp'
-            ]:
+            if video_file and os.path.exists(video_file):
+                os.remove(video_file)
+            # تنظيف أي ملفات أخرى في مجلد downloads
+            for pattern in [f'downloads/{video_id}*', 'downloads/*.part']:
                 for file_path in glob.glob(pattern):
                     try:
-                        # الاحتفاظ فقط بالفيديو النهائي المؤقت حالياً
-                        if file_path.endswith('_with_cover.mp4'):
-                            continue
-                        if os.path.exists(file_path):
-                            os.remove(file_path)
-                            logger.info(f"✅ تم حذف: {os.path.basename(file_path)}")
-                    except Exception as cleanup_error:
-                        logger.warning(f"⚠️ فشل في حذف {file_path}: {cleanup_error}")
-            
-            # ✅ حذف الفيديو النهائي بعد التأكد من الإرسال
-            if final_video and os.path.exists(final_video):
-                os.remove(final_video)
-                logger.info(f"✅ تم حذف الفيديو النهائي: {os.path.basename(final_video)}")
-                
+                        os.remove(file_path)
+                    except:
+                        pass
         except Exception as cleanup_error:
-            logger.error(f"❌ خطأ في التنظيف: {cleanup_error}")
+            print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
+
 
 async def progress(current, total, event, text):
     """دالة لعرض شريط التقدم"""
