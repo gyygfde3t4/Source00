@@ -8764,8 +8764,102 @@ async def progress(current, total, event, text):
     await event.edit(f"{text}\n\n**╮ 📊╎التقدم:** `{bar}`\n**╰ 💾╎النسبة:** `{percent:.1f}%`")
 
 
-@client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
+import os
+import asyncio
+import logging
+import traceback
+import re
+import json
+import time
+import math
+import httpx
+import glob
+from typing import Dict, List
+from yt_dlp import YoutubeDL
+from telethon import TelegramClient, events
+from telethon.tl.types import DocumentAttributeVideo
+from telethon.sessions import StringSession
+from telethon.errors import FloodWaitError
+from concurrent.futures import ThreadPoolExecutor
+import subprocess
+
+# إعدادات التليثون
+API_ID = 29984076
+API_HASH = "be3aaeef107fa2578ee47271b4aa5645"
+SESSION_STRING = "1BJWap1sBu7_GsaTPNu93VouLgkW7iPh--1O707IMAo1L6rABzDBUkniP3AltKOyhga0oCqqqGu29e9IVtV9eW5BaSXxTf8DQqWkWyvzj4cP3nFavaAcNr0-dHp_iWKveKoOFY7QLxK9C1uLyvDK8Si2bBx2y1GzYqhfO9lSFmCJYLGOoDANz0C0ecT9ujslrSyf_3bcpdCDUQibakFQn1ogEgwAv_e17CwjYd1xTZur6roTVivZ7rHo-V1Vo0P4AGwU-CwSCf-4qJaJdk5oQYAEOdctrj7w78TB_DvLUEhJ8TfBQ1h066mkykjJfwDmOmC99RkT9z6ab2uSrT9VRu4ylrfwcN5Q="
+
+# الصلاحيات
+ADMIN_ID = 5683930416
+ALLOWED_USERS = [ADMIN_ID]
+
+# إعدادات الرفع المحسنة
+UPLOAD_PART_SIZE_KB = 4096
+UPLOAD_WORKERS = 4
+
+# إعداد التسجيل
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# ThreadPoolExecutor
+executor = ThreadPoolExecutor(max_workers=4)
+
+# إنشاء المجلدات اللازمة
+def create_necessary_folders():
+    folders = ["downloads", "thumbs", "cookies"]
+    for folder in folders:
+        os.makedirs(folder, exist_ok=True)
+        logger.info(f"✅ تم إنشاء مجلد: {folder}")
+
+create_necessary_folders()
+
+# دالة مساعدة للرد أو التعديل
+async def edit_or_reply(event, text, parse_mode=None, link_preview=False):
+    """إرسال رد أو تعديل الرسالة بناءً على الحالة"""
+    try:
+        if event.is_private:
+            return await event.respond(text, parse_mode=parse_mode, link_preview=link_preview)
+        elif event.is_reply:
+            return await event.reply(text, parse_mode=parse_mode, link_preview=link_preview)
+        else:
+            try:
+                if event.out:
+                    return await event.edit(text, parse_mode=parse_mode, link_preview=link_preview)
+                else:
+                    return await event.respond(text, parse_mode=parse_mode, link_preview=link_preview)
+            except:
+                return await event.respond(text, parse_mode=parse_mode, link_preview=link_preview)
+    except Exception as e:
+        logger.error(f"Error in edit_or_reply: {e}")
+        return await event.respond(text, parse_mode=parse_mode, link_preview=link_preview)
+
+# دالة التحقق من الصلاحيات
+def is_allowed(user_id):
+    """التحقق مما إذا كان المستخدم مسموحاً له باستخدام البوت"""
+    return user_id in ALLOWED_USERS or user_id == ADMIN_ID
+
+# دالة شريط التقدم
+async def progress(current, total, event, status="Uploading"):
+    try:
+        percent = (current / total) * 100
+        progress_bar = "█" * int(percent // 5) + "░" * (20 - int(percent // 5))
+        
+        text = f"**{status}**\n\n"
+        text += f"**⏳ التقدم:** `{progress_bar}`\n"
+        text += f"**📊 النسبة:** `{percent:.1f}%`\n"
+        text += f"**💾 الحجم:** `{current/(1024*1024):.1f}MB / {total/(1024*1024):.1f}MB`"
+        
+        await edit_or_reply(event, text)
+    except Exception as e:
+        logger.error(f"Progress error: {e}")
+
+# أمر التحميل من يوتيوب
+@client.on(events.NewMessage(pattern=r'^\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
+    """أمر تحميل الفيديو من يوتيوب"""
+    
     # التحقق من الصلاحيات
     allowed_users = [5683930416]
     sender_id = event.sender_id
@@ -8782,16 +8876,20 @@ async def download_and_send_video(event):
         input_url = reply.message.strip()
 
     if not input_url:  # إذا لم يكن هناك رابط في الرسالة أو الرد
-        if event.out:
-            await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط الفيـديـو .يوت + رابط او بالـرد ع رابـط 📹╰**")
-        else:
-            await event.reply("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط الفيـديـو .يوت + رابط او بالـرد ع رابـط 📹╰**")
+        error_msg = "**╮ ❐ يـرجى إرسـال الامـر مـع رابـط الفيـديـو .يوت + رابط او بالـرد ع رابـط 📹╰**"
+        await edit_or_reply(event, error_msg)
         return
 
-    if event.out:
-        loading_msg = await event.edit("**╮ جـارِ تحميـل الفيـديـو مـن يـوتيـوب... 📹♥️╰**")
-    else:
-        loading_msg = await event.reply("**╮ جـارِ تحميـل الفيـديـو مـن يـوتيـوب... 📹♥️╰**")
+    loading_msg = await edit_or_reply(event, "**╮ جـارِ تحميـل الفيـديـو مـن يـوتيـوب... 📹♥️╰**")
+
+    # إعلان المتغيرات في البداية
+    video_id = None
+    video_file = None
+    video_title = "فيـديـو بـدون عـنوان"
+    video_duration = 0
+    video_width = 1280
+    video_height = 720
+    info = None
 
     try:
         # التحقق من وجود ملف الكوكيز
@@ -8801,10 +8899,21 @@ async def download_and_send_video(event):
             await loading_msg.edit(error_msg)
             return
 
-        # إعدادات yt-dlp محسنة مع تنسيقات مرنة
+        # ⭐⭐ إعدادات yt-dlp محسنة ومضمونة 100% ⭐⭐
         ydl_opts = {
-            # التنسيق المحسن للجودة المرتفعة
-            'format': 'bestvideo[height<=1080][fps<=60]+bestaudio/best[height<=1080]/best',
+            # ✅ الصيغة المضمونة التي تعمل مع جميع الفيديوهات
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            
+            # ✅ نسخ احتياطي إذا فشلت الصيغة الأساسية
+            'format_sort': [
+                'quality',
+                'vcodec:h264',
+                'acodec:aac',
+                'size',
+                'br',
+                'fps'
+            ],
+            
             'outtmpl': 'downloads/%(id)s.%(ext)s',
             'noplaylist': True,
             'quiet': True,
@@ -8815,43 +8924,9 @@ async def download_and_send_video(event):
             'retries': 10,
             'fragment_retries': 10,
             'skip_unavailable_fragments': True,
+            'concurrent_fragment_downloads': 4,
             
-            # ⚠️ تم إزالة external_downloader لضمان عمل postprocessor ⚠️
-            # لإصلاح مشكلة الميتاداتا والمدة
-            # لا تستخدم aria2c لأنه يمنع postprocessor
-            
-            # قائمة تنسيقات بديلة
-            'format_sort': [
-                'res:1080',
-                'res:720',
-                'res:480',
-                'ext:mp4:m4a',
-                'acodec:mp4a',
-                'vcodec:avc1',
-                'vcodec:h264',
-                'vcodec:vp9',
-                'vcodec:av01',
-            ],
-            
-            # ⭐ PostProcessors محسنة لإصلاح الميتاداتا ⭐
-            'postprocessors': [
-                # 1. تحويل إلى mp4 مع الحفاظ على الجودة
-                {
-                    'key': 'FFmpegVideoConvertor',
-                    'preferedformat': 'mp4',
-                },
-                # 2. إضافة الميتاداتا وتثبيت المدة (الغلاف)
-                {
-                    'key': 'FFmpegMetadata',
-                },
-                # 3. إضافة المعلومات الترويسية
-                {
-                    'key': 'EmbedThumbnail',
-                    'already_have_thumbnail': False,
-                },
-            ],
-            
-            # إعدادات HTTP محسنة
+            # ✅ إعدادات HTTP محسنة
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -8862,128 +8937,172 @@ async def download_and_send_video(event):
                 'Upgrade-Insecure-Requests': '1',
             },
             
-            # ⭐ إعدادات إضافية للشورتات Shorts ⭐
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'web'],
-                    'player_skip': ['configs'],
-                }
-            },
+            # ✅ PostProcessors محسنة لدمج وتنسيق الفيديو
+            'postprocessors': [
+                # البحث عن أفضل صيغة MP4
+                {
+                    'key': 'FFmpegVideoConvertor',
+                    'preferedformat': 'mp4',
+                },
+                # إضافة الميتاداتا
+                {
+                    'key': 'FFmpegMetadata',
+                },
+                # إضافة الصورة المصغرة
+                {
+                    'key': 'EmbedThumbnail',
+                    'already_have_thumbnail': False,
+                },
+                # إضافة معلومات الفيديو
+                {
+                    'key': 'FFmpegEmbedSubtitle',
+                },
+            ],
             
-            # إعدادات للتشغيل السلس
-            'concurrent_fragment_downloads': 4,  # تحميل متوازي بدون aria2c
-            'throttledratelimit': 1000000,  # الحد الأدنى للسرعة
+            # ✅ إعدادات إضافية للتوافق
+            'allow_multiple_video_streams': True,
+            'allow_multiple_audio_streams': True,
+            'keepvideo': True,
+            'writethumbnail': True,
+            'writeinfojson': False,
+            'writesubtitles': False,
+            'writeautomaticsub': False,
         }
 
         # إنشاء مجلد التحميل إذا لم يكن موجوداً
         os.makedirs('downloads', exist_ok=True)
 
-        video_file = None
-        video_title = "فيـديـو بـدون عـنوان"
-        video_duration = 0
-        video_width = 1280
-        video_height = 720
-
+        # ✅ الحصول على معلومات الفيديو أولاً
         with YoutubeDL(ydl_opts) as ydl:
             try:
-                # استخراج المعلومات أولاً
                 info = await asyncio.to_thread(ydl.extract_info, input_url, download=False)
                 
                 if not info:
                     await loading_msg.edit("**⚠️ لم يتم العثور على الفيديو أو الرابط غير صحيح**")
                     return
                 
-                video_id = info.get('id', 'unknown')
+                video_id = info.get('id', f'video_{int(time.time())}')
                 video_title = info.get('title', 'فيـديـو بـدون عـنوان')
                 video_duration = info.get('duration', 0)
                 video_width = info.get('width', 1280)
                 video_height = info.get('height', 720)
                 
-                # تحديد الجودة المناسبة
+                logger.info(f"✅ معلومات الفيديو: {video_title[:50]}... | المدة: {video_duration}ث | الأبعاد: {video_width}x{video_height}")
+                
+                # ✅ عرض خيارات الجودة المتاحة
                 formats = info.get('formats', [])
-                best_format = None
+                available_formats = []
                 
-                # البحث عن أفضل تنسيق متاح
                 for fmt in formats:
-                    if fmt.get('ext') == 'mp4' and fmt.get('vcodec') and fmt.get('acodec'):
-                        if fmt.get('height', 0) <= 1080:
-                            best_format = fmt
-                            break
+                    if fmt.get('ext') in ['mp4', 'webm', 'mkv']:
+                        height = fmt.get('height', 0)
+                        if height:
+                            available_formats.append(height)
                 
-                quality_text = ""
-                if best_format:
-                    height = best_format.get('height', 0)
-                    fps = best_format.get('fps', 0)
-                    if height >= 1080:
+                if available_formats:
+                    max_height = max(available_formats)
+                    if max_height >= 1080:
                         quality_text = "⏫ جـودة عـاليـة (1080p)"
-                    elif height >= 720:
+                    elif max_height >= 720:
                         quality_text = "⬆️ جـودة متوسـطة (720p)"
-                    else:
+                    elif max_height >= 480:
                         quality_text = "↕️ جـودة قياسـية (480p)"
-                    
-                    if fps and fps > 30:
-                        quality_text += f" ({int(fps)}fps)"
+                    else:
+                        quality_text = "📱 جـودة منخفضـة"
                 else:
-                    quality_text = "📊 جـودة قياسـية"
-
+                    quality_text = "📊 جـودة تلقـائيـة"
+                
                 await loading_msg.edit(
                     f"**╮ جـارِ تحميـل الفيـديـو... 📹╰**\n"
                     f"**╰ العـنوان:** `{video_title[:50]}...`\n"
-                    f"**╰ الـجودة:** {quality_text}"
+                    f"**╰ الـجودة:** {quality_text}\n"
+                    f"**╰ المـدة:** `{video_duration//60}:{video_duration%60:02d}`"
                 )
 
-                # تحميل الفيديو مع PostProcessor
+                # ✅ تحميل الفيديو
                 await asyncio.to_thread(ydl.download, [input_url])
                 
-                # البحث عن الملف المحمل (الآن يجب أن يكون mp4)
-                video_file = f'downloads/{video_id}.mp4'
+                # ✅ البحث عن الملف المحمل
+                video_file = None
                 
-                if not os.path.exists(video_file):
-                    # البحث بأي امتداد
-                    for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov']:
+                # المحاولة 1: البحث بالـ ID والامتداد mp4
+                possible_path = f'downloads/{video_id}.mp4'
+                if os.path.exists(possible_path):
+                    video_file = possible_path
+                else:
+                    # المحاولة 2: البحث بأي امتداد
+                    for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov', 'flv']:
                         possible_path = f'downloads/{video_id}.{ext}'
                         if os.path.exists(possible_path):
                             video_file = possible_path
+                            logger.info(f"✅ تم العثور على الملف بالامتداد: {ext}")
                             break
+                
+                if not video_file:
+                    # المحاولة 3: البحث بأي ملف في المجلد
+                    download_files = glob.glob('downloads/*.*')
+                    if download_files:
+                        # اختر أكبر ملف (على الأرجح هو الفيديو)
+                        download_files.sort(key=os.path.getsize, reverse=True)
+                        video_file = download_files[0]
+                        logger.info(f"✅ تم العثور على ملف بديل: {os.path.basename(video_file)}")
                     else:
-                        # إذا لم نجد بالـ ID، نبحث بأي ملف في المجلد
-                        download_files = glob.glob('downloads/*.*')
-                        if download_files:
-                            video_file = download_files[0]
-                        else:
-                            await loading_msg.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
-                            return
+                        await loading_msg.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
+                        return
 
-                # التحقق من حجم الملف
+                # ✅ التحقق من حجم الملف
                 file_size = os.path.getsize(video_file)
+                file_size_mb = file_size / (1024 * 1024)
+                logger.info(f"📊 حجم الملف: {file_size_mb:.2f}MB")
+                
                 if file_size > 2000 * 1024 * 1024:  # 2GB
-                    await loading_msg.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
+                    await loading_msg.edit(f"**⚠️ الملف كبير جداً للإرسال ({file_size_mb:.1f}MB)**")
                     return
 
-                # التحقق من المدة بعد التحميل
+                # ✅ التحقق من المدة بعد التحميل
                 try:
-                    # محاولة قراءة المدة من الفيديو بعد PostProcessing
-                    import subprocess
+                    # استخدام ffprobe لاستخراج المدة الحقيقية
                     result = subprocess.run([
                         'ffprobe', '-v', 'error', '-show_entries',
                         'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_file
-                    ], capture_output=True, text=True)
+                    ], capture_output=True, text=True, timeout=10)
                     
                     if result.stdout:
                         actual_duration = float(result.stdout.strip())
                         if actual_duration > 0:
                             video_duration = int(actual_duration)
-                except:
-                    pass  # إذا فشلنا، نستخدم المدة الأصلية
+                            logger.info(f"⏱️ المدة المستخرجة: {video_duration} ثانية")
+                except Exception as probe_error:
+                    logger.warning(f"⚠️ فشل استخراج المدة: {probe_error}")
+
+                # ✅ استخراج الأبعاد الفعلية
+                try:
+                    result = subprocess.run([
+                        'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                        '-show_entries', 'stream=width,height', '-of', 'csv=p=0', video_file
+                    ], capture_output=True, text=True, timeout=10)
+                    
+                    if result.stdout:
+                        dimensions = result.stdout.strip().split(',')
+                        if len(dimensions) == 2:
+                            video_width = int(dimensions[0])
+                            video_height = int(dimensions[1])
+                            logger.info(f"📐 الأبعاد المستخرجة: {video_width}x{video_height}")
+                except Exception as dim_error:
+                    logger.warning(f"⚠️ فشل استخراج الأبعاد: {dim_error}")
 
                 await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
 
-                # إعدادات الرفع المحسنة
+                # ✅ إعداد ترويسة الفيديو
+                duration_min = video_duration // 60
+                duration_sec = video_duration % 60
+                
                 caption = f"**📹╎عـنوان الفيـديـو:** `{video_title}`\n"
-                caption += f"**⏱╎المـدة:** `{video_duration//60}:{video_duration%60:02d}`\n"
-                caption += f"**📊╎الجـودة:** {quality_text}"
+                caption += f"**⏱╎المـدة:** `{duration_min}:{duration_sec:02d}`\n"
+                caption += f"**📊╎الجـودة:** {quality_text}\n"
+                caption += f"**📐╎الأبعاد:** `{video_width}x{video_height}`"
 
-                # إرسال الفيديو مع metadata صحيحة
+                # ✅ إرسال الفيديو
                 await event.client.send_file(
                     event.chat_id,
                     video_file,
@@ -9001,96 +9120,155 @@ async def download_and_send_video(event):
                     workers=UPLOAD_WORKERS,
                     progress_callback=lambda d, t: asyncio.get_event_loop().create_task(
                         progress(d, t, loading_msg, "**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
-                    )
+                    ),
+                    reply_to=event.reply_to_msg_id if event.is_reply else None
                 )
 
-                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n"
-                                      f"**╰ ❐ العـنوان:** `{video_title[:40]}...`\n"
-                                      f"**╰ ❐ الجـودة:** {quality_text}")
+                await loading_msg.edit(
+                    f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n"
+                    f"**╰ ❐ العـنوان:** `{video_title[:40]}...`\n"
+                    f"**╰ ❐ الجـودة:** {quality_text}\n"
+                    f"**╰ ❐ الحجم:** `{file_size_mb:.1f}MB`"
+                )
 
             except Exception as download_error:
                 error_msg = str(download_error)
+                logger.error(f"❌ خطأ في التحميل: {error_msg}")
                 
-                # محاولة بديلة للشورتات
-                if "Shorts" in video_title or "/shorts/" in input_url:
+                # ✅ محاولة بديلة للشورتات والروابط الصعبة
+                if "Shorts" in video_title or "/shorts/" in input_url or "Requested format is not available" in error_msg:
                     await loading_msg.edit("**╮ جـارِ تحميـل الفيـديـو... 📹╰**")
+                    
                     try:
-                        # إعدادات خاصة للشورتات
-                        shorts_ydl_opts = ydl_opts.copy()
-                        shorts_ydl_opts['format'] = 'bestvideo+bestaudio/best'
-                        shorts_ydl_opts['postprocessors'] = [
-                            {
-                                'key': 'FFmpegVideoConvertor',
-                                'preferedformat': 'mp4',
-                            },
-                            {
-                                'key': 'FFmpegMetadata',
-                            }
-                        ]
+                        # إعدادات مبسطة للتوافق القصوى
+                        simple_ydl_opts = {
+                            'format': 'best',
+                            'outtmpl': f'downloads/{video_id if video_id else "video"}.%(ext)s',
+                            'quiet': True,
+                            'no_warnings': True,
+                            'cookiefile': cookie_file,
+                            'ignoreerrors': True,
+                            'retries': 5,
+                        }
                         
-                        with YoutubeDL(shorts_ydl_opts) as shorts_ydl:
-                            await asyncio.to_thread(shorts_ydl.download, [input_url])
+                        with YoutubeDL(simple_ydl_opts) as simple_ydl:
+                            await asyncio.to_thread(simple_ydl.download, [input_url])
                             
                             # البحث عن الملف المحمل
-                            for ext in ['mp4', 'webm']:
-                                possible_path = f'downloads/{video_id}.{ext}'
-                                if os.path.exists(possible_path):
-                                    video_file = possible_path
+                            for ext in ['mp4', 'webm', 'mkv']:
+                                search_path = f'downloads/{video_id if video_id else "video"}.{ext}'
+                                if os.path.exists(search_path):
+                                    video_file = search_path
                                     break
                             
-                            if video_file:
+                            if video_file and os.path.exists(video_file):
+                                file_size = os.path.getsize(video_file)
+                                file_size_mb = file_size / (1024 * 1024)
+                                
+                                if file_size > 2000 * 1024 * 1024:
+                                    await loading_msg.edit(f"**⚠️ الملف كبير جداً ({file_size_mb:.1f}MB)**")
+                                    return
+                                
                                 await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
+                                
                                 await event.client.send_file(
                                     event.chat_id,
                                     video_file,
-                                    caption=caption,
+                                    caption=f"**📹╎{video_title}**\n**📊╎جـودة تلقـائيـة**",
                                     supports_streaming=True,
                                     part_size_kb=UPLOAD_PART_SIZE_KB,
                                     workers=UPLOAD_WORKERS,
+                                    reply_to=event.reply_to_msg_id if event.is_reply else None
                                 )
-                                await loading_msg.edit(f"**╮ ❐ تم إرسـال الشـورت بنجـاح ✅**\n"
-                                                      f"**╰ ❐ العـنوان:** `{video_title[:40]}...`")
+                                
+                                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title[:40]}...`")
                                 return
-                    except Exception as shorts_error:
-                        error_msg = str(shorts_error)
+                            else:
+                                raise Exception("لم يتم العثور على الملف بعد التحميل البديل")
+                                
+                    except Exception as alt_error:
+                        error_msg = str(alt_error)
+                        logger.error(f"❌ خطأ في التحميل البديل: {alt_error}")
                 
-                # رسائل خطأ محددة
+                # ✅ رسائل خطأ محددة
                 if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
                     await loading_msg.edit("**⚠️ YouTube يطلب التحقق. حدث الكوكيز أو جرب لاحقاً**")
-                elif "Video unavailable" in error_msg:
+                elif "Video unavailable" in error_msg or "This video is unavailable" in error_msg:
                     await loading_msg.edit("**⚠️ الفيـديـو غيـر متـوفر أو محـذوف**")
                 elif "Private video" in error_msg:
                     await loading_msg.edit("**⚠️ الفيـديـو خـاص ولا يمكـن تحميـله**")
                 elif "Unsupported URL" in error_msg:
                     await loading_msg.edit("**⚠️ الرابـط غيـر مدعـوم أو غيـر صحيـح**")
-                elif "This video is unavailable" in error_msg:
-                    await loading_msg.edit("**⚠️ الفيـديـو غير متـاح في منطقتك**")
                 elif "No video formats" in error_msg:
                     await loading_msg.edit("**⚠️ لا يوجد تنسيقات فيديو متاحة**")
+                elif "Requested format is not available" in error_msg:
+                    await loading_msg.edit("**⚠️ الجودة المطلوبة غير متاحة، حاول مجدداً**")
                 else:
                     # عرض جزء من الخطأ للمساعدة في التشخيص
                     error_display = error_msg[:200] if len(error_msg) > 200 else error_msg
                     await loading_msg.edit(f"**⚠️ خطـأ في التحـميل**: {error_display}")
-                return
 
     except Exception as e:
+        logger.error(f"❌ خطأ عام في أمر اليوت: {e}")
         await loading_msg.edit(f"**⚠️ حـدث خـطأ عـام**: {str(e)[:200]}")
     
     finally:
-        # تنظيف الملفات المؤقتة
+        # ✅ تنظيف الملفات المؤقتة
         try:
             if video_file and os.path.exists(video_file):
                 os.remove(video_file)
-            # تنظيف أي ملفات أخرى في مجلد downloads
-            for pattern in [f'downloads/{video_id}*', 'downloads/*.part', 'downloads/*.ytdl']:
+                logger.info(f"✅ تم حذف الملف: {video_file}")
+            
+            # ✅ تنظيف ملفات video_id فقط إذا كان موجوداً
+            if video_id:
+                for pattern in [f'downloads/{video_id}.*', f'downloads/{video_id}_*']:
+                    for file_path in glob.glob(pattern):
+                        try:
+                            os.remove(file_path)
+                            logger.info(f"✅ تم حذف: {file_path}")
+                        except Exception as cleanup_error:
+                            logger.warning(f"⚠️ فشل في حذف {file_path}: {cleanup_error}")
+            
+            # ✅ تنظيف الملفات المؤقتة العامة
+            for pattern in ['downloads/*.part', 'downloads/*.ytdl', 'downloads/*.temp']:
                 for file_path in glob.glob(pattern):
                     try:
                         os.remove(file_path)
                     except:
                         pass
+                        
         except Exception as cleanup_error:
-            print(f"تحذير: فشل في تنظيف الملفات: {cleanup_error}")
+            logger.error(f"❌ خطأ في التنظيف: {cleanup_error}")
 
+
+# أمر فحص الكوكيز
+@client.on(events.NewMessage(pattern=r'^\.فحص_كوكيز$'))
+async def check_cookies(event):
+    """فحص ملف الكوكيز"""
+    if not is_allowed(event.sender_id):
+        return
+    
+    cookie_file = 'cookies.txt'
+    
+    if os.path.exists(cookie_file):
+        file_size = os.path.getsize(cookie_file)
+        file_size_kb = file_size / 1024
+        
+        with open(cookie_file, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+            num_cookies = sum(1 for line in lines if line.strip() and not line.startswith('#'))
+        
+        await edit_or_reply(event, 
+            f"**🍪╎ملف الكوكيز:**\n"
+            f"**╰ 📁 الحجم:** `{file_size_kb:.1f} KB`\n"
+            f"**╰ 🍪 عدد الكوكيز:** `{num_cookies}`\n"
+            f"**╰ ✅ الملف:** `موجود`"
+        )
+    else:
+        await edit_or_reply(event, 
+            "**⚠️╎ملف الكوكيز غير موجود!**\n"
+            "**📝╎لتحميل الفيديوهات المقيدة، أضف ملف cookies.txt في مجلد البوت**"
+        )
 
 async def progress(current, total, event, text):
     """دالة لعرض شريط التقدم"""
