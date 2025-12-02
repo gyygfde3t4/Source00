@@ -1749,9 +1749,7 @@ async def preview_site(event):
             
             # إعداد النص التوضيحي
             caption = f"**✾╎تمت معاينة الموقع بنجاح**\n"
-            caption += f"**• الرابط:** `{final_url}`\n"       
-                except:
-                    pass
+            caption += f"**• الرابط:** `{final_url}`\n"
             
             # إرسال الصورة
             await event.client.send_file(
@@ -1808,6 +1806,7 @@ async def preview_site(event):
         except:
             await edit_or_reply(event, error_msg)
 
+
 def is_valid_url(url_string):
     """التحقق من صحة الرابط"""
     # إذا كان يبدأ بـ http/https، تحقق مباشرة
@@ -1833,6 +1832,7 @@ def is_valid_url(url_string):
         return False
     except:
         return False
+
 
 def extract_urls(text):
     """استخراج جميع الروابط من النص"""
