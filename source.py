@@ -8688,8 +8688,6 @@ async def progress(current, total, event, text):
     bar = "█" * int(percent / 5) + "▒" * (20 - int(percent / 5))
     await event.edit(f"{text}\n\n**╮ 📊╎التقدم:** `{bar}`\n**╰ 💾╎النسبة:** `{percent:.1f}%`")
 
-
-
 @client.on(events.NewMessage(pattern=r'\.يوت(?: |$)(.*)'))
 async def download_and_send_video(event):
     # التحقق من الصلاحيات
@@ -8698,16 +8696,16 @@ async def download_and_send_video(event):
     is_bot_owner = event.out
     
     if not is_bot_owner and sender_id not in allowed_users:
-        return  # تجاهل completamente للمستخدمين غير المسموح لهم
+        return
 
     # التحقق مما إذا كان هناك رابط في الرسالة أو الرد على رسالة تحتوي على رابط
     reply = await event.get_reply_message()
     input_url = event.pattern_match.group(1).strip()
 
-    if reply and not input_url:  # إذا كان الرد على رسالة تحتوي على رابط
+    if reply and not input_url:
         input_url = reply.message.strip()
 
-    if not input_url:  # إذا لم يكن هناك رابط في الرسالة أو الرد
+    if not input_url:
         if event.out:
             await event.edit("**╮ ❐ يـرجى إرسـال الامـر مـع رابـط الفيـديـو .يوت + رابط او بالـرد ع رابـط 📹╰**")
         else:
@@ -8723,6 +8721,7 @@ async def download_and_send_video(event):
     video_id = None
     video_file = None
     thumbnail_file = None
+    video_quality = "غير معروف"
 
     try:
         # التحقق من وجود ملف الكوكيز
@@ -8763,17 +8762,6 @@ async def download_and_send_video(event):
                 }
             ],
             
-            # إعدادات HTTP محسنة
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'ar,en-US;q=0.7,en;q=0.3',
-                'Accept-Encoding': 'gzip, deflate',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-            },
-            
             # حفظ الصورة المصغرة
             'writethumbnail': True,
             'writeinfojson': False,
@@ -8802,12 +8790,43 @@ async def download_and_send_video(event):
                 duration = 0
                 try:
                     duration = int(info.get('duration', 0))
-                    print(f"🎯 المدة المستخرجة من yt-dlp: {duration} ثانية")
                 except:
-                    print("⚠️ فشل استخراج المدة من yt-dlp")
+                    pass
+                
+                # استخراج جودة الفيديو
+                height = info.get('height', 0)
+                if height:
+                    if height >= 4320:
+                        video_quality = "8K"
+                    elif height >= 2160:
+                        video_quality = "4K"
+                    elif height >= 1440:
+                        video_quality = "1440p"
+                    elif height >= 1080:
+                        video_quality = "1080"
+                    elif height >= 720:
+                        video_quality = "720"
+                    elif height >= 480:
+                        video_quality = "480"
+                    elif height >= 360:
+                        video_quality = "360"
+                    elif height >= 240:
+                        video_quality = "240"
+                    else:
+                        video_quality = "SD"
+                else:
+                    # محاولة الحصول على الجودة من format
+                    if 'formats' in info:
+                        best_format = max(info['formats'], key=lambda x: x.get('height', 0))
+                        height = best_format.get('height', 0)
+                        if height >= 1080:
+                            video_quality = "1080"
+                        elif height >= 720:
+                            video_quality = "720"
+                        elif height >= 480:
+                            video_quality = "480"
                 
                 width = info.get('width', 1280)
-                height = info.get('height', 720)
                 
                 # تحميل الصورة المصغرة
                 thumbnail_url = info.get('thumbnail')
@@ -8819,9 +8838,7 @@ async def download_and_send_video(event):
                             if response.status_code == 200:
                                 with open(thumbnail_file, 'wb') as f:
                                     f.write(response.content)
-                                print(f"✅ تم تحميل الصورة المصغرة: {thumbnail_file}")
-                    except Exception as thumb_error:
-                        print(f"⚠️ فشل تحميل الصورة المصغرة: {thumb_error}")
+                    except Exception:
                         thumbnail_file = None
 
                 await loading_msg.edit(f"**╮ جـارِ تحميـل الفيـديـو... 📹╰**\n**╰ العـنوان:** `{video_title}`")
@@ -8854,56 +8871,10 @@ async def download_and_send_video(event):
 
                 # التحقق من حجم الملف
                 file_size = os.path.getsize(video_file)
-                if file_size > 2000 * 1024 * 1024:  # 2GB
+                if file_size > 2000 * 1024 * 1024:
                     await loading_msg.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
                     return
 
-                # 🔧 إصلاح: إذا لم تنجح دمج الصورة المصغرة تلقائياً، نقوم بدمجها يدوياً
-                if thumbnail_file and os.path.exists(thumbnail_file):
-                    try:
-                        # التحقق إذا كانت الصورة المصغرة مدمجة بالفعل
-                        thumbnail_merged = False
-                        try:
-                            # محاولة استخراج معلومات الملف للتحقق
-                            cmd = ['ffprobe', '-v', 'quiet', '-show_format', '-print_format', 'json', video_file]
-                            result = subprocess.run(cmd, capture_output=True, text=True)
-                            if result.returncode == 0:
-                                import json
-                                file_info = json.loads(result.stdout)
-                                # التحقق من وجود بيانات الصورة المصغرة
-                                if file_info.get('format', {}).get('tags', {}).get('cover'):
-                                    thumbnail_merged = True
-                                    print("✅ الصورة المصغرة مدمجة بالفعل في الفيديو")
-                        except:
-                            pass
-                        
-                        if not thumbnail_merged:
-                            print("🔄 جاري دمج الصورة المصغرة يدوياً...")
-                            temp_video = f'downloads/{video_id}_with_thumb.mp4'
-                            
-                            # استخدام ffmpeg لدمج الصورة المصغرة
-                            cmd = [
-                                'ffmpeg', '-y', '-i', video_file,
-                                '-i', thumbnail_file,
-                                '-map', '0', '-map', '1',
-                                '-c', 'copy',
-                                '-disposition:v:1', 'attached_pic',
-                                temp_video
-                            ]
-                            
-                            process = await asyncio.create_subprocess_exec(*cmd)
-                            await process.communicate()
-                            
-                            if process.returncode == 0 and os.path.exists(temp_video):
-                                # حذف الملف القديم واستبداله بالجديد
-                                os.remove(video_file)
-                                os.rename(temp_video, video_file)
-                                print("✅ تم دمج الصورة المصغرة بنجاح")
-                            else:
-                                print("⚠️ فشل دمج الصورة المصغرة، سيتم إرسال الفيديو بدونها")
-                    except Exception as merge_error:
-                        print(f"❌ خطأ في دمج الصورة المصغرة: {merge_error}")
-                
                 # 🔧 استخراج المدة الحقيقية باستخدام ffprobe
                 try:
                     cmd = [
@@ -8917,11 +8888,10 @@ async def download_and_send_video(event):
                         ffprobe_duration = float(result.stdout.strip())
                         if ffprobe_duration > 0:
                             duration = int(ffprobe_duration)
-                            print(f"✅ المدة المستخرجة من ffprobe: {duration} ثانية")
-                except Exception as duration_error:
-                    print(f"⚠️ فشل استخراج المدة باستخدام ffprobe: {duration_error}")
+                except Exception:
+                    pass
 
-                # 🔧 إذا لم نتمكن من استخراج المدة، نحاول استخدام ffmpeg لاستخراج أول إطار كصورة مصغرة
+                # 🔧 إذا لم نتمكن من استخراج الصورة المصغرة
                 if not thumbnail_file or not os.path.exists(thumbnail_file):
                     try:
                         thumbnail_file = f'downloads/{video_id}_frame.jpg'
@@ -8933,18 +8903,20 @@ async def download_and_send_video(event):
                         process = await asyncio.create_subprocess_exec(*cmd)
                         await process.communicate()
                         
-                        if process.returncode == 0 and os.path.exists(thumbnail_file):
-                            print(f"✅ تم استخراج صورة مصغرة من الفيديو: {thumbnail_file}")
-                    except Exception as frame_error:
-                        print(f"⚠️ فشل استخراج صورة من الفيديو: {frame_error}")
+                        if not (process.returncode == 0 and os.path.exists(thumbnail_file)):
+                            thumbnail_file = None
+                    except Exception:
                         thumbnail_file = None
 
                 await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
 
+                # إنشاء النص مع الجودة
+                caption = f"**📹╎عـنوان الفيـديـو:** `{video_title}`\n**🎦 الجودة:** `{video_quality}`"
+
                 # إعدادات الرفع
                 upload_options = {
                     'file': video_file,
-                    'caption': f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
+                    'caption': caption,
                     'supports_streaming': True,
                     'attributes': [
                         DocumentAttributeVideo(
@@ -9013,7 +8985,7 @@ async def download_and_send_video(event):
                                 await event.client.send_file(
                                     event.chat_id,
                                     video_file,
-                                    caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
+                                    caption=caption,
                                     supports_streaming=True,
                                     attributes=[
                                         DocumentAttributeVideo(
@@ -9071,9 +9043,10 @@ async def download_and_send_video(event):
                                 os.remove(file_path)
                         except:
                             pass
-        except Exception as cleanup_error:
-            print(f"⚠️ تحذير: فشل في تنظيف الملفات: {cleanup_error}")
-            
+        except Exception:
+            pass
+
+
 async def progress(current, total, event, text):
     """دالة لعرض شريط التقدم"""
     progress = f"{current * 100 / total:.1f}%"
