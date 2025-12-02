@@ -8719,6 +8719,11 @@ async def download_and_send_video(event):
     else:
         loading_msg = await event.reply("**╮ جـارِ تحميـل الفيـديـو مـن يـوتيـوب... 📹♥️╰**")
 
+    # تعريف المتغيرات قبل try
+    video_id = None
+    video_file = None
+    thumbnail_file = None
+
     try:
         # التحقق من وجود ملف الكوكيز
         cookie_file = 'cookies.txt'
@@ -8779,9 +8784,7 @@ async def download_and_send_video(event):
         # إنشاء مجلد التحميل إذا لم يكن موجوداً
         os.makedirs('downloads', exist_ok=True)
 
-        video_file = None
         video_title = "فيـديـو بـدون عـنوان"
-        thumbnail_file = None
 
         with YoutubeDL(ydl_opts) as ydl:
             try:
@@ -8799,9 +8802,9 @@ async def download_and_send_video(event):
                 duration = 0
                 try:
                     duration = int(info.get('duration', 0))
-                    logger.info(f"🎯 المدة المستخرجة من yt-dlp: {duration} ثانية")
+                    print(f"🎯 المدة المستخرجة من yt-dlp: {duration} ثانية")
                 except:
-                    logger.warning("⚠️ فشل استخراج المدة من yt-dlp")
+                    print("⚠️ فشل استخراج المدة من yt-dlp")
                 
                 width = info.get('width', 1280)
                 height = info.get('height', 720)
@@ -8816,9 +8819,9 @@ async def download_and_send_video(event):
                             if response.status_code == 200:
                                 with open(thumbnail_file, 'wb') as f:
                                     f.write(response.content)
-                                logger.info(f"✅ تم تحميل الصورة المصغرة: {thumbnail_file}")
+                                print(f"✅ تم تحميل الصورة المصغرة: {thumbnail_file}")
                     except Exception as thumb_error:
-                        logger.warning(f"⚠️ فشل تحميل الصورة المصغرة: {thumb_error}")
+                        print(f"⚠️ فشل تحميل الصورة المصغرة: {thumb_error}")
                         thumbnail_file = None
 
                 await loading_msg.edit(f"**╮ جـارِ تحميـل الفيـديـو... 📹╰**\n**╰ العـنوان:** `{video_title}`")
@@ -8870,12 +8873,12 @@ async def download_and_send_video(event):
                                 # التحقق من وجود بيانات الصورة المصغرة
                                 if file_info.get('format', {}).get('tags', {}).get('cover'):
                                     thumbnail_merged = True
-                                    logger.info("✅ الصورة المصغرة مدمجة بالفعل في الفيديو")
+                                    print("✅ الصورة المصغرة مدمجة بالفعل في الفيديو")
                         except:
                             pass
                         
                         if not thumbnail_merged:
-                            logger.info("🔄 جاري دمج الصورة المصغرة يدوياً...")
+                            print("🔄 جاري دمج الصورة المصغرة يدوياً...")
                             temp_video = f'downloads/{video_id}_with_thumb.mp4'
                             
                             # استخدام ffmpeg لدمج الصورة المصغرة
@@ -8895,11 +8898,11 @@ async def download_and_send_video(event):
                                 # حذف الملف القديم واستبداله بالجديد
                                 os.remove(video_file)
                                 os.rename(temp_video, video_file)
-                                logger.info("✅ تم دمج الصورة المصغرة بنجاح")
+                                print("✅ تم دمج الصورة المصغرة بنجاح")
                             else:
-                                logger.warning("⚠️ فشل دمج الصورة المصغرة، سيتم إرسال الفيديو بدونها")
+                                print("⚠️ فشل دمج الصورة المصغرة، سيتم إرسال الفيديو بدونها")
                     except Exception as merge_error:
-                        logger.error(f"❌ خطأ في دمج الصورة المصغرة: {merge_error}")
+                        print(f"❌ خطأ في دمج الصورة المصغرة: {merge_error}")
                 
                 # 🔧 استخراج المدة الحقيقية باستخدام ffprobe
                 try:
@@ -8914,9 +8917,9 @@ async def download_and_send_video(event):
                         ffprobe_duration = float(result.stdout.strip())
                         if ffprobe_duration > 0:
                             duration = int(ffprobe_duration)
-                            logger.info(f"✅ المدة المستخرجة من ffprobe: {duration} ثانية")
+                            print(f"✅ المدة المستخرجة من ffprobe: {duration} ثانية")
                 except Exception as duration_error:
-                    logger.warning(f"⚠️ فشل استخراج المدة باستخدام ffprobe: {duration_error}")
+                    print(f"⚠️ فشل استخراج المدة باستخدام ffprobe: {duration_error}")
 
                 # 🔧 إذا لم نتمكن من استخراج المدة، نحاول استخدام ffmpeg لاستخراج أول إطار كصورة مصغرة
                 if not thumbnail_file or not os.path.exists(thumbnail_file):
@@ -8931,9 +8934,9 @@ async def download_and_send_video(event):
                         await process.communicate()
                         
                         if process.returncode == 0 and os.path.exists(thumbnail_file):
-                            logger.info(f"✅ تم استخراج صورة مصغرة من الفيديو: {thumbnail_file}")
+                            print(f"✅ تم استخراج صورة مصغرة من الفيديو: {thumbnail_file}")
                     except Exception as frame_error:
-                        logger.warning(f"⚠️ فشل استخراج صورة من الفيديو: {frame_error}")
+                        print(f"⚠️ فشل استخراج صورة من الفيديو: {frame_error}")
                         thumbnail_file = None
 
                 await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
@@ -9052,23 +9055,25 @@ async def download_and_send_video(event):
             if thumbnail_file and os.path.exists(thumbnail_file):
                 os.remove(thumbnail_file)
             
-            # تنظيف أي ملفات أخرى متعلقة بالتحميل
-            import glob
-            patterns_to_clean = [
-                f'downloads/{video_id}*',
-                'downloads/*.part',
-                'downloads/*.ytdl',
-                'downloads/*.temp'
-            ]
-            for pattern in patterns_to_clean:
-                for file_path in glob.glob(pattern):
-                    try:
-                        if os.path.exists(file_path):
-                            os.remove(file_path)
-                    except:
-                        pass
+            # تنظيف أي ملفات أخرى متعلقة بالتحميل (فقط إذا كان video_id معرفاً)
+            if video_id:
+                import glob
+                patterns_to_clean = [
+                    f'downloads/{video_id}*',
+                    'downloads/*.part',
+                    'downloads/*.ytdl',
+                    'downloads/*.temp'
+                ]
+                for pattern in patterns_to_clean:
+                    for file_path in glob.glob(pattern):
+                        try:
+                            if os.path.exists(file_path):
+                                os.remove(file_path)
+                        except:
+                            pass
         except Exception as cleanup_error:
-            logger.warning(f"⚠️ تحذير: فشل في تنظيف الملفات: {cleanup_error}")
+            print(f"⚠️ تحذير: فشل في تنظيف الملفات: {cleanup_error}")
+            
 async def progress(current, total, event, text):
     """دالة لعرض شريط التقدم"""
     progress = f"{current * 100 / total:.1f}%"
