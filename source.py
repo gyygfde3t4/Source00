@@ -1589,8 +1589,11 @@ async def list_muted_users(event):
 
     muted_list = []
     for user_id in muted_users:
-        user = await client.get_entity(user_id)
-        muted_list.append(f"**•╎** @{user.username or 'مسـتخدم بـدون يـوزر نـيم'}")
+        try:
+            user = await client.get_entity(user_id)
+            muted_list.append(f"**•╎** @{user.username or 'مسـتخدم بـدون يـوزر نـيم'} (ID: {user_id})")
+        except:
+            muted_list.append(f"**•╎** مسـتخدم (ID: {user_id})")
 
     muted_list_str = "\n".join(muted_list)
     count = len(muted_users)
@@ -1598,6 +1601,37 @@ async def list_muted_users(event):
     
     await edit_or_reply(event, response)
 
+@client.on(events.NewMessage())
+async def delete_muted_user_messages(event):
+    """حذف رسائل المستخدمين المكتومين"""
+    global muted_users
+    
+    # تجاهل الرسائل من البوت نفسه
+    if event.out:
+        return
+    
+    # التحقق إذا كان المرسل مكتوم
+    if event.sender_id in muted_users:
+        try:
+            await event.delete()
+            
+            # إرسال إشعار بالحذف للمشرفين
+            allowed_users = [5683930416]
+            chat = await event.get_chat()
+            
+            for user_id in allowed_users:
+                try:
+                    await client.send_message(
+                        user_id,
+                        f"**✾╎تـم حـذف رسـالة من مسـتخدم مكتـوم**\n"
+                        f"**•╎المسـتخدم:** {event.sender_id}\n"
+                        f"**•╎المجموعـة:** {chat.title}\n"
+                        f"**•╎الرسـالة:** {event.text[:50]}..."
+                    )
+                except:
+                    pass
+        except Exception as e:
+            pass
 
 @client.on(events.NewMessage(pattern=r'^\.معاينة(?:\s+(.+))?$'))
 async def preview_site(event):
@@ -1615,24 +1649,64 @@ async def preview_site(event):
     match = event.pattern_match
     url_input = match.group(1)
     
-    # إذا لم يتم إدخال رابط
-    if not url_input:
-        await edit_or_reply(event, "**⚠️╎يـرجـى إدخـال رابط للمعاينة\nمثـال:** `.معاينة https://google.com`")
+    # متغير لحفظ الرابط النهائي
+    final_url = None
+    
+    # الحالة 1: إذا تم إرسال الأمر مع رابط مباشر
+    if url_input:
+        url_input = url_input.strip()
+        if is_valid_url(url_input):
+            # إضافة https:// إذا لم يكن موجوداً
+            if not url_input.startswith(('http://', 'https://')):
+                final_url = 'https://' + url_input
+            else:
+                final_url = url_input
+    
+    # الحالة 2: إذا تم الرد على رسالة تحتوي على رابط
+    elif event.reply_to_msg_id:
+        try:
+            # الحصول على الرسالة التي تم الرد عليها
+            replied_msg = await event.get_reply_message()
+            
+            # استخراج الروابط من نص الرسالة
+            urls = extract_urls(replied_msg.text or replied_msg.raw_text or "")
+            
+            # استخراج الروابط من الوسائط (مثل التلغرام الخاص بروابط المواقع)
+            if not urls and replied_msg.entities:
+                for entity in replied_msg.entities:
+                    if hasattr(entity, 'url'):
+                        urls.append(entity.url)
+            
+            if urls:
+                # استخراج أول رابط صالح
+                for url in urls:
+                    if is_valid_url(url):
+                        if not url.startswith(('http://', 'https://')):
+                            final_url = 'https://' + url
+                        else:
+                            final_url = url
+                        break
+                
+                if not final_url:
+                    await edit_or_reply(event, "**⚠️╎تم الرد على رسالة تحتوي على روابط، لكن لا يوجد رابط صالح**")
+                    return
+            else:
+                await edit_or_reply(event, "**⚠️╎لم يتم العثور على أي روابط في الرسالة التي تم الرد عليها**")
+                return
+                
+        except Exception as e:
+            await edit_or_reply(event, f"**⚠️╎خطأ في قراءة الرسالة:** `{str(e)[:50]}`")
+            return
+    
+    # إذا لم يتم إدخال رابط ولم يتم الرد على رسالة
+    else:
+        await edit_or_reply(event, "**⚠️╎يـرجـى إدخـال رابط للمعاينة أو الرد على رسالة تحتوي على رابط\nمثـال:**\n`.معاينة https://google.com`\n**أو الرد على رسالة تحتوي على رابط**")
         return
     
-    # تنظيف الرابط
-    url_input = url_input.strip()
-    
-    # التحقق من صحة الرابط
-    if not is_valid_url(url_input):
+    # إذا لم يتم العثور على رابط صالح
+    if not final_url:
         await edit_or_reply(event, "**⚠️╎الرابط غير صحيح\nيجب إدخال رابط صالح مثل:** `google.com` أو `https://example.com`")
         return
-    
-    # إضافة https:// إذا لم يكن موجوداً
-    if not url_input.startswith(('http://', 'https://')):
-        url = 'https://' + url_input
-    else:
-        url = url_input
     
     # إرسال رسالة "جاري المعاينة"
     processing_msg = await edit_or_reply(event, "**✾╎جاري معاينة الرابط . . .**")
@@ -1644,7 +1718,7 @@ async def preview_site(event):
         
         params = {
             "key": api_key,
-            "url": url,
+            "url": final_url,
             "dimension": "1024x768",
             "format": "PNG",
             "cacheLimit": 0,
@@ -1659,7 +1733,7 @@ async def preview_site(event):
         
         if response.status_code == 200 and 'image' in content_type:
             # حفظ الصورة
-            filename = f"screenshot_{hash(url) % 10000}.png"
+            filename = f"screenshot_{hash(final_url) % 10000}.png"
             with open(filename, "wb") as f:
                 f.write(response.content)
             
@@ -1669,31 +1743,29 @@ async def preview_site(event):
             except:
                 pass
             
-            # إرسال الصورة مع التنسيق
-            caption = f"**✾╎تمت معاينة الموقع بنجاح**\n**• الرابط:** `{url}`"
+            # إعداد النص التوضيحي
+            caption = f"**✾╎تمت معاينة الموقع بنجاح**\n"
+            caption += f"**• الرابط:** `{final_url}`\n"
             
-            # محاولة إرسال الصورة كرد
-            try:
-                # إذا كان الأمر رَدًا على رسالة
-                if event.reply_to_msg_id:
-                    await event.client.send_file(
-                        event.chat_id,
-                        filename,
-                        caption=caption,
-                        reply_to=event.reply_to_msg_id,
-                        force_document=False  # إرسال كصورة وليس ملف
-                    )
-                else:
-                    # إذا كان الأمر جديدًا
-                    await event.client.send_file(
-                        event.chat_id,
-                        filename,
-                        caption=caption,
-                        force_document=False
-                    )
-            except Exception as e:
-                print(f"خطأ في إرسال الصورة: {e}")
-                await edit_or_reply(event, f"**✾╎تم التقاط الصورة ولكن حدث خطأ في الإرسال**\n**الرابط:** `{url}`")
+            # إضافة معلومات إضافية إذا كان الأمر رداً
+            if event.reply_to_msg_id:
+                try:
+                    replied_msg = await event.get_reply_message()
+                    user = await replied_msg.get_sender()
+                    username = f"@{user.username}" if user.username else "مستخدم"
+                    caption += f"**• المستخدم:** {username}\n"
+                    caption += f"**• وقت الرسالة:** {replied_msg.date.strftime('%Y-%m-%d %H:%M')}"
+                except:
+                    pass
+            
+            # إرسال الصورة
+            await event.client.send_file(
+                event.chat_id,
+                filename,
+                caption=caption,
+                reply_to=event.reply_to_msg_id or event.id,
+                force_document=False
+            )
             
             # حذف الملف المؤقت
             try:
@@ -1721,7 +1793,7 @@ async def preview_site(event):
                 await edit_or_reply(event, error_msg)
             
     except requests.exceptions.Timeout:
-        error_msg = "**⚠️╎انتهـت المهـلة\nالموقع يأخـذ وقت طويـل للتحميـل.**"
+        error_msg = f"**⚠️╎انتهـت المهـلة\nالموقع `{final_url}` يأخـذ وقت طويـل للتحميـل.**"
         try:
             await processing_msg.edit(error_msg)
         except:
@@ -1766,6 +1838,30 @@ def is_valid_url(url_string):
         return False
     except:
         return False
+
+def extract_urls(text):
+    """استخراج جميع الروابط من النص"""
+    if not text:
+        return []
+    
+    # نمط لاكتشاف الروابط الشائعة
+    url_pattern = r'(?:https?://|www\.)[\w\-]+\.[\w\-\.]+[\w\-\._~:/?#\[\]@!$&\'()*+,;=]*'
+    
+    urls = re.findall(url_pattern, text)
+    
+    # تنقية النتائج
+    cleaned_urls = []
+    for url in urls:
+        url = url.strip()
+        # إزالة أي علامات ترقيم في النهاية
+        url = re.sub(r'[.,;:!?]+$', '', url)
+        # إزالة الأقواس
+        url = url.strip('()[]{}')
+        
+        if url and not url.startswith('@') and not url.startswith('#'):
+            cleaned_urls.append(url)
+    
+    return cleaned_urls
 
 
 async def get_ai_response(client: httpx.AsyncClient, prompt: str) -> Optional[str]:
@@ -8707,8 +8803,8 @@ async def download_and_send_video(event):
 
         # إعدادات yt-dlp محسنة مع تنسيقات مرنة
         ydl_opts = {
-            # تنسيقات مرنة مع بدائل متعددة
-            'format': '(bestvideo[height<=720][ext=mp4]/bestvideo[height<=720]/bestvideo[ext=mp4]/bestvideo)+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[ext=mp4]/best',
+            # التنسيق المحسن للجودة المرتفعة
+            'format': 'bestvideo[height<=1080][fps<=60]+bestaudio/best[height<=1080]/best',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
             'noplaylist': True,
             'quiet': True,
@@ -8720,21 +8816,40 @@ async def download_and_send_video(event):
             'fragment_retries': 10,
             'skip_unavailable_fragments': True,
             
-            # إعدادات التحميل المتوازي مع aria2c
-            'external_downloader': 'aria2c',
-            'external_downloader_args': [
-                '-x', '16',
-                '-k', '2M',
-                '-s', '16',
-                '-j', '16',
-                '--file-allocation=none',
-                '--summary-interval=0',
-                '--quiet'
-            ],
+            # ⚠️ تم إزالة external_downloader لضمان عمل postprocessor ⚠️
+            # لإصلاح مشكلة الميتاداتا والمدة
+            # لا تستخدم aria2c لأنه يمنع postprocessor
             
             # قائمة تنسيقات بديلة
-            'format_sort': ['res:720', 'ext:mp4:m4a', 'acodec:mp4a', 'vcodec:avc1'],
-            'merge_output_format': 'mp4',
+            'format_sort': [
+                'res:1080',
+                'res:720',
+                'res:480',
+                'ext:mp4:m4a',
+                'acodec:mp4a',
+                'vcodec:avc1',
+                'vcodec:h264',
+                'vcodec:vp9',
+                'vcodec:av01',
+            ],
+            
+            # ⭐ PostProcessors محسنة لإصلاح الميتاداتا ⭐
+            'postprocessors': [
+                # 1. تحويل إلى mp4 مع الحفاظ على الجودة
+                {
+                    'key': 'FFmpegVideoConvertor',
+                    'preferedformat': 'mp4',
+                },
+                # 2. إضافة الميتاداتا وتثبيت المدة (الغلاف)
+                {
+                    'key': 'FFmpegMetadata',
+                },
+                # 3. إضافة المعلومات الترويسية
+                {
+                    'key': 'EmbedThumbnail',
+                    'already_have_thumbnail': False,
+                },
+            ],
             
             # إعدادات HTTP محسنة
             'http_headers': {
@@ -8747,11 +8862,17 @@ async def download_and_send_video(event):
                 'Upgrade-Insecure-Requests': '1',
             },
             
-            # إعدادات PostProcessing
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
+            # ⭐ إعدادات إضافية للشورتات Shorts ⭐
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                    'player_skip': ['configs'],
+                }
+            },
+            
+            # إعدادات للتشغيل السلس
+            'concurrent_fragment_downloads': 4,  # تحميل متوازي بدون aria2c
+            'throttledratelimit': 1000000,  # الحد الأدنى للسرعة
         }
 
         # إنشاء مجلد التحميل إذا لم يكن موجوداً
@@ -8759,6 +8880,9 @@ async def download_and_send_video(event):
 
         video_file = None
         video_title = "فيـديـو بـدون عـنوان"
+        video_duration = 0
+        video_width = 1280
+        video_height = 720
 
         with YoutubeDL(ydl_opts) as ydl:
             try:
@@ -8771,29 +8895,64 @@ async def download_and_send_video(event):
                 
                 video_id = info.get('id', 'unknown')
                 video_title = info.get('title', 'فيـديـو بـدون عـنوان')
-                duration = info.get('duration', 0)
-                width = info.get('width', 1280)
-                height = info.get('height', 720)
+                video_duration = info.get('duration', 0)
+                video_width = info.get('width', 1280)
+                video_height = info.get('height', 720)
+                
+                # تحديد الجودة المناسبة
+                formats = info.get('formats', [])
+                best_format = None
+                
+                # البحث عن أفضل تنسيق متاح
+                for fmt in formats:
+                    if fmt.get('ext') == 'mp4' and fmt.get('vcodec') and fmt.get('acodec'):
+                        if fmt.get('height', 0) <= 1080:
+                            best_format = fmt
+                            break
+                
+                quality_text = ""
+                if best_format:
+                    height = best_format.get('height', 0)
+                    fps = best_format.get('fps', 0)
+                    if height >= 1080:
+                        quality_text = "⏫ جـودة عـاليـة (1080p)"
+                    elif height >= 720:
+                        quality_text = "⬆️ جـودة متوسـطة (720p)"
+                    else:
+                        quality_text = "↕️ جـودة قياسـية (480p)"
+                    
+                    if fps and fps > 30:
+                        quality_text += f" ({int(fps)}fps)"
+                else:
+                    quality_text = "📊 جـودة قياسـية"
 
-                await loading_msg.edit(f"**╮ جـارِ تحميـل الفيـديـو... 📹╰**\n**╰ العـنوان:** `{video_title}`")
+                await loading_msg.edit(
+                    f"**╮ جـارِ تحميـل الفيـديـو... 📹╰**\n"
+                    f"**╰ العـنوان:** `{video_title[:50]}...`\n"
+                    f"**╰ الـجودة:** {quality_text}"
+                )
 
-                # تحميل الفيديو
+                # تحميل الفيديو مع PostProcessor
                 await asyncio.to_thread(ydl.download, [input_url])
                 
-                # البحث عن الملف المحمل
-                for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov']:
-                    possible_path = f'downloads/{video_id}.{ext}'
-                    if os.path.exists(possible_path):
-                        video_file = possible_path
-                        break
-                else:
-                    # إذا لم نجد بالـ ID، نبحث بأي ملف في المجلد
-                    download_files = glob.glob('downloads/*.*')
-                    if download_files:
-                        video_file = download_files[0]
+                # البحث عن الملف المحمل (الآن يجب أن يكون mp4)
+                video_file = f'downloads/{video_id}.mp4'
+                
+                if not os.path.exists(video_file):
+                    # البحث بأي امتداد
+                    for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov']:
+                        possible_path = f'downloads/{video_id}.{ext}'
+                        if os.path.exists(possible_path):
+                            video_file = possible_path
+                            break
                     else:
-                        await loading_msg.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
-                        return
+                        # إذا لم نجد بالـ ID، نبحث بأي ملف في المجلد
+                        download_files = glob.glob('downloads/*.*')
+                        if download_files:
+                            video_file = download_files[0]
+                        else:
+                            await loading_msg.edit("**⚠️ فشـل في تحميـل الفيـديـو**")
+                            return
 
                 # التحقق من حجم الملف
                 file_size = os.path.getsize(video_file)
@@ -8801,19 +8960,40 @@ async def download_and_send_video(event):
                     await loading_msg.edit("**⚠️ الملف كبير جداً للإرسال (أكثر من 2GB)**")
                     return
 
+                # التحقق من المدة بعد التحميل
+                try:
+                    # محاولة قراءة المدة من الفيديو بعد PostProcessing
+                    import subprocess
+                    result = subprocess.run([
+                        'ffprobe', '-v', 'error', '-show_entries',
+                        'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_file
+                    ], capture_output=True, text=True)
+                    
+                    if result.stdout:
+                        actual_duration = float(result.stdout.strip())
+                        if actual_duration > 0:
+                            video_duration = int(actual_duration)
+                except:
+                    pass  # إذا فشلنا، نستخدم المدة الأصلية
+
                 await loading_msg.edit("**╮ ❐ جـارِ الـرفع انتظـر ...𓅫╰**")
 
-                # إرسال الفيديو مع إعدادات الرفع المحسنة
+                # إعدادات الرفع المحسنة
+                caption = f"**📹╎عـنوان الفيـديـو:** `{video_title}`\n"
+                caption += f"**⏱╎المـدة:** `{video_duration//60}:{video_duration%60:02d}`\n"
+                caption += f"**📊╎الجـودة:** {quality_text}"
+
+                # إرسال الفيديو مع metadata صحيحة
                 await event.client.send_file(
                     event.chat_id,
                     video_file,
-                    caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
+                    caption=caption,
                     supports_streaming=True,
                     attributes=[
                         DocumentAttributeVideo(
-                            duration=duration,
-                            w=width,
-                            h=height,
+                            duration=video_duration,
+                            w=video_width,
+                            h=video_height,
                             supports_streaming=True
                         )
                     ],
@@ -8824,26 +9004,35 @@ async def download_and_send_video(event):
                     )
                 )
 
-                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
+                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n"
+                                      f"**╰ ❐ العـنوان:** `{video_title[:40]}...`\n"
+                                      f"**╰ ❐ الجـودة:** {quality_text}")
 
             except Exception as download_error:
                 error_msg = str(download_error)
                 
-                # محاولة بديلة بدون aria2c
-                if "Requested format is not available" in error_msg or "Format not available" in error_msg:
-                    await loading_msg.edit("**⚠️ جـارِ المحـاولة بطـريقة بديلـة...**")
+                # محاولة بديلة للشورتات
+                if "Shorts" in video_title or "/shorts/" in input_url:
+                    await loading_msg.edit("**╮ جـارِ تحميـل الفيـديـو... 📹╰**")
                     try:
-                        # إعدادات بديلة بدون external downloader
-                        alt_ydl_opts = ydl_opts.copy()
-                        alt_ydl_opts.pop('external_downloader', None)
-                        alt_ydl_opts.pop('external_downloader_args', None)
-                        alt_ydl_opts['format'] = 'best[height<=480]/best'
+                        # إعدادات خاصة للشورتات
+                        shorts_ydl_opts = ydl_opts.copy()
+                        shorts_ydl_opts['format'] = 'bestvideo+bestaudio/best'
+                        shorts_ydl_opts['postprocessors'] = [
+                            {
+                                'key': 'FFmpegVideoConvertor',
+                                'preferedformat': 'mp4',
+                            },
+                            {
+                                'key': 'FFmpegMetadata',
+                            }
+                        ]
                         
-                        with YoutubeDL(alt_ydl_opts) as alt_ydl:
-                            await asyncio.to_thread(alt_ydl.download, [input_url])
+                        with YoutubeDL(shorts_ydl_opts) as shorts_ydl:
+                            await asyncio.to_thread(shorts_ydl.download, [input_url])
                             
                             # البحث عن الملف المحمل
-                            for ext in ['mp4', 'webm', 'mkv']:
+                            for ext in ['mp4', 'webm']:
                                 possible_path = f'downloads/{video_id}.{ext}'
                                 if os.path.exists(possible_path):
                                     video_file = possible_path
@@ -8854,15 +9043,16 @@ async def download_and_send_video(event):
                                 await event.client.send_file(
                                     event.chat_id,
                                     video_file,
-                                    caption=f"**📹╎عـنوان الفيـديـو:** `{video_title}`",
+                                    caption=caption,
                                     supports_streaming=True,
                                     part_size_kb=UPLOAD_PART_SIZE_KB,
                                     workers=UPLOAD_WORKERS,
                                 )
-                                await loading_msg.edit(f"**╮ ❐ تم إرسـال الفيـديـو بنجـاح ✅**\n**╰ ❐ العـنوان:** `{video_title}`")
+                                await loading_msg.edit(f"**╮ ❐ تم إرسـال الشـورت بنجـاح ✅**\n"
+                                                      f"**╰ ❐ العـنوان:** `{video_title[:40]}...`")
                                 return
-                    except Exception as alt_error:
-                        error_msg = str(alt_error)
+                    except Exception as shorts_error:
+                        error_msg = str(shorts_error)
                 
                 # رسائل خطأ محددة
                 if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
@@ -8873,8 +9063,14 @@ async def download_and_send_video(event):
                     await loading_msg.edit("**⚠️ الفيـديـو خـاص ولا يمكـن تحميـله**")
                 elif "Unsupported URL" in error_msg:
                     await loading_msg.edit("**⚠️ الرابـط غيـر مدعـوم أو غيـر صحيـح**")
+                elif "This video is unavailable" in error_msg:
+                    await loading_msg.edit("**⚠️ الفيـديـو غير متـاح في منطقتك**")
+                elif "No video formats" in error_msg:
+                    await loading_msg.edit("**⚠️ لا يوجد تنسيقات فيديو متاحة**")
                 else:
-                    await loading_msg.edit(f"**⚠️ خطـأ في التحـميل**: {error_msg[:200]}")
+                    # عرض جزء من الخطأ للمساعدة في التشخيص
+                    error_display = error_msg[:200] if len(error_msg) > 200 else error_msg
+                    await loading_msg.edit(f"**⚠️ خطـأ في التحـميل**: {error_display}")
                 return
 
     except Exception as e:
@@ -8886,7 +9082,7 @@ async def download_and_send_video(event):
             if video_file and os.path.exists(video_file):
                 os.remove(video_file)
             # تنظيف أي ملفات أخرى في مجلد downloads
-            for pattern in [f'downloads/{video_id}*', 'downloads/*.part']:
+            for pattern in [f'downloads/{video_id}*', 'downloads/*.part', 'downloads/*.ytdl']:
                 for file_path in glob.glob(pattern):
                     try:
                         os.remove(file_path)
